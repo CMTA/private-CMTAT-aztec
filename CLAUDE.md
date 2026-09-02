@@ -20,14 +20,15 @@ A private version of the [CMTAT](https://github.com/CMTA/CMTAT) security token, 
 
 ## Key concepts
 
-- **Single contract, module structs.** Noir has no Solidity-style inheritance, so "modules" are plain structs implementing `Storage<N>` and held as fields of the contract's `#[storage] struct Storage<Context>`. Every user-callable entry point must be re-declared in `src/main.nr` — a module method alone is not callable.
-- **Access control is public.** `AccessControlModule` maps `role: Field -> AztecAddress -> bool` in public state; roles are numeric globals (`DEFAULT_ADMIN_ROLE = 1`, `PAUSE_ROLE = 2`, `ENFORCEMENT_ROLE = 3`, `VALIDATION_ROLE = 4`, `ADDRESS_LIST_ADD_ROLE = 5`, `ADDRESS_LIST_REMOVE_ROLE = 6`, `MINTER_ROLE = 7`, `BURNER_ROLE = 8`, `DEBT_ROLE = 9`, `DEBT_CREDIT_EVENT_ROLE = 10`). Because the check is public, private entry points enqueue a public `_mint`/`_transfer`/`_burn` that performs both the role check and the pause check.
-- **Private/public split per operation.** `mint`, `transfer`, `burn` are `#[private]`: they call a `#[private] #[internal]` `_*_internal` that mutates notes, then `.enqueue()` a `#[public] #[internal]` counterpart that updates `total_supply` and asserts not-paused. A revert in the public part reverts the whole tx.
-- **Balances are note sets.** `BalanceSet<Context>` in `src/types/balance_set.nr` wraps `PrivateSet<UintNote>`; a balance is the sum of a user's `UintNote`s. `add`/`sub` take `(amount, owner, issuer, sender)` so each note is emitted twice — once for the owner, once for the issuer.
-- **`SharedMutable` delay.** `issuer_address`, freeze flags and validation flags are `SharedMutable` with `CHANGE_ROLES_DELAY_BLOCKS = 2`, so they are readable from private functions without leaking the caller. The price is that freezing/blacklisting only takes effect after the delay — a known, documented limitation.
-- **Batching cap.** `MAX_ADDR_PER_CALL = 1`. The protocol allows only 4 private calls and 4 encrypted logs per call, and a transfer already emits 4 logs, so `mint_batch`/`transfer_batch`/`burn_batch` cannot exceed one address per call today. Changing this global requires re-checking the log budget.
-- **Authwits.** `transfer` and `burn` validate `assert_current_call_valid_authwit` when `msg_sender() != from` (the `transferFrom` equivalent); `cancel_authwit` pushes the authwit nullifier. `mint` deliberately has no authwit — only the minter role may mint.
+- **Single contract, module structs.** Noir has no Solidity-style inheritance, so "modules" are plain structs implementing `StateVariable<N, Context>` (which supplies both `new` and `get_storage_slot`) and held as fields of the contract's `#[storage] struct Storage<Context>`. Every user-callable entry point must be re-declared in `src/main.nr` — a module method alone is not callable.
+- **Access control is public.** `AccessControlModule` maps `role: Field -> AztecAddress -> bool` in public state; roles are numeric globals (`DEFAULT_ADMIN_ROLE = 1`, `PAUSE_ROLE = 2`, `ENFORCEMENT_ROLE = 3`, `VALIDATION_ROLE = 4`, `ADDRESS_LIST_ADD_ROLE = 5`, `ADDRESS_LIST_REMOVE_ROLE = 6`, `MINTER_ROLE = 7`, `BURNER_ROLE = 8`, `DEBT_ROLE = 9`, `DEBT_CREDIT_EVENT_ROLE = 10`). Because the check is public, private entry points enqueue a public `_mint`/`_transfer`/`_burn` that performs both the role check and the pause check. Public-context module methods take `PublicContext` by value, not `&mut PublicContext`.
+- **Private/public split per operation.** `mint`, `transfer`, `burn` are `#[external("private")]`: they call an inlined `#[internal("private")]` `_*_internal` that mutates notes via `self.internal`, then `self.enqueue_self` a `#[external("public")] #[only_self]` counterpart that updates `total_supply` and asserts not-paused. A revert in the public part reverts the whole tx.
+- **Balances are note sets.** `private_balances` is an `Owned<BalanceSet<Context>>` using the `balance_set` aztec-nr library, reached as `.at(address)`; a balance is the sum of a user's `UintNote`s. `add`/`sub` return a `MaybeNoteMessage` that must be delivered: the owner's copy goes out with `.deliver(MessageDelivery::onchain_constrained())` and the issuer's audit copy with `.deliver_to(issuer, MessageDelivery::offchain())`.
+- **`DelayedPublicMutable` delay.** `issuer_address`, freeze flags and validation flags are `DelayedPublicMutable` with `CHANGE_ROLES_DELAY_SECONDS = 360`, so they are readable from private functions without leaking the caller. The delay is a duration in seconds, not a block count, and nothing that reads one of these works until it has elapsed — including every mint, transfer and burn, which all read `issuer_address`.
+- **Batching cap.** `MAX_ADDR_PER_CALL = 1`. The protocol allows 8 private calls and 16 private logs per call (up from 4 and 4 before Aztec v3), and a transfer delivers 5 messages per address, so the cap could now be raised — it is kept at 1 so the migration did not change the ABI further. Changing this global requires re-checking the log budget.
+- **Authwits.** `transfer`, `transfer_batch`, `burn` and `burn_batch` carry `#[authorize_once("from", "authwit_nonce")]`, which validates the authwit when `msg_sender() != from` and nullifies the nonce to prevent replay; the `from` account itself must pass `authwit_nonce = 0`. `cancel_authwit` pushes the authwit nullifier. `mint` deliberately has no authwit — only the minter role may mint.
 - **No force transfer.** Unlike Solidity CMTAT the issuer cannot move a user's notes; the compliance workaround is freezing the account (see README "Limitations").
+- **Issuer audit copies go offchain.** The issuer's copy of each note uses `MessageDelivery::offchain()`, not `onchain_constrained()`. PXE cannot process an onchain note message addressed to a non-owner — note discovery computes the note's nullifier, which needs the owner's key — so an onchain copy compiles but breaks discovery. The trade-off (no onchain data availability for the issuer's copy) is documented in the README and CHANGELOG; do not "fix" this back to onchain without re-testing.
 
 ## File tree
 
@@ -38,44 +39,44 @@ src/
 ├── modules/
 │   ├── access_controlModule.nr      # role constants, RoleData map, has_role/only_role/grant/revoke/renounce
 │   ├── pauseModule.nr               # PublicMutable<bool> pause flag, guarded by PAUSE_ROLE
-│   ├── enforcementModule.nr         # Freezable: per-address SharedMutable<FreezableFlag> freeze
+│   ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
 │   ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
 │   ├── extensions.nr                # extension declarations
 │   └── extensions/
 │       ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
 │       └── debtBaseModule.nr        # CMTAT debt terms (interest rate, par value, dates, conventions)
-├── types.nr
+├── types.nr                         # dead: superseded by the balance_set library, delete
 ├── types/
-│   └── balance_set.nr               # BalanceSet: PrivateSet<UintNote> + balance_of/add/sub
+│   └── balance_set.nr               # dead: superseded by the balance_set library, delete
 ├── test.nr                          # Noir test module declarations
 ├── test/
-│   ├── utils.nr                     # TestEnvironment setup helpers, check_private_balance
+│   ├── utils.nr                     # TestEnvironment setup, check_private_balance, call_private_on_behalf_of
 │   ├── reading_constants.nr         # name/symbol/decimals/total_supply reads
 │   ├── test_mint.nr                 # mint + mint_batch, role and freeze failure cases
 │   ├── test_burn.nr                 # burn + burn_batch, authwit cases
 │   ├── transfer_private.nr          # private transfer, authwit, insufficient balance
 │   ├── test_pause_module.nr         # pause/unpause and paused-operation reverts
-│   ├── test_enforcement_module.nr   # freeze/unfreeze with SharedMutable delay
+│   ├── test_enforcement_module.nr   # freeze/unfreeze across the DelayedPublicMutable delay
 │   ├── test_validation_module.nr    # blacklist/whitelist operate flags
 │   ├── test_credit_events.nr        # credit events extension
 │   ├── test_debt_base.nr            # debt base extension
 │   └── e2e/
-│       ├── index.test.ts            # end-to-end token flow against a sandbox PXE
+│       ├── index.test.ts            # end-to-end token flow against a sandbox
 │       └── accounts.test.ts         # account deployment / multi-wallet flow
 └── utils/                           # TypeScript helpers shared by tests and scripts
-    ├── setup_pxe.ts                 # local sandbox PXE
-    ├── setup_pxe_testnet.ts         # testnet PXE (NODE_URL from .env)
+    ├── setup_pxe.ts                 # setupWallet(): EmbeddedWallet + node for a local sandbox
+    ├── setup_pxe_testnet.ts         # setupWalletTestnet(): same for testnet (NODE_URL from .env)
     ├── deploy_account.ts            # deploy a Schnorr account
     ├── create_account_from_env.ts   # rebuild accounts from SECRET/SALT in .env
-    └── sponsored_fpc.ts             # SponsoredFPC instance for fee payment
+    └── sponsored_fpc.ts             # getSponsoredPaymentMethod(): registers the FPC and returns the payment method
 
 scripts/                             # tsx entry points, run via yarn
 ├── deploy_contract.ts               # deploy CMTAToken on testnet and grant MINTER_ROLE
 ├── deploy_account.ts                # deploy a single account
 ├── interaction.ts                   # mint/transfer/read against a deployed contract
-├── multiple_pxe.ts                  # two-PXE scenario
+├── multiple_pxe.ts                  # two wallets with separate PXEs on one node
 ├── get_block.ts                     # query current block
-├── fees.ts                          # fee inspection
+├── fees.ts                          # sponsored FPC, bridge+claim and native Fee Juice payment
 └── profile_deploy.ts                # gate-count / profiling of deployment
 ```
 
@@ -94,9 +95,9 @@ scripts/                             # tsx entry points, run via yarn
 
 ## Dependencies (tested versions)
 
-- Aztec toolchain and `aztec-nr` libraries (`aztec`, `authwit`, `compressed_string`, `value_note`, `uint_note`): tag **v0.87.8**. Install the matching CLI with `aztec-up 0.87.8`.
-- Noir compiler: `compiler_version = ">=0.18.0"` (`Nargo.toml`).
-- JS: `@aztec/aztec.js`, `@aztec/accounts`, `@aztec/builder`, `@aztec/noir-contracts.js` at **v0.87.8**; `@aztec/pxe` and `@aztec/kv-store` at `^0.87.8`.
+- Aztec toolchain and `aztec-nr` libraries (`aztec`, `compressed_string`, `uint_note`, `balance_set`) from `AztecProtocol/aztec-nr`: tag **v5.2.0**. Install the matching CLI with `aztec-up install 5.2.0`. `authwit` is now part of `aztec` (`aztec::authwit`); `value_note` is no longer used.
+- Noir compiler: 1.0.0-beta.25, shipped with the 5.2.0 toolchain (`Nargo.toml` still declares `compiler_version = ">=0.18.0"`).
+- JS: `@aztec/aztec.js`, `@aztec/accounts`, `@aztec/builder`, `@aztec/noir-contracts.js`, `@aztec/pxe`, `@aztec/kv-store` and `@aztec/wallets` at **5.2.0**.
 - TypeScript `^5.5.3`, Jest `^29.7.0`, ts-jest `^29.1.4`, tsx `^4.20.3`, Node with `--experimental-vm-modules` (ESM project, `"type": "module"`).
 
 ## Common commands
@@ -114,6 +115,7 @@ scripts/                             # tsx entry points, run via yarn
 - Noir sources use `camelCase` file names for modules (`access_controlModule.nr`, `validationModule.nr`) and snake_case for functions; keep the existing style rather than renaming.
 - Every new public/private entry point goes in `src/main.nr` under the matching banner comment block (`AUTHORIZATION MODULE`, `VALIDATION MODULE`, `MINT`, `TRANSFER`, `BURN`, `INTERNAL`, `UNCONSTRAINED`), with a NatSpec-style `@dev` / `Requirements:` comment.
 - Any state-mutating operation must keep the invariant chain: freeze check + validation check in the private internal function, role check + pause check in the enqueued public internal function.
-- Any note written for a user must also be emitted to the current `issuer_address` — auditability is a hard requirement of the design.
+- Any note written for a user must also be delivered to the current `issuer_address` — auditability is a hard requirement of the design. The issuer's copy uses `MessageDelivery::offchain()`; see the key concept above before changing that.
 - Every behaviour change needs a Noir test in `src/test/` (and an e2e test when it crosses the TS boundary); tests build their world through `src/test/utils.nr` `setup*` helpers.
-- Bumping the Aztec version means updating `Nargo.toml`, `package.json` and the `aztec-up` version together — they must match.
+- Bumping the Aztec version means updating `Nargo.toml`, `package.json` and the `aztec-up` version together — they must match. `aztec compile` warns when the dependency tag and the CLI disagree.
+- The e2e suite and any operator runbook must account for `CHANGE_ROLES_DELAY_SECONDS`: a scheduled value change is not readable until the delay has elapsed, and a sandbox's clock cannot be fast-forwarded.

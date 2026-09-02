@@ -77,39 +77,67 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Summary
 
-- Rewritten as a modular contract on a current Aztec version, with testnet deployment scripts and an end-to-end test suite.
+- Upgraded from Aztec 0.63.1 to **5.2.0**, which is a rewrite of every file rather than a version bump: the framework renamed its function and state-variable macros, moved contract state behind `self`, replaced note delivery, and replaced the PXE-centric TypeScript API with a Wallet-centric one.
+- Restructured the contract into module structs, added testnet deployment scripts, and moved private balances onto the framework's own `BalanceSet`.
+
+### Changed
+
+- Contract functions use the `#[external("private" | "public" | "utility")]` macros instead of `#[private]` / `#[public]` / `#[utility]`, and contract state is reached through `self.storage` instead of a free `storage` binding.
+- Private-to-public calls go through `self.enqueue_self`, private-to-private helpers through `self.internal`, and the enqueued public halves (`_mint`, `_transfer`, `_burn`) are now `#[external("public")] #[only_self]`.
+- Authwit validation on `transfer`, `transfer_batch`, `burn` and `burn_batch` is now the `#[authorize_once("from", "authwit_nonce")]` macro instead of a hand-written `assert_current_call_valid_authwit` call.
+  - The `_nonce` parameter is renamed `authwit_nonce`, and the caller must pass `0` when acting for themselves - a non-zero nonce from the `from` account is now rejected.
+  - The macro also adds replay protection, which the previous hand-written check left to the caller.
+- `SharedMutable` became `DelayedPublicMutable`, and its delay is a **duration in seconds** rather than a number of blocks.
+  - `CHANGE_ROLES_DELAY_BLOCKS = 2` is now `CHANGE_ROLES_DELAY_SECONDS = 360` in the contract and in the enforcement and validation modules.
+  - This affects operators: freezing an account, blacklisting an address and changing the issuer now take six minutes rather than two blocks.
+- Private balances moved from a hand-written `BalanceSet` over `Map<AztecAddress, ...>` to `Owned<BalanceSet>` from the `balance_set` aztec-nr library, accessed as `private_balances.at(address)`.
+- Module structs implement `StateVariable<N, Context>` (which now owns both `new` and `get_storage_slot`) instead of the old `Storage<N>` trait, and take `PublicContext` by value rather than `&mut PublicContext`.
+- `burn_batch` now debits a single `from` account rather than one holder per array entry.
+  - The old signature validated one authwit per entry, which `#[authorize_once]` cannot express: it authorizes exactly one `from`.
+  - At the current `MAX_ADDR_PER_CALL` of 1 this is the same operation; it only narrows what a larger batch could do.
+- The TypeScript layer is built on `EmbeddedWallet` from `@aztec/wallets`, which owns its own PXE, rather than constructing a PXE service and deriving a wallet per account.
+  - Every `send()` and `simulate()` now names its sender with `from`, so one contract handle serves all accounts instead of one handle per wallet.
+  - `TxStatus.SUCCESS` is gone; `TxStatus` now tracks finalization, and execution success is `receipt.hasExecutionSucceeded()`.
+  - `deriveSigningKey` is gone; accounts rebuilt from `.env` now derive their signing key with `deriveMasterMessageSigningSecretKey`. Both this and address computation changed, so the addresses recorded in `.env.example` no longer correspond to its SECRET/SALT pairs.
 
 ### Added
 
 - Testnet deployment and interaction scripts under [scripts/](./scripts): `deploy_contract.ts`, `deploy_account.ts`, `interaction.ts`, `multiple_pxe.ts`, `get_block.ts`, `fees.ts`, `profile_deploy.ts`.
-- TypeScript helpers under [src/utils/](./src/utils) for PXE setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment instance.
+- TypeScript helpers under [src/utils/](./src/utils) for wallet setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment method.
 - CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.
 - `cancel_authwit`, which pushes the authwit nullifier so a granted authentication witness can be revoked before use.
-- Agent guide files [CLAUDE.md](./CLAUDE.md) and [AGENTS.md](./AGENTS.md).
+- Agent guide files [CLAUDE.md](./CLAUDE.md) and [AGENTS.md](./AGENTS.md), and this changelog.
 
-### Changed
+### Removed
 
-- Restructured the contract into module structs held as fields of the storage struct — access control, pause, enforcement (freeze), validation (blacklist/whitelist), and the two extensions — instead of keeping the logic inline in `main.nr`.
-- Moved role checks and the pause check into enqueued public internal functions (`_mint`, `_transfer`, `_burn`), so private entry points do the note work and the public part enforces the public invariants.
-- Replaced `ValueNote` with `UintNote` as the private balance note.
-  - `BalanceSet` now wraps `PrivateSet<UintNote>` and stores a `u128` amount per note.
-  - This is a note-layout change: notes created by an earlier version cannot be read by this one.
-- Amount types moved to `u128` across mint, transfer, burn and `total_supply`.
+- `src/types/balance_set.nr`, superseded by the `balance_set` library. The file is left in the tree but is no longer part of the module graph and should be deleted.
+- The `value_note` and `authwit` entries in `Nargo.toml`: `value_note` was never used, and `authwit` is now part of the `aztec` library (`aztec::authwit`).
+- The reference FPC's private and public fee-payment demonstrations in `scripts/fees.ts`. `FeeJuicePaymentMethod` no longer exists (an account holding Fee Juice pays with it automatically), and `PrivateFeePaymentMethod` / `PublicFeePaymentMethod` are deprecated and do not work beyond a local network.
+
+### Security
+
+- The issuer's copy of every note is now delivered **offchain** rather than onchain, which weakens the auditability guarantee.
+  - The framework documents an onchain constrained copy to an auditor as the supported pattern, and the contract compiles that way, but PXE cannot process an onchain note message addressed to someone who is not the note's owner: note discovery computes the note's nullifier, which requires the owner's nullifier key.
+  - The consequence is that the issuer's copy has no onchain data availability: the issuer must capture these messages as they are produced, and a sender who drops one is not detectable onchain.
+  - The delivery mode is a one-line change in each of `_mint_internal`, `_transfer_internal` and `_burn_internal`, should a later Aztec version process non-owner note messages.
 
 ### Dependencies
 
-- Aztec and `aztec-nr` (`aztec`, `authwit`, `compressed_string`, `value_note`, `uint_note`) upgraded from `aztec-packages-v0.63.1` to **v0.87.8**, via 0.67.1 and 0.87.2.
-- `@aztec/aztec.js`, `@aztec/accounts`, `@aztec/builder`, `@aztec/noir-contracts.js` pinned to v0.87.8; `@aztec/pxe` and `@aztec/kv-store` to `^0.87.8`.
-- Noir `compiler_version` requirement relaxed to `>=0.18.0`.
+- Aztec and `aztec-nr` upgraded from `aztec-packages-v0.63.1` to **v5.2.0**, and the libraries now come from the standalone `AztecProtocol/aztec-nr` repository rather than a directory inside `aztec-packages`.
+- Added the `balance_set` library; dropped `value_note` and the separate `authwit` library.
+- `@aztec/aztec.js`, `@aztec/accounts`, `@aztec/builder`, `@aztec/noir-contracts.js`, `@aztec/kv-store` and `@aztec/pxe` pinned to 5.2.0, and `@aztec/wallets` added.
+- Noir compiler is now 1.0.0-beta.25, shipped with the 5.2.0 toolchain.
 
 ### Testing
 
-- Noir/TXE test suite covering mint, burn, private transfer, pause, enforcement, validation, the two extensions, and constant reads.
-- Jest end-to-end suite (`src/test/e2e/`) exercising the token and account flows against a sandbox PXE with sponsored fee payment.
+- The Noir test suite is rewritten against the current `TestEnvironment` API: `create_light_account` / `create_contract_account`, `deploy(...).with_public_initializer(...)`, and `call_private` / `call_public` / `view_public` / `view_private` / `execute_utility` taking an explicit sender, in place of `impersonate` and `.call(&mut env.private())`.
+- Tests that act on someone else's behalf grant the caller access to the owner's notes with `call_private_opts(..., CallPrivateOptions::new().with_additional_scopes([owner]))`, since spending a note needs the owner's secrets even when an authwit authorizes the call.
+- Tests that depend on a scheduled value change advance the chain past the delay with `advance_next_block_timestamp_by` plus `mine_block`, rather than mining a fixed number of blocks.
+- The end-to-end suite waits out the real `CHANGE_ROLES_DELAY_SECONDS` once after deployment, because a sandbox's timestamps cannot be fast-forwarded and every mint, transfer and burn reads the issuer address.
 
 ### Documentation
 
-- README extended with testnet deployment instructions alongside the sandbox ones.
+- README updated for the renamed state variables, the per-call protocol limits (now 8 private calls and 16 private logs, up from 4 and 4), the `aztec-up install 5.2.0` instruction, and the delivery mode of the issuer's note copy.
 
 ## 0.2 — 2025-02-20
 
