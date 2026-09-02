@@ -82,6 +82,7 @@ scripts/                             # tsx entry points, run via yarn
 ## Other important files
 
 - `README.md` — the specification: assumptions, per-operation privacy requirements, module design, known limitations. Read before changing behaviour.
+- `CHANGELOG.md` — release history plus the project's semver policy (storage/note-layout and external-API breaks are MAJOR) and the pre-release checklist. Add an entry with every release; follow the entry-style rules stated in the file.
 - `LEARN-AZTEC.md` — condensed Aztec/Noir notes written while building; useful background, explicitly not kept up to date.
 - `Nargo.toml` — Noir package and pinned `aztec-nr` dependencies.
 - `package.json` — yarn scripts and pinned `@aztec/*` JS packages.
