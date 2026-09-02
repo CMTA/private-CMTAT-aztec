@@ -30,6 +30,7 @@ been audited and may not be fully compliant with the Swiss law.
 
 ## Table of contents
 
+- [Glossary](#glossary)
 - [Functionalities overview](#functionalities-overview)
 - [Private token implementation](#private-token-implementation)
   - [Assumptions and requirements](#assumptions-and-requirements)
@@ -47,6 +48,81 @@ been audited and may not be fully compliant with the Swiss law.
 - [Intellectual property](#intellectual-property)
 - [Security](#security)
 
+
+## Glossary
+
+Terms you need in order to read this repository. The first table is Aztec the protocol, the second is the Aztec.nr code you will meet in `src/`, and the third is CMTAT and the decisions specific to this project.
+
+### Aztec protocol
+
+| Term | Definition |
+|---|---|
+| **Aztec** | A privacy-focused Layer 2 on Ethereum. Every transaction has a private part, proven on the user's own device with zero-knowledge proofs, and a public part, executed by the network like an EVM transaction. |
+| **L1 / L2** | L1 is Ethereum, where Aztec settles and where fee juice is bridged from. L2 is Aztec itself. |
+| **Private execution** | Contract code run locally by the user. Its inputs and outputs stay secret; the network only sees a proof plus the note hashes and nullifiers it produced. |
+| **Public execution** | Contract code run by the sequencer over public state, visible to everyone. Public calls made from private code run *after* all private execution, so they cannot return a value to it. |
+| **Utility function** | An unconstrained, offchain query (`#[external("utility")]`). It never appears in a transaction and carries no correctness guarantee — it is the Aztec analogue of an `eth_call`-only view. `balance_of_private` is one. |
+| **Note** | The unit of private state: a small struct (here a `UintNote` holding a `u128` amount) whose *hash* is published onchain while its content stays private. A private balance is the sum of the notes a holder owns. |
+| **Note hash tree** | The append-only onchain tree of note hashes. Append-only so that spending a note cannot be linked to its creation. |
+| **Nullifier** | A deterministic, secret-derived value published when a note is spent. The protocol rejects duplicates, which is what prevents double-spending. Only the note's owner can compute it. |
+| **Nullifier tree** | The append-only onchain tree of nullifiers. A note is unspent exactly when its nullifier is absent. |
+| **Note discovery** | How a recipient learns that a note was created for them: the sender encrypts a message with the note's content and delivers it, and the recipient's PXE decrypts it and verifies the note hash onchain. |
+| **PXE** | *Private eXecution Environment* — the client-side component holding a user's keys and private notes, and running private functions. Each user has their own; one PXE cannot read another's notes. |
+| **Sequencer** | The network actor that orders transactions and executes their public parts. |
+| **AVM** | The public virtual machine the sequencer runs, comparable in model to the EVM. |
+| **Authwit** | *Authentication witness* — a signed authorisation letting a third party perform one specific action on your behalf. The Aztec equivalent of an ERC-20 `approve` + `transferFrom`, but scoped to an exact call and consumed once. |
+| **Fee juice** | The native token used to pay transaction fees, bridged from L1. |
+| **FPC / Sponsored FPC** | *Fee Payment Contract* — pays fees on a user's behalf. The sponsored FPC pays unconditionally, which is how fresh accounts in this repo transact without being funded first. |
+| **Sandbox** | A local Aztec network for development (`aztec start --sandbox`). |
+| **Testnet** | The public Aztec test network, targeted by the scripts in `scripts/`. |
+
+### Aztec.nr and the code in `src/`
+
+| Term | Definition |
+|---|---|
+| **Noir** | The language Aztec contracts are written in. Rust-like syntax, but it compiles to zero-knowledge circuits, which is why there is no inheritance and no early `return`. |
+| **Aztec.nr** | The Noir framework providing the contract macros, state variables and note types. Pinned to **v5.2.0** here. |
+| **TXE** | *Test eXecution Environment* — the harness behind `aztec test` that runs Noir tests against a simulated network. Everything in `src/test/*.nr` targets it. |
+| **`#[external("private" \| "public" \| "utility")]`** | Marks a function callable from outside the contract, and says which environment runs it. |
+| **`#[internal("private" \| "public")]`** | A helper callable only from inside the contract and **inlined** at the call site — reached through `self.internal`. `_mint_internal`, `_transfer_internal` and `_burn_internal` are these. |
+| **`#[only_self]`** | A real (non-inlined) function only the contract itself may call. The enqueued public halves `_mint`, `_transfer` and `_burn` use it. |
+| **`self.enqueue_self`** | Schedules one of this contract's public functions to run after private execution. This is how a private mint updates the public `total_supply`. |
+| **`#[authorize_once("from", "authwit_nonce")]`** | Macro that validates the authwit when the caller is not `from`, and nullifies the nonce so it cannot be replayed. The `from` account itself must pass `authwit_nonce = 0`. |
+| **Storage slot** | The index that keeps one state variable's data from colliding with another's. Assigned automatically. |
+| **`PublicMutable<T>`** | Public value, read and written by public functions only. Used for `total_supply` and the role table. |
+| **`PublicImmutable<T>`** | Public value written once and readable everywhere, including private functions. Used for `name`, `symbol`, `decimals`. |
+| **`DelayedPublicMutable<T, DELAY>`** | A public value whose writes take effect only after `DELAY`. That delay is what makes it readable from a *private* function, since the circuit can prove the value cannot change for a known window. Used for `issuer_address`, freeze flags and validation flags. **`DELAY` is a number of seconds** (`CHANGE_ROLES_DELAY_SECONDS = 360`), not a block count. |
+| **`Owned<V>`** | Wrapper required by private state variables, binding them to an owner; reached with `.at(address)`. |
+| **`PrivateSet<Note>`** | A collection of notes belonging to one owner. |
+| **`BalanceSet`** | The Aztec.nr state variable for private balances, a `PrivateSet<UintNote>` with `add` / `sub` / `balance_of`. `private_balances` is an `Owned<BalanceSet>`. |
+| **`Map<K, V>`** | Key-value container for *public* state, the analogue of a Solidity `mapping`. Private state uses `Owned` instead. |
+| **`UintNote`** | The built-in note type holding a `u128`, used here for token amounts. |
+| **Note message / `MessageDelivery`** | Creating a note yields a message that **must** be delivered, and you choose how: `onchain_constrained()` (proven, most expensive), `onchain_unconstrained()` (onchain but trusts the sender), or `offchain()` (cheapest, no onchain data). See *Issuer's view of transactions and notes* for the choice made here. |
+| **`deliver_to(address, mode)`** | Delivers a copy of a note message to somebody who is *not* the note's owner. They learn the note exists; they cannot spend it, and cannot see when it is spent. This is the issuer's audit channel. |
+| **Module (in this repo)** | Because Noir has no inheritance, each concern is a plain struct held as a field of the contract's storage: `access_control`, `pause_module`, `enforcement_module`, `validation_module`, `credit_event_module`, `debt_base_module`. Every user-callable entry point is still re-declared in `src/main.nr`. |
+| **`EmbeddedWallet`** | The TypeScript wallet used by `scripts/` and the end-to-end tests. It owns its own PXE and holds several accounts; each call names its sender with `from`. |
+| **`aztec codegen`** | Generates the typed TypeScript contract bindings in `src/artifacts/` from the compiled artifact. Re-run it after any change to the contract's interface. |
+
+### CMTAT and this project
+
+| Term | Definition |
+|---|---|
+| **CMTAT** | *Capital Markets and Technology Association Token* — a standard for tokenising securities in line with local regulation. This repository is a private implementation of it. |
+| **Security token** | A token representing a regulated financial instrument (a bond, an equity share, a private credit note) rather than a utility asset. |
+| **Issuer** | The institution that issues the token. It mints and burns, and it receives a copy of every note so it can audit holdings. Its address lives in `issuer_address`. |
+| **Admin** | Holder of `DEFAULT_ADMIN_ROLE` (role `1`), the only role that can grant and revoke the others. Granted at deployment. Note that `getRoleAdmin` returns `DEFAULT_ADMIN_ROLE` for *every* role, including itself, so an admin can appoint another admin — the *Assumptions* section below states the admin cannot be changed, but the code does not enforce that. |
+| **Role** | A numeric permission checked in public state: `DEFAULT_ADMIN_ROLE` 1, `PAUSE_ROLE` 2, `ENFORCEMENT_ROLE` 3, `VALIDATION_ROLE` 4, `ADDRESS_LIST_ADD_ROLE` 5, `ADDRESS_LIST_REMOVE_ROLE` 6, `MINTER_ROLE` 7, `BURNER_ROLE` 8, `DEBT_ROLE` 9, `DEBT_CREDIT_EVENT_ROLE` 10. |
+| **Authorisation module** | The role table (`access_control`) plus `only_role`, the check every other module calls. |
+| **Pause module** | A public on/off switch. While paused, mint, transfer and burn all revert, because each enqueues a public call that asserts the contract is not paused. |
+| **Enforcement module** | Per-address freezing. A frozen address can neither send nor receive. Because the flag is a `DelayedPublicMutable`, a freeze takes effect only after the delay. |
+| **Validation module** | Transfer restriction by address list. Holds each address's flags and the switch saying which lists are enforced. |
+| **Blacklist / whitelist / sanction list** | The three list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2, `SANCTIONLIST_FLAG` 4). Blacklist blocks listed addresses, whitelist allows only listed ones, sanction list is declared but not implemented. |
+| **Credit events extension** | CMTAT bond attributes recording default, redemption and rating. |
+| **Debt base extension** | CMTAT bond terms: interest rate, par value, maturity date, day-count and business-day conventions, and related fields. |
+| **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
+| **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
+| **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `1`) because the protocol limits how many messages and nested calls one call may produce. |
+| **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to the issuer address, a freeze or a list entry becomes current. Nothing that reads those values sees the new one before it elapses — including every mint, transfer and burn, which all read the issuer address. |
 
 ## Functionalities overview
 
@@ -100,8 +176,8 @@ features, at your own risk.
 
 ### Storage
 
-- **Issuer_address**: `SharedMutable<AztecAddress>` - The address of the issuer, which serves as a base reference to encrypt users' notes. As it is a `SharedMutable`, it can be changed if compromised.
-- **Balances**: `BalanceMap<TokenNote>` - Token balance of every user inside their PXE. Mapping of `Address` → `PrivateSet<TokenNote>`. The balance of a user is the sum of the amounts of all their private `TokenNote`.
+- **Issuer_address**: `DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS>` - The address of the issuer, which serves as a base reference to encrypt users' notes. As it is a `DelayedPublicMutable`, it can be changed if compromised, though only after the delay.
+- **Balances**: `Owned<BalanceSet>` - Token balance of every user inside their PXE, accessed as `private_balances.at(address)`. The balance of a user is the sum of the amounts of all their private `UintNote`. `BalanceSet` now comes from the `balance_set` aztec-nr library rather than being defined in this repository.
 
 ### Mint private specifications
 
@@ -117,7 +193,7 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **4 encrypted logs** can be emitted in a function call and only **4 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the mint function, our bottleneck is the encrypted logs, which means we can only batch **2 mint functions** at the same time.
+- According to protocol limitations, only **16 private logs** can be emitted in a function call and only **8 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the mint function, our bottleneck is the encrypted logs, which means we can only batch **2 mint functions** at the same time.
 
 ### Transfer private specifications
 
@@ -133,7 +209,7 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **4 encrypted logs** can be emitted in a function call. As the mint already emits 4 (2 for the user, 2 for the issuer), we can only have **1 transfer** in the transfer batch.
+- According to protocol limitations, only **16 private logs** can be emitted in a function call. As the mint already emits 4 (2 for the user, 2 for the issuer), we can only have **1 transfer** in the transfer batch.
 
 ### Burn private specifications
 
@@ -152,7 +228,7 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **4 encrypted logs** can be emitted in a function call and only **4 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the burn function, our bottleneck is the encrypted logs, which means we can only batch **2 burn functions** at the same time.
+- According to protocol limitations, only **16 private logs** can be emitted in a function call and only **8 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the burn function, our bottleneck is the encrypted logs, which means we can only batch **2 burn functions** at the same time.
 
 ### Security and confidentiality properties
 
@@ -186,22 +262,22 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 
 - This module is called only when performing transfers.
 - The `operateOnTransfer` function, used in a private context, is called by the transfer function.
-- Each user flag update will be delayed by `CHANGE_ROLES_DELAY_BLOCKS`.
+- Each user flag update will be delayed by `CHANGE_ROLES_DELAY_SECONDS`.
 - If no operations are enabled, no checks are done, but the function is still called.
 - Operations can be enabled or disabled, and there is also a delay.
 - Currently, no operations can be added; there is only blacklist/whitelist, and the sanction list is not implemented.
 
 **Delay issue**:
 
-- The delay is caused by the fact that the roles are stored in a `SharedMutable` variable type.
+- The delay is caused by the fact that the roles are stored in a `DelayedPublicMutable` variable type.
 - This is needed to preserve privacy when doing a private transfer between two users while maintaining the strict rule that no tokens should be transferred from/to a blacklisted address.
-- **Problem**: A user who knows they are going to be blacklisted in a certain number of blocks might send their funds to an address that is not blacklisted. This problem has no solution for now.
-- **Consideration**: We need to think about whether the shared state will be changed often. If not, then `SharedMutable` is an acceptable solution; otherwise, it might be problematic.
+- **Problem**: A user who knows they are going to be blacklisted before the delay elapses might send their funds to an address that is not blacklisted. This problem has no solution for now.
+- **Consideration**: We need to think about whether the shared state will be changed often. If not, then `DelayedPublicMutable` is an acceptable solution; otherwise, it might be problematic.
 
 **Potential solutions**:
 
-- **Theoretical solution 1**: Using a `SharedMutable` is essential because otherwise, you would use a `PublicMutable`, which means that the user calling the transfer function needs to call a public function to read the `PublicMutable` variable, leaking the sender’s address. One possible solution might be to hide the caller's address using [Diversified and Stealth Addresses](https://docs.aztec.network/protocol-specs/addresses-and-keys/diversified-and-stealth). If reading `PublicMutable` did not leak the user address, then `SharedMutable` would be unnecessary.
-- **Theoretical solution 2**: Have a counter that is set when the `SharedMutable` is changed. For the `COUNTER` amount of time, the token contract is paused to prevent any blacklisted address from retrieving funds. This solution is poor in terms of user experience and developer experience, as the issuer needs to manually unpause the contract.
+- **Theoretical solution 1**: Using a `DelayedPublicMutable` is essential because otherwise, you would use a `PublicMutable`, which means that the user calling the transfer function needs to call a public function to read the `PublicMutable` variable, leaking the sender’s address. One possible solution might be to hide the caller's address using [Diversified and Stealth Addresses](https://docs.aztec.network/protocol-specs/addresses-and-keys/diversified-and-stealth). If reading `PublicMutable` did not leak the user address, then `DelayedPublicMutable` would be unnecessary.
+- **Theoretical solution 2**: Have a counter that is set when the `DelayedPublicMutable` is changed. For the `COUNTER` amount of time, the token contract is paused to prevent any blacklisted address from retrieving funds. This solution is poor in terms of user experience and developer experience, as the issuer needs to manually unpause the contract.
 - **Practical solution 3**: If we whitelist instead of blacklist, a new whitelisted address will not be able to transfer funds directly, which is not a significant issue.
 
 #### Pause module - Public Context
@@ -214,14 +290,15 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 
 - This module is called in `mint`, `transfer`, and `burn` to check if an address has been frozen.
 - Unlike the validation module, this module is mandatory.
-- Changing an address to frozen has a delay, as the value is a `SharedMutable`.
+- Changing an address to frozen has a delay, as the value is a `DelayedPublicMutable`.
 
 > **"Freeze Address" Note**: The enforcement has a delay, similar to the validation module. One approach is to pause the contract before freezing some accounts for the delay time, then unpause it. This requires manual pause/unpause.
 
 ### Issuer's view of transactions and notes
 
 - **Objective**: Enable the issuer to see all transactions.
-- **Current implementation**: Note emission is duplicated: one for the owner of that note, and one for the issuer. 
+- **Current implementation**: Note emission is duplicated: one message for the owner of that note, and a second copy of the same message for the issuer (`deliver_to(issuer, ...)`).
+- **Delivery mode of the issuer's copy**: the owner's copy is delivered onchain and constrained; the issuer's copy is delivered **offchain**. Aztec's own documentation presents an onchain constrained copy to an auditor as the supported pattern, but PXE cannot process an onchain note message addressed to someone who is not the note's owner: note discovery computes the note's nullifier, which needs the owner's nullifier key. Delivering the issuer's copy offchain sidesteps that, at the cost of the issuer's copy having no onchain data availability - the issuer must capture these messages as they are produced, and a sender who drops them is not detectable onchain.
 - **Other potential implementations**:
   - **App-siloed key**: Use an app-siloed key that the issuer can use for decrypting any note in the note hash tree of this app.
 
@@ -240,7 +317,7 @@ bash -i <(curl -s https://install.aztec.network)
 Install the correct version of the toolkit with:
 
 ```bash
-aztec-up X.XX.X
+aztec-up install 5.2.0
 ```
 version should match [Nargo.toml](https://github.com/taurusgroup/private-tokens/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
 
@@ -293,13 +370,13 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 ### What will we be able to do in the future?
 
 - **Batched mint/transfer/burn**:
-  - Protocol limitations currently restrict us to 4 private calls and 4 encrypted events per function call.
+  - Protocol limitations currently restrict us to 8 private calls and 16 private logs per function call.
   - In the long run, these limitations will be lifted, enabling batched transactions. The logic is already implemented in the contracts.
 
 > These functions are not separated into their own “abstract contract” as it does not exist in Aztec. We could put them in a library but this would mean much more boilerplate code. Following Aztec improvements, we may improve composition/abstraction in the future. 
 
 - **Validation module enhancements**:
-  - The limitation regarding `SharedMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.
+  - The limitation regarding `DelayedPublicMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.
   - Sanction lists are not yet enabled due to the lack of on-chain lists like Chainalysis on Ethereum.
 
 - **Audit capabilities**:
@@ -328,15 +405,15 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
     - If the account is frozen indefinitely, decrease the circulating supply. As a central issuer, I know the number of tokens the user has, so I can decrease supply accordingly. 
 > Note: account freeze could reveal how much tokens a user had. 
 
-- **Sharedmutable delay**: [SEE](#validation-module---shared)
-  - Freezing and blacklisting addresses take a certain number of blocks due to the `SharedMutable` type.
+- **DelayedPublicMutable delay**: [SEE](#validation-module---shared)
+  - Freezing and blacklisting addresses take effect only after a delay, measured in seconds, due to the `DelayedPublicMutable` type. Before Aztec v3 this delay was expressed in blocks.
   - **Options**:
     - Accept the delay.
     - Encrypt the blacklist with a key (implementation unclear).
 
 - **Protocol limitations**: 
-  - Only **4 private calls** can be made from a private function, limiting batch functions.
-  - Only **4 encrypted notes** can be emitted in a function call, further limiting batching.
+  - Only **8 private calls** can be made from a private function, limiting batch functions.
+  - Only **16 private logs** can be emitted in a function call, further limiting batching.
 
 ## Miscellaneous
 
