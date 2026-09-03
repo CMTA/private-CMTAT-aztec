@@ -43,6 +43,7 @@ been audited and may not be fully compliant with the Swiss law.
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
 - [Deployment](#deployment)
 - [Comparison with Solidity CMTAT](#comparison-with-solidity-cmtat)
+- [Comparison with CMTAT-Confidential (Zama FHE)](#comparison-with-cmtat-confidential-zama-fhe)
 - [Limitations](#limitations)
 - [Miscellaneous](#miscellaneous)
 - [Intellectual property](#intellectual-property)
@@ -393,6 +394,84 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 - **Immediate shared state changes**:
   - We cannot have a shared state (public and private) that has no delay when changed, due to the protocol's construction.
+
+## Comparison with CMTAT-Confidential (Zama FHE)
+
+[CMTAT-Confidential](https://github.com/CMTA/CMTAT-Confidential) is the other confidential CMTAT implementation: an [ERC-7984](https://docs.openzeppelin.com/confidential-contracts/erc7984) Solidity token whose balances and amounts are encrypted with Fully Homomorphic Encryption on the [Zama protocol](https://docs.zama.org/protocol). It solves the same regulatory problem with a different cryptographic primitive, so the two make opposite trade-offs. Compared here against **v1.0.0** of that project.
+
+**The one-line difference:** Aztec hides *who*; Zama FHE hides *how much*. On CMTAT-Confidential an observer still sees that address A transacted with address B and when — only the value is encrypted. Here, the counterparties and the transaction graph are private too, but the total supply is deliberately public.
+
+### Privacy technology
+
+| Axis | private-CMTAT-aztec | CMTAT-Confidential (Zama FHE) |
+|---|---|---|
+| Privacy primitive | Zero-knowledge proofs over a UTXO note model | Fully Homomorphic Encryption over a single encrypted balance |
+| Where computation happens | Client side, in the user's PXE; the network verifies a proof | Symbolically onchain, with the real FHE computation offchain on Zama's coprocessor network |
+| What is hidden | Amount, balance, **sender, recipient and the transaction graph** | **Amount and balance only** — addresses, counterparties and timing stay public |
+| What stays public | `total_supply`, pause state, roles, freeze and list flags | Addresses and call graph, roles, pause and freeze state (supply encrypted by default) |
+| Trust assumption for confidentiality | None beyond the protocol's cryptography | A threshold MPC key-management service holds the decryption key — no single party, but not nobody |
+| Host chain | Aztec L2 only | Any EVM chain running the Zama protocol |
+| Language and framework | Noir + aztec-nr v5.2.0 | Solidity `^0.8.27` + `@fhevm/solidity` + OpenZeppelin Confidential Contracts |
+| Standards | None formal; a custom mapping of the CMTAT specification | ERC-7984, partial ERC-7943, ERC-1643 documents |
+
+### Balances, supply and range
+
+| Axis | private-CMTAT-aztec | CMTAT-Confidential |
+|---|---|---|
+| Balance representation | A set of `UintNote`s (`u128`), summed inside the owner's PXE | A single `euint64` handle |
+| Maximum value | `u128`, about 3.4 × 10³⁸ | `uint64`, about 1.84 × 10¹⁹ — decimals above 18 are rejected at construction |
+| Reading a balance | Only the owner's PXE, plus the copy delivered to the issuer | Anyone holding an ACL grant, through the Zama relayer and threshold decryption |
+| Total supply | **Public by design** and updated on every mint and burn | **Encrypted by default**; opened either to registered observers or once-and-for-all with `publishTotalSupply` |
+| Supply leakage | Accepted by design — each mint and burn amount is inferable from the public delta | Audit finding OZ-L-01: sequential disclosures leak individual mint and burn amounts; accepted as residual risk |
+| Insufficient balance | **Reverts** (`Balance too low`) | **Transfers zero silently** via FHESafeMath, since reverting would leak the balance |
+
+### Compliance and control
+
+| Feature | private-CMTAT-aztec | CMTAT-Confidential |
+|---|---|---|
+| Pause | ✔ public, immediate | ✔ immediate |
+| Freeze an address | ✔ but **delayed** by `CHANGE_ROLES_DELAY_SECONDS` | ✔ immediate |
+| Blacklist / whitelist | ✔ both, **delayed**; sanction list declared but not implemented | ✔ allowlist variant, immediate |
+| RuleEngine / transfer hook | ✘ (merged into the validation module) | ✔ dedicated variant, though it passes `value = 0` because the amount is encrypted |
+| **Forced transfer** | **✘ impossible by construction** — the issuer cannot compute another holder's nullifiers; freezing is the workaround | **✔ `forcedTransfer()`** |
+| **Forced burn** | ✘ — burning needs the holder's authwit | ✔ `forcedBurn()`, and it works on frozen addresses |
+| Delegated spending | Authwit: single use, nonce-nullified, bound to one exact call | Operator system: time-limited authorisation |
+| Partial token freeze | ✘ | ✘ |
+| Snapshot | ✘ | ✘ |
+| Upgradeability | ✘ | ✘ |
+| Documents (ERC-1643), tokenId, terms | ✘ | ✔ |
+| Credit events and debt base | ✔ | ✘ |
+| Mutable name / symbol | ✘ (`PublicImmutable`) | ✔ post-deployment setters |
+| Roles | 10, numeric, in public state | 14, named, OpenZeppelin `AccessControl` |
+| Deployment variants | 1 | 4 (Lite, standard, RuleEngine, Whitelist) |
+
+Forced transfer is the sharpest divide, and the strongest argument for the FHE variant in a regulated deployment: CMTAT requires it for regulatory recovery, it is a hard cryptographic impossibility here, and it is an ordinary function under FHE because the contract can compute on ciphertext it does not own.
+
+### Issuer auditability
+
+| Axis | private-CMTAT-aztec | CMTAT-Confidential |
+|---|---|---|
+| Mechanism | Every note is delivered twice — once to the owner, once to the issuer (`deliver_to`) | ACL grants to registered observers, re-granted automatically on every balance update |
+| Granularity | Per note, so the issuer reconstructs the full history | The current balance handle, plus optional total-supply observers |
+| Onchain guarantee | **None today** — the issuer's copy is delivered offchain, see [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes) | Onchain ACL, and a grant once made is irrevocable |
+| Revocation | Change `issuer_address`, after the delay; copies already delivered remain | Removing an observer stops future grants; past grants are irrevocable |
+
+### Maturity
+
+| Axis | private-CMTAT-aztec | CMTAT-Confidential |
+|---|---|---|
+| Security audit | **None** — see the disclaimer at the top of this file | **OpenZeppelin audit of v1.0.0**: 8 findings, none critical or high, 1 medium (fixed) |
+| Audit scope caveat | — | The audit excluded the CMTAT library itself (pinned to an unaudited release candidate), the RuleEngine, the OpenZeppelin confidential contracts and the FHEVM |
+| Network status | No Aztec mainnet yet, and the API still changes heavily between majors | Deployable on EVM mainnet wherever the Zama protocol is available |
+| Batching | Capped at `MAX_ADDR_PER_CALL` by the per-call protocol limits | Ordinary Solidity loops, bounded only by gas |
+| Fees | Fee juice or a sponsored FPC, plus client-side proving cost | Ordinary gas plus FHE compute units |
+
+### Choosing between them
+
+- Choose **Aztec** when the *relationship* is the secret — who holds what, and who traded with whom — and you can accept a public total supply and the absence of forced transfer.
+- Choose **CMTAT-Confidential** when you need the full regulatory toolkit (forced transfer and burn, RuleEngine, documents), an audited codebase and deployment on an existing EVM chain, and it is acceptable that the transaction graph is public while amounts are not.
+
+Note that the two disagree about total supply in opposite directions: this implementation publishes it deliberately, while the FHE implementation encrypts it and treats disclosure as a leak vector.
 
 ## Limitations
 
