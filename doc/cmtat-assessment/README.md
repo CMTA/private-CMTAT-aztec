@@ -53,7 +53,7 @@
 | Implementation name | private CMTAT on Aztec (`CMTAToken`) |
 | Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
 | Implementation language | Noir / Aztec.nr v5.2.0 |
-| Implementation version | `0.3.0` (unreleased; the contract exposes no `version()` — see criterion 6) |
+| Implementation version | `0.3.0` (unreleased), as returned by `version()` — see criterion 6 |
 | Source repository and commit | https://github.com/taurushq-io/private-CMTAT-aztec — `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
 | Assessment date | 2026-09-08 |
 | Assessed by | *(to be completed by the assessor)* |
@@ -79,9 +79,9 @@
 
 | Answer         | Mandatory (19) | Optional (42) |
 | -------------- | -------------: | ------------: |
-| Present (`y`)  |             19 |            18 |
+| Present (`y`)  |             19 |            19 |
 | Partial        |              0 |             2 |
-| Absent (`n`)   |              0 |            22 |
+| Absent (`n`)   |              0 |            21 |
 
 > **Every mandatory criterion is answered `y`.** Under the rule stated in this template, the implementation should be considered equivalent to CMTAT: no mandatory criterion is answered `n`, and none is answered `partial`.
 >
@@ -136,13 +136,13 @@ Two chain-level constraints shape how faithfully the document can be recorded. `
 |---|---|---|---|---|---|---|---|
 | 4 | Ticker symbol attribute | ERC20 `symbol` | Public (`view`) | Optional in the CMTA framework, which lists the attribute as "Ticker symbol (optional)". | `y` | Public (`view`), in both contexts | `public_get_symbol()` / `private_get_symbol()`, `PublicImmutable<FieldCompressedString>` set at deployment. |
 | 5 | Token ID attribute | `tokenId` | Public (`view`) | Optional parameter. | `n` | — | Not stored. |
-| 6 | Version attribute | `version()` (`IERC3643Version`, implemented by `VersionModule`) | Public (`view`) | Returns the version of the token implementation, for example `"3.2.0"`. In CMTAT Solidity the value is a constant of the contract code: it changes only through a new deployment or an upgrade, and it is not settable at runtime. | `n` | — | The contract exposes no version. An off-chain observer identifies the deployed code by its Aztec **contract class ID**, which is chain-native metadata derived from the compiled artifact — see [Version](#version). |
+| 6 | Version attribute | `version()` (`IERC3643Version`, implemented by `VersionModule`) | Public (`view`) | Returns the version of the token implementation, for example `"3.2.0"`. In CMTAT Solidity the value is a constant of the contract code: it changes only through a new deployment or an upgrade, and it is not settable at runtime. | `y` | Public (`view`) | `version()` returns a `FieldCompressedString`, currently `0.3.0`, padded to the 31 characters that type requires. As in the CMTAT Solidity `VersionModule` it is a **compile-time constant**, not stored state, so it cannot be desynchronised from the deployed code and changes only through a new deployment. |
 
 ##### Note
 
-The two absent optional attributes are absent for different reasons. `tokenId` (criterion 5) is simply not stored — adding it would be one more `PublicImmutable<FieldCompressedString>`, at the cost of a storage-layout change.
+`tokenId` (criterion 5) is the one optional attribute still absent. It is simply not stored; adding it would be one more `PublicImmutable<FieldCompressedString>`, at the cost of a storage-layout change.
 
-`version` (criterion 6) is a more deliberate omission: on Aztec the deployed code is already identified by its **contract class ID**, a hash of the compiled artifact registered on-chain, with each deployment being an instance of that class. Since this contract is not upgradeable, the class ID cannot change under a live address, so an observer can always determine which code is running from chain-native metadata. What it cannot read is a *semantic* version. See [Version](#version).
+`version` (criterion 6) is present as a compile-time constant returned by `version()`. It is worth being clear about why that is needed, because Aztec already identifies deployed code natively: every deployment is an instance of a **contract class ID**, a hash of the compiled artifact registered on-chain, and since this contract is not upgradeable the class ID cannot change under a live address. An observer can therefore always tell *which artifact* is running from chain-native metadata. What a class ID cannot give is a *semantic* version: it is a hash, so it does not order releases and does not correspond to anything a reader could match against a release tag in the repository. The two are complementary — the class ID identifies the artifact, `version()` names the release it was built from. See [Version](#version).
 
 
 ### Token module
@@ -434,13 +434,23 @@ On external data sources the template asks about: there are none. Every list is 
 
 ### Version
 
-Not implemented (criterion 6). On Aztec, the deployed code is identified by its **contract class ID**, a hash of the compiled artifact registered on-chain, and each deployment is a contract instance of that class. An observer can therefore determine which code is live from chain-native metadata without a `version()` entry point, but cannot read a semantic version. Since the contract is not upgradeable, the class ID cannot change under a live address, so the binding is stable. Adding a `PublicImmutable<FieldCompressedString>` set in the constructor would satisfy the criterion at negligible cost.
+Implemented, taking the template's **first** option: a constant returned by a read-only entry point, as in CMTAT Solidity. `version()` returns a `FieldCompressedString` holding `0.3.0`, padded to the 31 characters that type requires; the value is a Noir `global`, so it lives in the compiled code rather than in storage.
+
+The template's third option — a state variable restricted to an administrator role — was deliberately not taken. It carries the requirement that the value "cannot be desynchronized from the deployed code", and a compile-time constant satisfies that by construction: there is no setter to call and no storage slot to write, so the only way to change the version is to deploy new code.
+
+Aztec also identifies deployed code natively, through the **contract class ID**: a hash of the compiled artifact registered on-chain, of which each deployment is an instance. Since this contract is not upgradeable, that class ID cannot change under a live address, so the binding between an address and its artifact is permanent. That is the template's second option, and it is available here whether or not `version()` exists.
 
 ##### Note
 
-The absence of `version()` is the one gap in this document that could be closed in a single line: a `PublicImmutable<FieldCompressedString>` initialised in the constructor would satisfy criterion 6 exactly as `name` and `symbol` do today, at the cost of one storage slot and a 31-character cap on the version string.
+The class ID alone would not have satisfied the criterion, and the reason is worth recording because it is easy to assume it would.
 
-Until then, the template's third option applies in a chain-native form: the contract class ID identifies the deployed code. It is not settable at runtime, so it cannot be desynchronised from the code — the failure mode the template warns about for admin-writable version fields does not arise here. Because the contract is not upgradeable, the binding between an address and its class ID is permanent.
+- **A class ID is a hash, so it does not order releases.** Two artifacts are either equal or unequal; nothing tells a reader which is newer.
+- **It does not correspond to anything published.** A reader cannot match a class ID against a release tag in the repository, or against the version named in a changelog or an audit report, without being handed a mapping out of band.
+- **It changes for reasons a version should not.** Any recompilation that alters the artifact — a toolchain bump, a comment-only edit that shifts the bytecode — produces a different class ID for the same release.
+
+So the two answer different questions and are both worth having: the class ID identifies *which artifact* is deployed, `version()` names *which release* it was built from. The cost of the latter is that it is now a value someone has to remember to bump; the pre-release checklist in `CHANGELOG.md` carries that step, and a test asserts the constant is non-empty so a blank one fails the suite rather than shipping.
+
+The 31-character cap of `FieldCompressedString` applies here as everywhere else in this contract. It is ample for a semantic version, but a build-metadata suffix of any length would not fit.
 
 ### CMTAT Extended
 

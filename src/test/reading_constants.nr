@@ -1,5 +1,6 @@
 use crate::test::utils;
 use crate::CMTAToken as Token;
+use compressed_string::FieldCompressedString;
 
 // It is not possible to deserialize strings in Noir ATM, so name and symbol cannot be checked yet.
 
@@ -43,4 +44,17 @@ unconstrained fn check_issuer_addr_private() {
         env.view_private(issuer, Token::at(token_contract_address).private_get_issuer());
 
     assert(issuer == issuer_addr_priv);
+}
+
+#[test]
+unconstrained fn check_version() {
+    let (env, token_contract_address, _, _) = utils::setup(/* with_account_contracts */ false);
+
+    let result = env.view_public(Token::at(token_contract_address).version());
+
+    // A compile-time constant, so it must equal VERSION exactly - including the padding that
+    // `FieldCompressedString` requires.
+    assert(result == FieldCompressedString::from_string(crate::CMTAToken::VERSION));
+    // and it must not be empty, which is what a forgotten bump would look like
+    assert(result != FieldCompressedString::from_string("                               "));
 }

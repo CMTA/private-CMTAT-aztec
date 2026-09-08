@@ -42,6 +42,16 @@ pub contract CMTAToken {
     // Aztec v3 a DelayedPublicMutable's delay is a duration, not a number of blocks.
     pub global CHANGE_ROLES_DELAY_SECONDS: u64 = 360;
 
+    // The version of this token implementation, following semantic versioning, exposed by `version()`.
+    //
+    // Deliberately a compile-time constant rather than a stored value: it therefore cannot be
+    // desynchronised from the deployed code, which is the failure the CMTAT criteria warn about for
+    // admin-writable version fields. It must be bumped in the same commit as any release.
+    //
+    // Padded to 31 characters because `FieldCompressedString::from_string` takes a `str<31>`;
+    // consumers should trim the trailing spaces.
+    pub global VERSION: str<31> = "0.3.0                          ";
+
     // This global is used when doing batching. The protocol allows MAX_PRIVATE_LOGS_PER_CALL (16)
     // private logs and MAX_PRIVATE_CALL_STACK_LENGTH_PER_CALL (8) nested private calls per call. A
     // transfer delivers 5 messages per address (change note and its issuer copy, recipient note and
@@ -330,6 +340,19 @@ pub contract CMTAToken {
     /** ==========================================================
      * ===================== VIEW FUNCTIONS ======================
      * ======================================================== */
+
+    /**
+     * @notice The version of this token implementation, e.g. "0.3.0".
+     * @dev A compile-time constant, as in the CMTAT Solidity `VersionModule`: it identifies the
+     * version of the code, not of the issued security and not of any assessment document. It changes
+     * only through a new deployment. Aztec's contract class ID also identifies the deployed artifact,
+     * but it is a hash and does not carry a semantic version, so the two are complementary.
+     */
+    #[external("public")]
+    #[view]
+    fn version() -> pub FieldCompressedString {
+        FieldCompressedString::from_string(VERSION)
+    }
 
     #[external("public")]
     #[view]

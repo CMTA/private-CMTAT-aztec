@@ -42,6 +42,7 @@ Custom changelog tag: `Dependencies`, `Documentation`, `Testing`
 
 > Before a new release, perform the following tasks
 
+- Code: update `VERSION` in [src/main.nr](./src/main.nr), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
 - Pin one Aztec version, and check that it is the same in all three places: the `tag = "vX.Y.Z"` entries in [Nargo.toml](./Nargo.toml), the `@aztec/*` versions in [package.json](./package.json), and the `aztec-up X.Y.Z` instruction in [README.md](./README.md)
 - Rebuild artifacts from a clean tree, so the release is not validated against a stale `src/artifacts/`
 
@@ -108,6 +109,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - No deactivation check was added to mint, transfer or burn: each already asserts not-paused in its enqueued public half, and a deactivated contract is paused for good. CMTAT Solidity needs an explicit check on mint and burn only because its mint and burn are permitted while paused.
   - Emits a new `Deactivated` public event carrying the caller.
   - BREAKING CHANGE: `PauseModule` now occupies two storage slots instead of one, so every state variable declared after it moves. A deployed token cannot be migrated in place.
+- `version()`, returning the implementation version as a compile-time constant (equivalency criterion 6).
+  - Follows the CMTAT Solidity `VersionModule`: a constant of the code, not stored state, so it cannot be desynchronised from the deployed contract and changes only through a new deployment.
+  - Aztec's contract class ID already identifies the deployed artifact, but it is a hash: it does not order releases and does not correspond to a release tag, so it does not answer the same question.
+  - The value lives in `VERSION` in `src/main.nr` and MUST be bumped with every release; the pre-release checklist below carries that step.
 - `set_terms` and `terms`, carrying the reference to the legally required documentation (equivalency criterion 2), in a new `extraInformationModule`.
   - Uses the CMTAT Solidity notation: the setter takes a `DocumentInfo` of `{name, uri, documentHash}` and `terms()` returns the equivalent of `CMTATTerms`, with `lastModified` stamped by the contract from the block timestamp so a caller cannot forge it.
   - `name` and `uri` are `FieldCompressedString` and are therefore capped at 31 characters each.
