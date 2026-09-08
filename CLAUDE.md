@@ -104,6 +104,7 @@ scripts/                             # tsx entry points, run via yarn
 - `yarn test` — `test:nr` (Noir `aztec test`) then `test:js` (Jest e2e); the e2e suite needs a running sandbox (`aztec start --sandbox`).
 - `yarn test:nr` / `yarn test:js` — run one suite only. `test:nr` is `aztec test --workspace`; add a package path to run one variant.
 - `yarn deploy`, `yarn deploy-account`, `yarn interaction`, `yarn multiple-pxe`, `yarn get-block`, `yarn fees`, `yarn profile` — testnet scripts (need `.env`).
+- `yarn typecheck` — type-check the TypeScript with the compiler pinned in `package.json`. Do not run `npx tsc`: the Aztec toolchain ships its own `tsc` at `~/.aztec/current/node_modules/.bin/`, which lands on `PATH` ahead of `./node_modules/.bin` and type-checks the project with the wrong compiler version.
 - `yarn clean` / `yarn clear-store` — drop `src/artifacts`, `target`, `codegenCache.json` / drop the local PXE `store`.
 
 ## Conventions

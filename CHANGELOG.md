@@ -56,7 +56,7 @@ yarn codegen
 
 ```bash
 aztec-nargo fmt          # or: nargo fmt
-npx tsc --noEmit
+yarn typecheck           # never `npx tsc`: it can resolve to the Aztec toolchain's own compiler
 ```
 
 - Run both test profiles — neither one covers the other
@@ -83,6 +83,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- Dropped `downlevelIteration` from [tsconfig.json](./tsconfig.json). The option only affects ES5/ES3 emit and the project targets `es2020`, so it was already inert; TypeScript 6 reports it as deprecated.
 - Contract functions use the `#[external("private" | "public" | "utility")]` macros instead of `#[private]` / `#[public]` / `#[utility]`, and contract state is reached through `self.storage` instead of a free `storage` binding.
 - Private-to-public calls go through `self.enqueue_self`, private-to-private helpers through `self.internal`, and the enqueued public halves (`_mint`, `_transfer`, `_burn`) are now `#[external("public")] #[only_self]`.
 - Authwit validation on `transfer`, `transfer_batch`, `burn` and `burn_batch` is now the `#[authorize_once("from", "authwit_nonce")]` macro instead of a hand-written `assert_current_call_valid_authwit` call.
@@ -135,6 +136,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 - CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.
 - `cancel_authwit`, which pushes the authwit nullifier so a granted authentication witness can be revoked before use.
 - Agent guide files [CLAUDE.md](./CLAUDE.md) and [AGENTS.md](./AGENTS.md), and this changelog.
+
+- `yarn typecheck`, a script that type-checks the TypeScript with the compiler pinned in `package.json`.
+  - The pre-release checklist said `npx tsc --noEmit`, which is not reproducible: the Aztec toolchain ships its own `tsc` under `~/.aztec/current/node_modules/.bin/`, and on a machine where that directory precedes `./node_modules/.bin` on `PATH` the checklist type-checks the project with the toolchain's compiler instead of the pinned one.
+  - Observed with toolchain 5.2.0, which bundles TypeScript 6.0.3 against the project's 5.5.x pin: the release check failed on a deprecation warning the project's own compiler does not emit.
+  - A `yarn` or `npm` script prepends `./node_modules/.bin` to `PATH`, so the pinned compiler wins regardless of what else is installed. The checklist now calls the script.
 
 ### Removed
 
