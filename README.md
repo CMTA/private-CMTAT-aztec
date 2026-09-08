@@ -486,6 +486,7 @@ Note that the two disagree about total supply in opposite directions: this imple
 > Note: account freeze could reveal how much tokens a user had. 
 
 - **DelayedPublicMutable delay**: [SEE](#validation-module---shared)
+  - Note that a freeze is never instantaneous on any chain: on a public blockchain the freeze transaction is visible in the mempool and can be front-run by the target, which a private relay such as Flashbots Protect mitigates. Here the window is instead deterministic and protocol-enforced. See `doc/cmtat-assessment/cmtat_suggestion.md`.
   - Freezing and blacklisting addresses take effect only after a delay, measured in seconds, due to the `DelayedPublicMutable` type. Before Aztec v3 this delay was expressed in blocks.
   - **Options**:
     - Accept the delay.
