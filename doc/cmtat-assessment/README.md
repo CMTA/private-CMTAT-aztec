@@ -107,7 +107,7 @@
 
 > *Snapshot (criteria 32–37) and Dividend (criteria 38–43) are absent as whole modules — 12 of the 23 optional `n` answers. Snapshot in particular is not merely unimplemented: balances are UTXO notes held in each holder's own PXE, and there is no vantage point from which the contract can enumerate holders or sum balances at a past block. A snapshot would have to be reconstructed off-chain by the issuer from its copies of the notes.*
 
-> *Forced transfer (criterion 22) and the partial-freeze family (criteria 23–25) are absent for a cryptographic reason rather than a scheduling one: spending a note requires its owner's nullifier key, so the issuer cannot move or lock another holder's tokens. See [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer).*
+> *Forced transfer (criterion 22) and the partial-freeze family (criteria 23–25) are absent because spending a note requires its owner's nullifier key, so the issuer cannot move or lock another holder's tokens — a different cause from the delay behind criteria 19 and 20. See [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer).*
 
 > *Conditional transfer (criteria 26–27) is absent; the validation module offers list-based restriction only.*
 
@@ -174,7 +174,7 @@ The **private half** runs on the holder's own device. It reads the freeze and va
 
 The **public half** is then enqueued with `self.enqueue_self` and runs on the sequencer after all private execution. It performs the role check and the pause check, and updates `total_supply`. It is marked `#[external("public")] #[only_self]`, so nothing outside the contract can call it. A revert here reverts the whole transaction, which is what makes the role and pause checks binding even though they run after the note work.
 
-Concretely, `mint` calls `self.internal._mint_internal(to, amount)` and then `self.enqueue_self._mint(self.msg_sender(), amount)`; `transfer` and `burn` follow the same shape. Note that the caller passed to the public half is the *private* `msg_sender`, so the role is checked against the real user, not the contract.
+Concretely, `mint` calls `self.internal._mint_internal(to, amount)` and then `self.enqueue_self._mint(self.msg_sender(), amount)`; `transfer` and `burn` are built the same way. Note that the caller passed to the public half is the *private* `msg_sender`, so the role is checked against the real user, not the contract.
 
 A balance is the sum of a holder's `UintNote`s. `BalanceSet::add` and `BalanceSet::sub` do not simply write a number: they return a note **message** that must be delivered, and `sub` asserts `Balance too low` if it cannot gather enough notes. Each message is delivered twice — to the note's owner, and to the issuer — which is the mechanism behind criterion 8 and the whole of [Privacy and Confidentiality](#privacy-and-confidentiality).
 
@@ -191,7 +191,7 @@ A balance is the sum of a holder's `UintNote`s. `BalanceSet::add` and `BalanceSe
 
 ##### Note
 
-Pause is the one control in this contract that takes effect **immediately**, and it is worth being explicit about why, because freeze does not.
+Pause is the one control in this contract that takes effect **immediately**. Freeze does not, and the difference comes from where each flag is read.
 
 The pause flag is a `PublicMutable<bool>`. It is read only in the public half of mint, transfer and burn, which runs on the sequencer against current public state — so a pause is visible to the very next transaction. Freeze and the validation lists, by contrast, are read in the *private* half, which cannot see current public state at all; they must therefore be `DelayedPublicMutable`, and that is where their delay comes from.
 
@@ -286,7 +286,7 @@ Two differences from CMTAT Solidity are worth recording:
 
 ##### Note
 
-The snapshot module is absent, and it is worth separating "not implemented" from "not implementable here".
+The snapshot module is absent, and in this case that is not the same as unimplemented: the contract could not compute a snapshot even if the module were written.
 
 A snapshot needs the contract to know every holder and every balance at a past instant. On this design it knows neither. A balance is a set of `UintNote`s living in the holder's own PXE; the chain stores only note *hashes* and nullifiers, which reveal that some note was created or spent but not by whom or for how much. There is no vantage point from which the contract can enumerate holders, and no historical query that would return a balance.
 
@@ -408,7 +408,7 @@ Of the CMTAT Solidity rule catalogue, this implementation offers only list membe
 
 The whole restriction surface is one module inside the token, so the questions the template asks about *where* the logic lives and *in what order* it runs have short answers: it lives in `validationModule.nr`, and exactly one mode runs per transfer.
 
-Two behaviours are worth stating for an integrator. First, a rejection is a **revert with a message**, not a status code — there is no `detectTransferRestriction` equivalent, so a wallet must simulate the call and read the failure rather than querying first. Second, mint and burn are **not** screened by the lists at all: `operateOnTransfer` is called only from `_transfer_internal`. A blacklisted address can therefore still be minted to and burned from, which differs from CMTAT Solidity's `RuleBlacklist`, and matters if the lists are relied on for sanctions screening at issuance.
+Two behaviours affect an integrator directly. First, a rejection is a **revert with a message**, not a status code — there is no `detectTransferRestriction` equivalent, so a wallet must simulate the call and read the failure rather than querying first. Second, mint and burn are **not** screened by the lists at all: `operateOnTransfer` is called only from `_transfer_internal`. A blacklisted address can therefore still be minted to and burned from, which differs from CMTAT Solidity's `RuleBlacklist`, and matters if the lists are relied on for sanctions screening at issuance.
 
 The mint case is also a **documentation mismatch**: the NatSpec on `mint` in `src/main.nr` states that "the recipient must respect the allowlist constraints of the validation module", but `_mint_internal` checks only the freeze flag. The comment on `transfer` makes the same claim and is accurate there. Whichever way this is resolved — screening mint, or correcting the comment — the two should be brought into agreement.
 
@@ -440,7 +440,7 @@ Until then, the template's third option applies in a chain-native form: the cont
 
 ##### Note
 
-Two entries in the table above deserve the chain-level explanation the template asks for.
+Two entries in the table above need the chain-level explanation the template asks for.
 
 **Upgradeability.** There is no proxy and no native upgrade path in use. That is more consequential here than on an EVM chain: a redeployment cannot carry balances across, because balances are not contract storage the issuer can read and rewrite — they are notes in each holder's PXE, spendable only with each holder's own key. Migrating a live token would require every holder to participate, or the issuer to burn and reissue with each holder's authwit. Any change to the storage layout or the note layout therefore has a real operational cost, which is why the repository treats such changes as MAJOR in its versioning policy.
 
@@ -449,7 +449,7 @@ Two entries in the table above deserve the chain-level explanation the template 
 
 ### Forced Burn and Forced Transfer
 
-Neither is available, and the reason is cryptographic rather than a design preference.
+Neither is available, and no role or contract change could make them available.
 
 A private balance is a set of notes. Spending a note means publishing its **nullifier**, which is derived from the note and its owner's nullifying key. The issuer does not hold that key, so it cannot nullify a holder's notes — no role, and no contract logic, can grant that ability. `forcedTransfer` and `forcedBurn` are therefore not implementable in this design, and `burn` always requires an authwit from the holder.
 
@@ -459,11 +459,11 @@ The repository also records the theoretical escape: if the token were implemente
 
 ##### Note
 
-The impossibility here is worth stating precisely, because it is easy to mistake for a missing feature.
+The constraint is not a missing feature but a property of the proof system.
 
 Spending a note means publishing its **nullifier**, and the nullifier is derived from the note together with its owner's nullifying key. The issuer does not hold that key. No role, no admin privilege and no contract logic can substitute for it: the constraint is enforced by the protocol's proof system, not by this contract's access control. `forcedTransfer` and `forcedBurn` are therefore not merely unimplemented — they cannot be implemented in this design.
 
-This is the sharpest divergence from CMTAT and from the regulatory recovery powers a security token is normally expected to carry. An issuer facing a court order to move or cancel a holding cannot execute it on-chain. The remedies available are: **freeze** the address, which immobilises the position in both directions after the delay; and, where the tokens must leave circulation, write the holding off by reducing the public `total_supply`, which the issuer can compute from its note copies. The second is an accounting act, not a transfer — the holder's notes still exist and would still be spendable if the address were ever unfrozen.
+This is where the implementation departs furthest from CMTAT: an issuer facing a court order to move or cancel a holding cannot execute it on-chain, which is a recovery power a security token is normally expected to carry. The remedies available are: **freeze** the address, which immobilises the position in both directions after the delay; and, where the tokens must leave circulation, write the holding off by reducing the public `total_supply`, which the issuer can compute from its note copies. The second is an accounting act, not a transfer — the holder's notes still exist and would still be spendable if the address were ever unfrozen.
 
 The repository records the design that would restore the capability: implementing the token at the account-contract level with the issuer holding a shared nullifier for the account that holds these notes. That is a materially different trust model — the issuer would gain the ability to spend holders' notes — and it is not implemented.
 
@@ -483,7 +483,7 @@ The repository records the design that would restore the capability: implementin
 
 Two rows differ from CMTAT Solidity and both follow from where the check sits.
 
-**Mint and burn are blocked while paused**, where CMTAT Solidity allows them. The reason is structural rather than deliberate policy: the pause assertion lives in the enqueued public half (`_mint`, `_transfer`, `_burn`), which is the same code path for every value-moving operation. CMTAT Solidity can exempt mint and burn because its pause check is carried by each entry point's authorization hook individually. An issuer that needs to mint into a paused token cannot do so here without unpausing first.
+**Mint and burn are blocked while paused**, where CMTAT Solidity allows them. This follows from where the check sits rather than from a policy choice: the pause assertion lives in the enqueued public half (`_mint`, `_transfer`, `_burn`), which is the same code path for every value-moving operation. CMTAT Solidity can exempt mint and burn because its pause check is carried by each entry point's authorization hook individually. An issuer that needs to mint into a paused token cannot do so here without unpausing first.
 
 **A frozen holding cannot be cancelled at all.** `_burn_internal` asserts the address is not frozen, and there is no forced path to bypass it. CMTAT Solidity reaches this case with `forcedBurn`; this implementation has no equivalent, so freezing an address and then needing to remove its tokens from circulation leaves only the total-supply write-off described above.
 
