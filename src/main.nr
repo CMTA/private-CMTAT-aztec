@@ -75,6 +75,11 @@ pub contract CMTAToken {
         account: AztecAddress,
     }
 
+    #[event]
+    struct Deactivated {
+        account: AztecAddress,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -205,6 +210,28 @@ pub contract CMTAToken {
     fn unpause_contract() {
         let admin = self.msg_sender();
         self.storage.pause_module.unpause(admin, self.storage.access_control);
+    }
+
+    #[external("public")]
+    #[view]
+    fn public_get_deactivated() -> pub Field {
+        self.storage.pause_module.is_deactivated().to_field()
+    }
+
+    /**
+     * @roles: onlyAdmin
+     * @notice: Permanently deactivates the token. This cannot be undone.
+     *
+     * Requirements:
+     * - The caller must have the admin role.
+     * - The contract must already be paused.
+     * - The contract must not already be deactivated.
+     */
+    #[external("public")]
+    fn deactivate_contract() {
+        let admin = self.msg_sender();
+        self.storage.pause_module.deactivate(admin, self.storage.access_control);
+        self.emit(Deactivated { account: admin });
     }
 
     /** ==========================================================

@@ -130,7 +130,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 The private CMTAT supports the following core features:
 
  - **Private** mint, burn, and transfer operations
- - **Public** pause of the contract and public freeze of specific accounts
+ - **Public** pause of the contract, permanent deactivation, and public freeze of specific accounts
  - **Auditability** of users private transactions by a central issuer
  - **Transfer restriction** via address blacklisting/whitelisting
 
@@ -363,7 +363,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 - **Mint/transfer**: Behave the same way as in CMTAT. 
 - **Burn**: We can perform `burn_from` with allowance.
 - **Validation module**: Whitelisting and blacklisting are enabled on demand. The rule engine has been merged into the validation module, providing one interface that manages both and is always deployed along the main contract. The functionalities are private; storage can be read in public.
-- **Pause module**: Same functionalities as CMTAT. Pause is public and instantaneous.
+- **Pause module**: Same functionalities as CMTAT. Pause is public and instantaneous. Deactivation follows the CMTAT Solidity model: `deactivate_contract` requires the admin role and an existing pause, and once set it blocks `unpause_contract` forever, so the token can never move again. `public_get_deactivated` reads the flag.
 - **Enforcement module**: Freeze and unfreeze are supported. Functionalities are private; storage can be read in public. There is a delay.
 - **Access control module**: Same functionalities as CMTAT. Admin has the default role, which can be used to grant roles to themselves or others.
 - **Credit events and debt base modules**: Same functionalities as CMTAT.

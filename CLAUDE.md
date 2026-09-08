@@ -38,7 +38,7 @@ src/
 ├── modules.nr                       # module declarations
 ├── modules/
 │   ├── access_controlModule.nr      # role constants, RoleData map, has_role/only_role/grant/revoke/renounce
-│   ├── pauseModule.nr               # PublicMutable<bool> pause flag, guarded by PAUSE_ROLE
+│   ├── pauseModule.nr               # PublicMutable<bool> pause + deactivation flags (2 slots)
 │   ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
 │   ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
 │   ├── extensions.nr                # extension declarations
@@ -114,7 +114,7 @@ scripts/                             # tsx entry points, run via yarn
 
 - Noir sources use `camelCase` file names for modules (`access_controlModule.nr`, `validationModule.nr`) and snake_case for functions; keep the existing style rather than renaming.
 - Every new public/private entry point goes in `src/main.nr` under the matching banner comment block (`AUTHORIZATION MODULE`, `VALIDATION MODULE`, `MINT`, `TRANSFER`, `BURN`, `INTERNAL`, `UNCONSTRAINED`), with a NatSpec-style `@dev` / `Requirements:` comment.
-- Any state-mutating operation must keep the invariant chain: freeze check + validation check in the private internal function, role check + pause check in the enqueued public internal function.
+- Any state-mutating operation must keep the invariant chain: freeze check + validation check in the private internal function, role check + pause check in the enqueued public internal function. That pause check is also what enforces **deactivation**: `deactivate_contract` requires an existing pause and then blocks `unpause_contract` forever, so no separate deactivation check is needed on the value-moving paths.
 - Any note written for a user must also be delivered to the current `issuer_address` — auditability is a hard requirement of the design. The issuer's copy uses `MessageDelivery::offchain()`; see the key concept above before changing that.
 - Every behaviour change needs a Noir test in `src/test/` (and an e2e test when it crosses the TS boundary); tests build their world through `src/test/utils.nr` `setup*` helpers.
 - Bumping the Aztec version means updating `Nargo.toml`, `package.json` and the `aztec-up` version together — they must match. `aztec compile` warns when the dependency tag and the CLI disagree.

@@ -4,3 +4,6 @@
 [submodule "submodules/CMTAT-Confidential"]
 	path = submodules/CMTAT-Confidential
 	url = https://github.com/CMTA/CMTAT-Confidential
+[submodule "submodules/CMTAT"]
+	path = submodules/CMTAT
+	url = https://github.com/CMTA/CMTAT

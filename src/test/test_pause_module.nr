@@ -117,3 +117,101 @@ unconstrained fn test_pause_role_2() {
 
     env.call_public(user, Token::at(token_contract_address).unpause_contract());
 }
+
+/* ==========================================================
+ * ===================== DEACTIVATION ========================
+ * ======================================================== */
+
+#[test]
+unconstrained fn get_deactivated_default() {
+    let (env, token_contract_address, _, _) = utils::setup(/* with_account_contracts */ false);
+
+    let ret = env.view_public(Token::at(token_contract_address).public_get_deactivated());
+    assert(ret == 0);
+}
+
+#[test]
+unconstrained fn deactivate_test() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+
+    let ret = env.view_public(Token::at(token_contract_address).public_get_deactivated());
+    assert(ret == 1);
+    // deactivation freezes the pause in place
+    let paused = env.view_public(Token::at(token_contract_address).public_get_pause());
+    assert(paused == 1);
+}
+
+#[test(should_fail_with = "error: contract already unpaused")]
+unconstrained fn deactivate_requires_pause() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    // Not paused: deactivation must be refused.
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+}
+
+#[test(should_fail_with = "AccessControlUnauthorizedAccount")]
+unconstrained fn deactivate_requires_admin() {
+    let (env, token_contract_address, issuer, user) =
+        utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+
+    // `user` holds neither the admin role nor any other.
+    env.call_public(user, Token::at(token_contract_address).deactivate_contract());
+}
+
+#[test(should_fail_with = "error: contract is deactivated")]
+unconstrained fn deactivate_twice_throws() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+}
+
+#[test(should_fail_with = "error: contract is deactivated")]
+unconstrained fn unpause_after_deactivate_throws() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+
+    // This is what makes deactivation permanent.
+    env.call_public(issuer, Token::at(token_contract_address).unpause_contract());
+}
+
+#[test(should_fail_with = "Error: token contract is paused")]
+unconstrained fn mint_when_deactivated_fails() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(MINTER_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+
+    // A deactivated contract is paused forever, so the pause assertion in `_mint` blocks this.
+    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, 10000 as u128));
+}
+
+#[test(should_fail_with = "Error: token contract is paused")]
+unconstrained fn transfer_when_deactivated_fails() {
+    let (env, token_contract_address, issuer, user1, _) =
+        utils::setup_and_mint(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token_contract_address).grant_role(PAUSE_ROLE, issuer));
+    env.call_public(issuer, Token::at(token_contract_address).pause_contract());
+    env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
+
+    env.call_private(
+        issuer,
+        Token::at(token_contract_address).transfer(issuer, user1, 100 as u128, 0),
+    );
+}

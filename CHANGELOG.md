@@ -102,6 +102,12 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- `deactivate_contract` and `public_get_deactivated`, implementing the CMTAT permanent-deactivation feature (equivalency criteria 17 and 18).
+  - Modelled on CMTAT Solidity's `PauseModule`: the caller needs the admin role, the contract must already be paused, and a second call is refused.
+  - `unpause_contract` now refuses to run once the flag is set, which is what makes the deactivation permanent — the flag itself is never cleared.
+  - No deactivation check was added to mint, transfer or burn: each already asserts not-paused in its enqueued public half, and a deactivated contract is paused for good. CMTAT Solidity needs an explicit check on mint and burn only because its mint and burn are permitted while paused.
+  - Emits a new `Deactivated` public event carrying the caller.
+  - BREAKING CHANGE: `PauseModule` now occupies two storage slots instead of one, so every state variable declared after it moves. A deployed token cannot be migrated in place.
 - Testnet deployment and interaction scripts under [scripts/](./scripts): `deploy_contract.ts`, `deploy_account.ts`, `interaction.ts`, `multiple_pxe.ts`, `get_block.ts`, `fees.ts`, `profile_deploy.ts`.
 - TypeScript helpers under [src/utils/](./src/utils) for wallet setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment method.
 - CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.

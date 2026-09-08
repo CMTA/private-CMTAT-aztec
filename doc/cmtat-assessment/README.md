@@ -79,21 +79,17 @@
 
 | Answer         | Mandatory (19) | Optional (42) |
 | -------------- | -------------: | ------------: |
-| Present (`y`)  |             14 |            18 |
+| Present (`y`)  |             16 |            18 |
 | Partial        |              2 |             1 |
-| Absent (`n`)   |              3 |            23 |
+| Absent (`n`)   |              1 |            23 |
 
-> **This implementation is NOT equivalent to CMTAT**: three mandatory criteria are answered `n` (2, 17, 18). The criterion for equivalency — no mandatory criterion answered `n` — is not met.
+> **This implementation is NOT equivalent to CMTAT**: one mandatory criterion is answered `n` — criterion 2, reference to legally required documentation. The criterion for equivalency, that no mandatory criterion is answered `n`, is not met. Criteria 17 and 18 were answered `n` in the first revision of this assessment and have since been implemented.
 
 #### Note
 
 **Mandatory `n` answers**
 
 > *Criterion 2 (Reference to legally required documentation) — Absent: the contract stores no `terms`, no document reference and no document hash. Nothing in the design prevents it: a `PublicImmutable<FieldCompressedString>` or a document module would carry a URI and hash the same way the `name` and `symbol` attributes are carried today. It is simply not implemented, and it is the cheapest of the three gaps to close.*
-
-> *Criterion 17 (Deactivate contract) — Absent: there is no `deactivateContract` entry point. The nearest compensating measure is an indefinite pause, which blocks every mint, transfer and burn because each private entry point enqueues a public call asserting the contract is not paused. That is reversible by anyone holding `PAUSE_ROLE`, so it is not a permanent deactivation. Aztec contracts are also not upgradeable here, so the "upgradeability pattern" exemption in the criterion does not apply.*
-
-> *Criterion 18 (Know deactivate status) — Absent: follows from criterion 17. The pause status is publicly readable via `public_get_pause`, so an observer can tell the token is halted, but cannot distinguish a temporary pause from a permanent deactivation.*
 
 **Mandatory `partial` answers**
 
@@ -186,8 +182,8 @@ A balance is the sum of a holder's `UintNote`s. `BalanceSet::add` and `BalanceSe
 | 14 | Pause tokens | `pause` | Role-restricted (pauser/admin authorized) | Pause must prevent all transfers until `unpause` is called. | `y` | `PAUSE_ROLE` | `pause_contract()`. Effective immediately, because the flag is a `PublicMutable<bool>` checked in the enqueued public half of mint, transfer and burn. A revert there reverts the whole transaction. |
 | 15 | Unpause tokens | `unpause` | Role-restricted (pauser/admin authorized) |  | `y` | `PAUSE_ROLE` | `unpause_contract()`. Reverts if the contract is not paused. |
 | 16 | Know pause status | `paused()` | Public (`view`) | Any person MUST be able to determine whether the token is paused; a pause that cannot be read leaves a holder unable to tell why a transfer was refused. | `y` | Public (`view`) | `public_get_pause()` returns `1` or `0`. |
-| 17 | Deactivate contract | `deactivateContract` | Role-restricted (admin authorized) | Must permanently disable the token (except in upgradeability patterns where deactivation behavior is explicitly defined). | `n` | — | Not implemented. See the note in the [Compliance table](#compliance-table). |
-| 18 | Know deactivate status | `deactivated()` | Public (`view`) | Any person MUST be able to determine whether the token has been deactivated. In CMTAT Solidity the function is declared by the draft `IERC8343` interface. | `n` | — | Not implemented; follows from criterion 17. |
+| 17 | Deactivate contract | `deactivateContract` | Role-restricted (admin authorized) | Must permanently disable the token (except in upgradeability patterns where deactivation behavior is explicitly defined). | `y` | `DEFAULT_ADMIN_ROLE` | `deactivate_contract()`. Follows the CMTAT Solidity model: the contract must already be paused, deactivation is refused if it is already deactivated, and `unpause_contract` refuses to run once the flag is set — which is what makes it permanent. Emits a `Deactivated` public event carrying the caller. Because every value-moving operation asserts not-paused in its enqueued public half, a deactivated token can no longer mint, transfer or burn. |
+| 18 | Know deactivate status | `deactivated()` | Public (`view`) | Any person MUST be able to determine whether the token has been deactivated. In CMTAT Solidity the function is declared by the draft `IERC8343` interface. | `y` | Public (`view`) | `public_get_deactivated()` returns `1` or `0`, readable by anyone exactly as `public_get_pause()` is. |
 
 ##### Note
 
@@ -198,6 +194,12 @@ The pause flag is a `PublicMutable<bool>`. It is read only in the public half of
 The practical consequence for an operator is that pause is the tool for anything urgent. The repository documents the combination: to freeze an account without leaving a window in which it can still move tokens, pause the token, schedule the freeze, wait out the delay, then unpause.
 
 `pause_contract` reverts if the contract is already paused and `unpause_contract` reverts if it is not, so the state cannot be set redundantly. Both are guarded by `PAUSE_ROLE`. Note the warning inherited from CMTAT: revoking `PAUSE_ROLE` while the contract is paused can leave it stuck.
+
+**Deactivation is built on top of the pause**, as it is in CMTAT Solidity. `deactivate_contract()` requires `DEFAULT_ADMIN_ROLE`, requires the contract to be **already paused**, and refuses to run twice. Once the flag is set, `unpause_contract` refuses to run, so the pause can never be lifted — that refusal is the whole of the permanence guarantee, and it is why the flag itself is never cleared.
+
+Nothing else needed a deactivation check. Because mint, transfer and burn each assert not-paused in their enqueued public half, and a deactivated contract is paused for good, all three are already blocked. CMTAT Solidity reaches the same conclusion for its transfer path and says so in a comment, but has to add an explicit `_requireNotDeactivated()` to mint and burn because *its* mint and burn are permitted while paused. Here they are not, so the pause assertion covers every path.
+
+The one operational consequence worth stating: a deactivated token is indistinguishable from a paused one to any check inside the contract. An observer tells them apart with `public_get_deactivated()`, and the `Deactivated` event records who did it and when.
 
 
 ### Enforcement
@@ -592,7 +594,7 @@ Three consequences MUST be recorded:
 
 **Known limitations and planned work.** Batching is capped at one address per call by protocol limits. The sanction list is declared but its handler panics, so enabling that mode blocks every transfer and it must be treated as unusable. Scoped disclosure to an auditor or regulator, and event coverage, are recorded in the repository as future work. Aztec has no mainnet and its API still changes substantially between releases; this contract was migrated from Aztec 0.63.1 to 5.2.0 as an effectively complete rewrite.
 
-**The implementation is not equivalent to CMTAT** under the rule stated in the template, because criteria 2, 17 and 18 are answered `n`. Criteria 2 (documentation reference) and 17–18 (deactivation and its status) are ordinary implementation gaps that could be closed without fighting the chain; the gaps that cannot be closed in this design are the optional ones — forced transfer, forced burn and partial freeze.
+**The implementation is not equivalent to CMTAT** under the rule stated in the template, because criterion 2 is answered `n`. That one is an ordinary implementation gap: storing a document reference and hash needs no new mechanism, only a field. Deactivation and its status (criteria 17–18) were the other two gaps and have since been implemented, following the CMTAT Solidity model. The gaps that cannot be closed in this design are the optional ones — forced transfer, forced burn and partial freeze — because the issuer cannot nullify another holder's notes.
 
 ## Reference
 
