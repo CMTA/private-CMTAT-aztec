@@ -10,11 +10,11 @@ It comes from filling that template for the Aztec implementation in this reposit
 
 Criteria 19 and 20 require freeze and unfreeze, and criterion 21 requires the frozen status to be readable. Nothing in the template addresses **when** a freeze takes effect, and the criteria are worded as though it were instantaneous.
 
-It never is. Between the moment the issuer decides to freeze an address and the moment the ledger enforces it, there is a window in which the target can still transfer. The window exists on every chain the criteria are likely to be applied to, but its size and its character differ enough that an assessment which does not mention it will record two very different exposures as the same answer.
+Between the moment the issuer decides to freeze an address and the moment the ledger enforces it, there is always a window in which the target can still transfer. It exists on every chain the criteria are likely to be applied to, but its size and its character differ enough that an assessment which does not mention it will record two very different exposures as the same answer.
 
 **On a public EVM chain.** The freeze transaction sits in the public mempool before inclusion. Anyone can read it there, including the address being frozen. A target monitoring the mempool can broadcast a competing transfer with a higher priority fee and be included first. The window is roughly one block, and it is a *race*: the issuer can usually win it by paying more, and can remove it entirely by submitting through a private relay so that the transaction is never publicly visible before inclusion.
 
-**On a chain where compliance state is read privately.** Aztec is the case this repository documents. A private function cannot read current mutable public state, so a freeze flag has to be a value with a scheduled change and a minimum delay — that delay is what lets a client-side proof rely on the value. The scheduled change is visible in public state as soon as it is submitted, and it becomes effective only when the delay elapses. The window is therefore *deterministic and guaranteed*: it cannot be shortened by paying more, and no private submission path removes it, because the delay is protocol-enforced rather than a consequence of transaction visibility.
+**On a chain where compliance state is read privately.** Aztec is the case this repository documents. A private function cannot read current mutable public state, so a freeze flag has to be a value with a scheduled change and a minimum delay, and that delay is what lets a client-side proof rely on the value. The scheduled change is visible in public state as soon as it is submitted, and it becomes effective only when the delay elapses. The window is therefore *deterministic and guaranteed*: it cannot be shortened by paying more, and no private submission path removes it, because the delay is protocol-enforced rather than a consequence of transaction visibility.
 
 **On a permissioned ledger** the window may be negligible or absent, depending on whether the target can observe pending state.
 
@@ -36,7 +36,7 @@ Proposed addition to the Notes column of criteria 19 and 20:
 
 ## Why a note rather than a new criterion
 
-The window is a property of the underlying ledger, not of the token contract, so an implementation cannot be marked non-compliant for having one — CMTAT Solidity has one too. Making it a numbered criterion would also renumber every criterion after it and invalidate assessments already filled against the current template. A warning note in the guideline section, which sits outside the equivalency count, records the difference where an assessor will read it without changing any answer.
+A freeze window is a property of the underlying ledger rather than of the token contract, so an implementation cannot be marked non-compliant for having one — CMTAT Solidity has one too. Making it a numbered criterion would also renumber every criterion after it and invalidate assessments already filled against the current template. A warning note in the guideline section, which sits outside the equivalency count, records the difference where an assessor will read it without changing any answer.
 
 ## How this repository answers it
 
