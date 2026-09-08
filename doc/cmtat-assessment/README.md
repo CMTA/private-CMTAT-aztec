@@ -42,7 +42,7 @@
 | Version | Value |
 |---|---|
 | Template version — this document, as published by CMTA; pre-filled, MUST NOT be modified by the author of an assessment | `v0.3.0` |
-| Assessment version — the filled document, set by its author | `0.1.0-rc1` |
+| Assessment version — the filled document, set by its author | `0.3.0-rc1` |
 
 > The assessment version is below `1.0` and carries an `rc` suffix: this is a **draft**. It is filled against an implementation that is itself a prototype and has not been audited.
 
@@ -79,25 +79,27 @@
 
 | Answer         | Mandatory (19) | Optional (42) |
 | -------------- | -------------: | ------------: |
-| Present (`y`)  |             16 |            18 |
-| Partial        |              2 |             1 |
-| Absent (`n`)   |              1 |            23 |
+| Present (`y`)  |             17 |            18 |
+| Partial        |              2 |             2 |
+| Absent (`n`)   |              0 |            22 |
 
-> **This implementation is NOT equivalent to CMTAT**: one mandatory criterion is answered `n` — criterion 2, reference to legally required documentation. The criterion for equivalency, that no mandatory criterion is answered `n`, is not met. Criteria 17 and 18 were answered `n` in the first revision of this assessment and have since been implemented.
+> **No mandatory criterion is answered `n`.** Under the rule stated in this template, the implementation SHOULD therefore be considered equivalent to CMTAT, subject to the two mandatory `partial` answers being accepted — criteria 19 and 20, freeze and unfreeze, which take effect only after a delay. Those are justified below.
+>
+> Three criteria answered `n` in earlier revisions of this assessment have since been implemented: 17 and 18 (deactivation and its status) and 2 (reference to legally required documentation).
+>
+> Two cautions belong with that result. The implementation has **not been audited**, and equivalency to CMTAT is not by itself a demonstration that the criteria required for tokenized shares under Swiss law are satisfied — see the template's own warning on that point. Separately, the optional criteria that remain absent include forced transfer and forced burn, which several jurisdictions expect of a security token; a reader should not take "equivalent" to mean the token carries every regulatory recovery power.
 
 #### Note
-
-**Mandatory `n` answers**
-
-> *Criterion 2 (Reference to legally required documentation) — Absent: the contract stores no `terms`, no document reference and no document hash. Nothing in the design prevents it: a `PublicImmutable<FieldCompressedString>` or a document module would carry a URI and hash the same way the `name` and `symbol` attributes are carried today. It is simply not implemented, and it is the cheapest of the three gaps to close.*
 
 **Mandatory `partial` answers**
 
 > *Criteria 19 and 20 (Freeze / Unfreeze) — Partial: `freeze` and `unfreeze` exist and are restricted to `ENFORCEMENT_ROLE`, but the flag is stored in a `DelayedPublicMutable`, so a change takes effect only after `CHANGE_ROLES_DELAY_SECONDS` (currently 360 s) rather than immediately. Until the delay elapses, the private transfer path still reads the old value and a holder about to be frozen can still move tokens. The delay is not a defect of the implementation but a consequence of the chain: a private function cannot read mutable public state without a delay that lets the circuit prove the value is stable, and reading it any other way would leak the caller's address. The compensating measure available to an issuer is to pause the token, freeze, wait out the delay, then unpause. This is documented in the repository README under "Limitations".*
 
-**Optional `partial` answer**
+**Optional `partial` answers**
 
 > *Criterion 13 (Approve) — Partial: delegation exists, but as an Aztec authentication witness rather than a standing ERC-20 allowance. An authwit authorises one exact call (target, selector, arguments and nonce), is consumed by a nullifier on use, and can be revoked before use with `cancel_authwit`. It therefore covers delegated spending, which is what the criterion is for, but it cannot express "this spender may move up to X over time": a new witness is required per operation. Secondary-market flows that assume a persistent allowance would need adapting.*
+
+> *Criterion 50 (Unique identifier / hash) — Partial: the criterion asks for `tokenId()` **and** the terms document hash. The hash is present since the terms module was added; `tokenId` is not stored, so half the criterion is met.*
 
 **Optional modules left out by design**
 
@@ -118,7 +120,7 @@
 | ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
 |---|---|---|---|---|---|---|---|
 | 1 | Name attribute | ERC20 `name` | Public (`view`) |  | `y` | Public (`view`), in both contexts | `public_get_name()` and `private_get_name()`. Stored as a `PublicImmutable<FieldCompressedString>` set in the constructor; a `PublicImmutable` is readable from private functions, which is why a private variant exists. Not mutable post-deployment. |
-| 2 | Reference to legally required documentation | `terms` | Public (`view`) |  | `n` | — | No `terms`, document URI or document hash is stored. See the note in the [Compliance table](#compliance-table). |
+| 2 | Reference to legally required documentation | `terms` | Public (`view`) |  | `y` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | `set_terms(DocumentInfo)` and `terms()`. Mirrors the CMTAT Solidity notation: `DocumentInfo` carries `{name, uri, documentHash}` and the contract stamps `lastModified` from the block timestamp, so `terms()` returns the equivalent of `CMTATTerms {name, doc{uri, documentHash, lastModified}}`. `name` and `uri` are `FieldCompressedString` (31 characters each); the `bytes32` hash is stored as two `u128` halves, because a Noir `Field` holds ~254 bits and a 256-bit digest would not fit in one. |
 | 3 | Decimals (no fractions by default) | ERC20 `decimals` | Public (`view`) | - Decimals MUST be set to zero unless governing law permits fractions.<br />- The value MUST be readable, since a holder cannot interpret a balance without it.<br />- CMTAT Solidity allows configurable decimals at deployment | `y` | Public (`view`), in both contexts | `public_get_decimals()` / `private_get_decimals()`. `PublicImmutable<u8>` set at deployment, so configurable per issuance as CMTAT Solidity allows. |
 
 ##### Note
@@ -126,6 +128,10 @@
 Attributes are set once, in the `#[external("public")] #[initializer]` constructor, and never change: `name`, `symbol` and `decimals` are `PublicImmutable`. That type is what makes the twin getters possible. A `PublicMutable` cannot be read from a private function at all — the read would have to go through a public call, which would publish the caller's address and defeat the privacy of whatever private operation needed it. A `PublicImmutable` has no such problem: once the circuit proves the value was written in the past, it knows it cannot have changed. So each attribute has a public getter for external observers and a private getter (`private_get_name`, `private_get_symbol`, `private_get_decimals`) that a private function can call without leaking who is asking.
 
 `name` and `symbol` are `FieldCompressedString`, which packs a string into a single field element and therefore caps them at **31 characters**; the constructor takes them as `str<31>`. `decimals` is a plain `u8` chosen at deployment, so the CMTAT Solidity behaviour of configurable decimals is preserved rather than being fixed at zero.
+
+The **terms** (criterion 2) are the exception to all of that: they are mutable, held in a `PublicMutable<Terms>` in the extra-information module and written by `set_terms` under `EXTRA_INFORMATION_ROLE`, exactly as CMTAT Solidity allows them to be updated after deployment. The notation follows the Solidity one: the setter takes a `DocumentInfo` of `{name, uri, documentHash}` and the contract stamps `lastModified` itself from the block timestamp, so a caller cannot forge it; `terms()` then returns the equivalent of `CMTATTerms`, flattened because Noir gains nothing from the nested struct.
+
+Two chain-level constraints shape how faithfully the document can be recorded. `name` and `uri` are `FieldCompressedString`, so each is capped at **31 characters** — enough for an IPFS CID but not for a long HTTPS path, which may have to be shortened or resolved through a redirect. And the `bytes32` `documentHash` does not fit in one Noir `Field`, which holds about 254 bits, so it is stored as two `u128` halves (`documentHashHigh`, `documentHashLow`); a caller splits the digest as high 16 bytes and low 16 bytes and reassembles it the same way. Storing it in a single `Field` would have silently truncated the hash, which is the one outcome a document commitment cannot tolerate.
 
 
 #### Optional
@@ -341,7 +347,7 @@ All debt attributes are fields of a single `DebtBaseStruct` held in a `PublicMut
 |---|---|---|---|---|---|---|---|
 | 48 | Guarantor identifier | `debt().debtIdentifier.guarantor` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.guarantor` (`FieldCompressedString`). |
 | 49 | Debtholder representative identifier | `debt().debtIdentifier.debtHolder` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.bondHolder` (`FieldCompressedString`). |
-| 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `n` | — | Neither `tokenId` (criterion 5) nor a document hash (criterion 2) is stored. |
+| 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `partial` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | The document hash half of this criterion is now present, as `terms().documentHashHigh` / `documentHashLow`. `tokenId` (criterion 5) is still not stored, so the criterion is only half covered. |
 | 51 | Issuance date | `debt().debtInstrument.issuanceDate` (set via `setDebt` / `setDebtInstrument`) | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`ICMTATDebt.DebtInstrument`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.issuanceDate` (`FieldCompressedString`). |
 | 52 | Currency of payments | `debt().debtInstrument.currency` / `debt().debtInstrument.currencyContract` | Read: public (`view`); write: role-restricted (`setDebt*`) | Supports symbol-like string and token/asset contract address. | `n` | — | No currency field. |
 | 53 | Par value | `debt().debtInstrument.parValue` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.parValue` (`Field`). |
@@ -361,7 +367,7 @@ All debt attributes live in one `PublicMutable<DebtBaseStruct>`, written by `set
 Eleven of the fourteen criteria map to a field directly. Three do not:
 
 - **Currency of payments** (52) and **minimum denomination** (54) have no field at all.
-- **Unique identifier / hash** (50) depends on `tokenId` (criterion 5) and a document hash (criterion 2), neither of which is stored.
+- **Unique identifier / hash** (50) is now `partial`: the document hash is available from `terms()` since the extra-information module was added, but `tokenId` (criterion 5) is still not stored.
 
 Adding any of them is a change to `DebtBaseStruct`, which is a **storage-layout break**: the packed length changes, so a deployed token cannot be migrated in place.
 
@@ -594,13 +600,13 @@ Three consequences MUST be recorded:
 
 **Known limitations and planned work.** Batching is capped at one address per call by protocol limits. The sanction list is declared but its handler panics, so enabling that mode blocks every transfer and it must be treated as unusable. Scoped disclosure to an auditor or regulator, and event coverage, are recorded in the repository as future work. Aztec has no mainnet and its API still changes substantially between releases; this contract was migrated from Aztec 0.63.1 to 5.2.0 as an effectively complete rewrite.
 
-**The implementation is not equivalent to CMTAT** under the rule stated in the template, because criterion 2 is answered `n`. That one is an ordinary implementation gap: storing a document reference and hash needs no new mechanism, only a field. Deactivation and its status (criteria 17–18) were the other two gaps and have since been implemented, following the CMTAT Solidity model. The gaps that cannot be closed in this design are the optional ones — forced transfer, forced burn and partial freeze — because the issuer cannot nullify another holder's notes.
+**No mandatory criterion is answered `n`**, so under the rule stated in the template the implementation should be considered equivalent to CMTAT, subject to accepting the two mandatory `partial` answers on freeze and unfreeze. The three mandatory gaps recorded in earlier revisions of this assessment — deactivation, its status, and the reference to legally required documentation — have been implemented on the CMTAT Solidity model. What remains outstanding is the delay on freeze and unfreeze, which is a property of the chain rather than of this code, and the optional criteria that cannot be met at all in this design: forced transfer, forced burn and partial freeze, because the issuer cannot nullify another holder's notes. A reader should not read "equivalent" as "carries every regulatory recovery power a security token is expected to have", and the implementation has not been audited.
 
 ## Reference
 
 | Item | Repository | Version | Commit |
 |---|---|---|---|
-| Implementation assessed | https://github.com/taurushq-io/private-CMTAT-aztec | `0.3.0` (unreleased) | `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
+| Implementation assessed | https://github.com/taurushq-io/private-CMTAT-aztec | `0.3.0` (unreleased) | `ca9ce5ce61050f2d506831281275a6884549c4a3` |
 | Assessment template | https://github.com/CMTA/CMTAT-equivalency-assessment | `v0.3.0` | `e2ddb6ee05354311fcf2c00f421f5a4f0fb94944` |
 | Aztec toolchain and aztec-nr | https://github.com/AztecProtocol/aztec-nr | `v5.2.0` | — |
 

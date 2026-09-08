@@ -15,6 +15,7 @@ pub global MINTER_ROLE: Field = 7;
 pub global BURNER_ROLE: Field = 8;
 pub global DEBT_ROLE: Field = 9;
 pub global DEBT_CREDIT_EVENT_ROLE: Field = 10;
+pub global EXTRA_INFORMATION_ROLE: Field = 11;
 
 // Define the storage for role data
 pub struct RoleData<Context> {

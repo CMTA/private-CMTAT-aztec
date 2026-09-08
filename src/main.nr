@@ -29,6 +29,7 @@ pub contract CMTAToken {
             AccessControlModule, BURNER_ROLE, DEFAULT_ADMIN_ROLE, MINTER_ROLE, VALIDATION_ROLE,
         },
         enforcementModule::{Freezable, FreezableFlag},
+        extraInformationModule::{DocumentInfo, ExtraInformation},
         extensions::{
             creditEventsModule::{CreditEvents, CreditEventsStruct},
             debtBaseModule::{DebtBase, DebtBaseStruct},
@@ -88,6 +89,7 @@ pub contract CMTAToken {
         access_control: AccessControlModule<bool, Context>,
         credit_event_module: CreditEvents<bool, Context>,
         debt_base_module: DebtBase<bool, Context>,
+        extra_information_module: ExtraInformation<bool, Context>,
 
         issuer_address: DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS, Context>,
 
@@ -298,6 +300,31 @@ pub contract CMTAToken {
     #[external("public")]
     fn get_debt_base() -> [Field; 12] {
         self.storage.debt_base_module.get_debt_base()
+    }
+
+    /** ==========================================================
+     * ===================== EXTRA INFORMATION MODULE ============
+     * ======================================================== */
+
+    /**
+     * @roles: onlyExtraInformationManager
+     * @notice: Sets the reference to the legally required documentation.
+     * @dev: Every field is replaced; a caller that wants to keep a value must re-supply it.
+     * `lastModified` is stamped by the contract from the block timestamp.
+     */
+    #[external("public")]
+    fn set_terms(terms_: DocumentInfo) {
+        self.storage.extra_information_module.setTerms(
+            terms_,
+            self.context.timestamp(),
+            self.msg_sender(),
+            self.storage.access_control,
+        );
+    }
+
+    #[external("public")]
+    fn terms() -> [Field; 5] {
+        self.storage.extra_information_module.get_terms()
     }
 
     /** ==========================================================

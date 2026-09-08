@@ -108,6 +108,12 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - No deactivation check was added to mint, transfer or burn: each already asserts not-paused in its enqueued public half, and a deactivated contract is paused for good. CMTAT Solidity needs an explicit check on mint and burn only because its mint and burn are permitted while paused.
   - Emits a new `Deactivated` public event carrying the caller.
   - BREAKING CHANGE: `PauseModule` now occupies two storage slots instead of one, so every state variable declared after it moves. A deployed token cannot be migrated in place.
+- `set_terms` and `terms`, carrying the reference to the legally required documentation (equivalency criterion 2), in a new `extraInformationModule`.
+  - Uses the CMTAT Solidity notation: the setter takes a `DocumentInfo` of `{name, uri, documentHash}` and `terms()` returns the equivalent of `CMTATTerms`, with `lastModified` stamped by the contract from the block timestamp so a caller cannot forge it.
+  - `name` and `uri` are `FieldCompressedString` and are therefore capped at 31 characters each.
+  - The `bytes32` document hash is stored as two `u128` halves, because a Noir `Field` holds ~254 bits and a 256-bit digest does not fit in one. Split the digest high-16-bytes / low-16-bytes and reassemble it the same way.
+  - Adds `EXTRA_INFORMATION_ROLE = 11`, matching the role CMTAT Solidity uses for `setTerms`.
+  - BREAKING CHANGE: adds a storage field, so every state variable declared after it moves.
 - Testnet deployment and interaction scripts under [scripts/](./scripts): `deploy_contract.ts`, `deploy_account.ts`, `interaction.ts`, `multiple_pxe.ts`, `get_block.ts`, `fees.ts`, `profile_deploy.ts`.
 - TypeScript helpers under [src/utils/](./src/utils) for wallet setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment method.
 - CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.
