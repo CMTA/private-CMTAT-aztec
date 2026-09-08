@@ -10,7 +10,6 @@ use crate::modules::access_controlModule::{
 
 pub global BLACKLIST_FLAG: u64 = 1;
 pub global WHITELIST_FLAG: u64 = 2;
-pub global SANCTIONLIST_FLAG: u64 = 4;
 
 // Changing a user's flags or the enabled operations takes effect only after this delay. Expressed in
 // seconds: since Aztec v3 a DelayedPublicMutable's delay is a duration, not a number of blocks.
@@ -25,20 +24,17 @@ global TEXT_ADDRESS_TO_NOT_WHITELISTED: str<37> = "The recipient is not in the w
 pub struct SetFlag {
     pub operate_blacklist: bool,
     pub operate_whitelist: bool,
-    pub operate_sanctionlist: bool,
 }
 
 #[derive(Deserialize, Eq, Serialize)]
 pub struct UserFlags {
     pub is_blacklisted: bool,
     pub is_whitelisted: bool,
-    pub is_in_sanction_list: bool,
 }
 
 trait UserFlagsTrait {
     fn get_is_blacklisted(self) -> bool;
     fn get_is_whitelisted(self) -> bool;
-    fn get_is_in_sanction_list(self) -> bool;
 }
 
 pub struct ValidationModule<T, Context> {
@@ -127,8 +123,6 @@ where
             self.detectTransferRestriction_blacklist(from, to);
         } else if (operations.operate_whitelist) {
             self.detectTransferRestriction_whitelist(from, to);
-        } else if (operations.operate_sanctionlist) {
-            self.detectTransferRestriction_sanctionlist(from, to);
         }
     }
 
@@ -154,13 +148,6 @@ where
         );
     }
 
-    fn detectTransferRestriction_sanctionlist(
-        _self: Self,
-        _from: AztecAddress,
-        _to: AztecAddress,
-    ) {
-        panic("not implemented.")
-    }
 }
 
 impl UserFlagsTrait for UserFlags {
@@ -170,9 +157,6 @@ impl UserFlagsTrait for UserFlags {
     fn get_is_whitelisted(self) -> bool {
         self.is_whitelisted
     }
-    fn get_is_in_sanction_list(self) -> bool {
-        self.is_in_sanction_list
-    }
 }
 
 impl FromField for UserFlags {
@@ -180,9 +164,8 @@ impl FromField for UserFlags {
         let value: u64 = value as u64;
         let is_blacklisted = (value & BLACKLIST_FLAG) == BLACKLIST_FLAG;
         let is_whitelisted = (value & WHITELIST_FLAG) == WHITELIST_FLAG;
-        let is_in_sanction_list = (value & SANCTIONLIST_FLAG) == SANCTIONLIST_FLAG;
 
-        Self { is_blacklisted, is_whitelisted, is_in_sanction_list }
+        Self { is_blacklisted, is_whitelisted }
     }
 }
 
@@ -198,9 +181,6 @@ impl ToField for UserFlags {
             value = value | WHITELIST_FLAG;
         }
 
-        if self.is_in_sanction_list {
-            value = value | SANCTIONLIST_FLAG;
-        }
 
         value.to_field()
     }
@@ -217,9 +197,6 @@ impl Packable for UserFlags {
         if self.is_whitelisted {
             value = value | WHITELIST_FLAG;
         }
-        if self.is_in_sanction_list {
-            value = value | SANCTIONLIST_FLAG;
-        }
         [value.to_field()]
     }
 
@@ -227,9 +204,8 @@ impl Packable for UserFlags {
         let value: u64 = fields[0] as u64;
         let is_blacklisted = (value & BLACKLIST_FLAG) == BLACKLIST_FLAG;
         let is_whitelisted = (value & WHITELIST_FLAG) == WHITELIST_FLAG;
-        let is_in_sanction_list = (value & SANCTIONLIST_FLAG) == SANCTIONLIST_FLAG;
 
-        Self { is_blacklisted, is_whitelisted, is_in_sanction_list }
+        Self { is_blacklisted, is_whitelisted }
     }
 }
 
@@ -238,9 +214,8 @@ impl FromField for SetFlag {
         let value: u64 = value as u64;
         let operate_blacklist = (value & BLACKLIST_FLAG) == BLACKLIST_FLAG;
         let operate_whitelist = (value & WHITELIST_FLAG) == WHITELIST_FLAG;
-        let operate_sanctionlist = (value & SANCTIONLIST_FLAG) == SANCTIONLIST_FLAG;
 
-        Self { operate_blacklist, operate_whitelist, operate_sanctionlist }
+        Self { operate_blacklist, operate_whitelist }
     }
 }
 
@@ -256,9 +231,6 @@ impl ToField for SetFlag {
             value = value | WHITELIST_FLAG;
         }
 
-        if self.operate_sanctionlist {
-            value = value | SANCTIONLIST_FLAG;
-        }
 
         value.to_field()
     }

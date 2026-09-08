@@ -223,7 +223,7 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 - Each user flag update will be delayed by `CHANGE_ROLES_DELAY_SECONDS`.
 - If no operations are enabled, no checks are done, but the function is still called.
 - Operations can be enabled or disabled, and there is also a delay.
-- Currently, no operations can be added; there is only blacklist/whitelist, and the sanction list is not implemented.
+- Currently, no operations can be added; there is only blacklist/whitelist.
 
 **Delay issue**:
 
@@ -337,7 +337,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 - **Validation module enhancements**:
   - The limitation regarding `DelayedPublicMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.
-  - Sanction lists are not yet enabled due to the lack of on-chain lists like Chainalysis on Ethereum.
+  - A sanction-list mode is not provided, for lack of an on-chain list to check against — there is no Aztec equivalent of the Chainalysis oracle used on Ethereum.
 
 - **Audit capabilities**:
   - Users may, in the future, be able to arbitrarly share to third-parties a shareable key for audit purposes.
@@ -390,7 +390,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 |---|---|---|
 | Pause | ✔ public, immediate | ✔ immediate |
 | Freeze an address | ✔ but **delayed** by `CHANGE_ROLES_DELAY_SECONDS` | ✔ immediate |
-| Blacklist / whitelist | ✔ both, **delayed**; sanction list declared but not implemented | ✔ allowlist variant, immediate |
+| Blacklist / whitelist | ✔ both, **delayed**; no sanction-list mode | ✔ allowlist variant, immediate |
 | RuleEngine / transfer hook | ✘ (merged into the validation module) | ✔ dedicated variant, though it passes `value = 0` because the amount is encrypted |
 | **Forced transfer** | **✘ impossible by construction** — the issuer cannot compute another holder's nullifiers; freezing is the workaround | **✔ `forcedTransfer()`** |
 | **Forced burn** | ✘ — burning needs the holder's authwit | ✔ `forcedBurn()`, and it works on frozen addresses |
@@ -546,7 +546,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Pause module** | A public on/off switch. While paused, mint, transfer and burn all revert, because each enqueues a public call that asserts the contract is not paused. |
 | **Enforcement module** | Per-address freezing. A frozen address can neither send nor receive. Because the flag is a `DelayedPublicMutable`, a freeze takes effect only after the delay. |
 | **Validation module** | Transfer restriction by address list. Holds each address's flags and the switch saying which lists are enforced. |
-| **Blacklist / whitelist / sanction list** | The three list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2, `SANCTIONLIST_FLAG` 4). Blacklist blocks listed addresses, whitelist allows only listed ones, sanction list is declared but not implemented. |
+| **Blacklist / whitelist** | The two list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2). Blacklist blocks listed addresses, whitelist allows only listed ones. Exactly one mode is enforced per transfer. |
 | **Credit events extension** | CMTAT bond attributes recording default, redemption and rating. |
 | **Debt base extension** | CMTAT bond terms: interest rate, par value, maturity date, day-count and business-day conventions, and related fields. |
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |

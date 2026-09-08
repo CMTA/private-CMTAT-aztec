@@ -138,6 +138,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Removed
 
+- The sanction-list mode of the validation module, which was declared but never implemented.
+  - `SANCTIONLIST_FLAG`, `SetFlag.operate_sanctionlist`, `UserFlags.is_in_sanction_list` and `get_is_in_sanction_list` are gone, and `operateOnTransfer` now dispatches to the blacklist and the whitelist only.
+  - It was a trap rather than a gap: `operateOnTransfer` routed the mode to a handler that called `panic("not implemented.")`, so turning it on blocked every transfer instead of screening anything.
+  - Nothing replaces it. `RuleSanctionsList` works on Ethereum because a Chainalysis oracle can be queried on-chain, and Aztec has no equivalent register to read; a sanctioned address must be blocked through the blacklist.
+  - BREAKING CHANGE: `SetFlag` and `UserFlags` each lose a field, so the ABI of `set_operations`, `add_to_list` and `remove_from_list` changes and previously generated TypeScript artifacts no longer match. The `BLACKLIST_FLAG` and `WHITELIST_FLAG` bit values are unchanged, so `get_operations` still returns the same numbers.
 - `src/types/balance_set.nr`, superseded by the `balance_set` library. The file is left in the tree but is no longer part of the module graph and should be deleted.
 - The `value_note` and `authwit` entries in `Nargo.toml`: `value_note` was never used, and `authwit` is now part of the `aztec` library (`aztec::authwit`).
 - The reference FPC's private and public fee-payment demonstrations in `scripts/fees.ts`. `FeeJuicePaymentMethod` no longer exists (an account holding Fee Juice pays with it automatically), and `PrivateFeePaymentMethod` / `PublicFeePaymentMethod` are deprecated and do not work beyond a local network.

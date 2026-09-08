@@ -44,7 +44,7 @@ lib/                                 # cmtat_aztec_lib, type = "lib": every modu
     ├── access_controlModule.nr      # role constants, RoleData map, has_role/only_role/grant/revoke/renounce
     ├── pauseModule.nr               # PublicMutable<bool> pause + deactivation flags (2 slots)
     ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
-    ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
+    ├── validationModule.nr          # blacklist/whitelist flags, operateOnTransfer
     ├── extraInformationModule.nr    # CMTAT terms + token ID (6 slots): set_terms/terms, set_token_id/token_id
     ├── extensions.nr
     └── extensions/

@@ -273,13 +273,13 @@ Because a frozen holding can be neither transferred nor burned (there is no forc
 
 Restrictions live **inside the token**, in the validation module, rather than behind an external rule engine: the CMTAT Solidity RuleEngine and the Rules contracts are merged into one module with a single interface, so there is no pluggable hook and no external rule contract to deploy.
 
-`operateOnTransfer(from, to)` reads the `SetFlag` operations switch and dispatches to **exactly one** mode, in the order blacklist, then whitelist, then sanction list, taking the first that is enabled. The modes therefore do **not** compose: enabling both the blacklist and the whitelist runs the blacklist only. If no mode is enabled, no check runs and the transfer proceeds.
+`operateOnTransfer(from, to)` reads the `SetFlag` operations switch and dispatches to **exactly one** mode, blacklist first and then whitelist, taking the first that is enabled. The modes therefore do **not** compose: enabling both runs the blacklist only. If no mode is enabled, no check runs and the transfer proceeds.
 
 A rejected transfer **reverts** with a message (`The sender is in the blacklist`, `The recipient is not in the whitelist`, and so on). There is no ERC-1404 restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it — a wallet has to simulate the call and interpret the failure.
 
 Both the per-address flags and the operations switch are `DelayedPublicMutable`, so adding an address to a blacklist, or turning a mode on, only bites after `CHANGE_ROLES_DELAY_SECONDS`. This is the same delay as freeze and it has the same cause; see [Enforcement](#enforcement).
 
-**The sanction-list mode must not be enabled.** `SANCTIONLIST_FLAG` and `UserFlags.is_in_sanction_list` exist, but the handler is `panic("not implemented.")`. Turning `operate_sanctionlist` on therefore blocks every transfer unconditionally. It fails closed, which is the safer of the two failure modes, but it is unusable rather than merely incomplete.
+**There is no sanction-list mode.** Earlier revisions declared a third mode whose handler was `panic("not implemented.")`, so enabling it blocked every transfer; the flag has been removed rather than left as a trap. Screening against a sanctions register would need an on-chain list to read, and Aztec has no equivalent of the Chainalysis oracle used on Ethereum.
 
 
 ### Access Control
@@ -423,7 +423,7 @@ Of the CMTAT Solidity rule catalogue, this implementation offers only list membe
 | Receiver whitelist | `RuleReceiverWhitelist` | `n` | Both parties are always checked; the receiver cannot be screened alone. |
 | Spender whitelist | `RuleSpenderWhitelist` | `n` | The authwit delegate is not screened. |
 | Blacklist | `RuleBlacklist` | `partial` | `UserFlags.is_blacklisted` blocks a listed sender or receiver on transfer. It is **not** applied to mint or burn, unlike `RuleBlacklist`. |
-| Sanctions list | `RuleSanctionsList` | `n` | `SANCTIONLIST_FLAG` and `UserFlags.is_in_sanction_list` are declared, and `operateOnTransfer` routes to a handler that unconditionally panics with `not implemented.`. Enabling `operate_sanctionlist` therefore **blocks every transfer** — fail-closed by accident rather than by design. It should be treated as unusable until implemented. |
+| Sanctions list | `RuleSanctionsList` | `n` | No sanction-list mode. `RuleSanctionsList` reads an on-chain oracle (Chainalysis on Ethereum); Aztec has no equivalent to read from, so a listed address must be blocked through the blacklist instead. |
 | Whitelist and frozen list (ERC-2980) | `RuleERC2980` | `n` | Freeze and lists are separate mechanisms here. |
 | Identity registry | `RuleIdentityRegistry` | `n` | — |
 | Maximum total supply | `RuleMaxTotalSupply` | `n` | No supply cap. |
@@ -432,7 +432,7 @@ Of the CMTAT Solidity rule catalogue, this implementation offers only list membe
 | Conditional transfer | `RuleConditionalTransferLight` | `n` | Criteria 26–27. |
 | Per-minter quota | `RuleMintAllowance` | `n` | — |
 
-**Order and failure mode.** `operateOnTransfer` evaluates exactly one mode per transfer, in the order blacklist, then whitelist, then sanction list, taking the first that is enabled — they do not compose. If no mode is enabled, no check runs. A rejected transfer **reverts**; there is no ERC-1404-style restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it. Because the flags are `DelayedPublicMutable`, a newly listed address is only screened after the delay.
+**Order and failure mode.** `operateOnTransfer` evaluates exactly one mode per transfer, blacklist first and then whitelist, taking the first that is enabled — they do not compose. If no mode is enabled, no check runs. A rejected transfer **reverts**; there is no ERC-1404-style restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it. Because the flags are `DelayedPublicMutable`, a newly listed address is only screened after the delay.
 
 
 ##### Note
@@ -443,7 +443,7 @@ Two behaviours affect an integrator directly. First, a rejection is a **revert w
 
 The mint case is also a **documentation mismatch**: the NatSpec on `mint` in `src/main.nr` states that "the recipient must respect the allowlist constraints of the validation module", but `_mint_internal` checks only the freeze flag. The comment on `transfer` makes the same claim and is accurate there. Whichever way this is resolved — screening mint, or correcting the comment — the two should be brought into agreement.
 
-On external data sources the template asks about: there are none. Every list is local contract state, so there is no oracle or registry that could be unset, and therefore no fail-open path — except the sanction-list mode, which fails closed by panicking because its handler is unimplemented.
+On external data sources the template asks about: there are none. Every list is local contract state, so there is no oracle or registry that could be unset, and therefore no fail-open path. That is also why there is no sanctions-list mode: `RuleSanctionsList` exists on Ethereum because a Chainalysis oracle can be queried, and Aztec offers nothing to query.
 
 ### Version
 
@@ -631,7 +631,7 @@ Three consequences MUST be recorded:
 - Snapshot and dividend modules are absent; a snapshot is not reconstructable on-chain.
 - Delegation is a single-use authentication witness rather than a standing allowance.
 
-**Known limitations and planned work.** Batching is capped at one address per call by protocol limits. The sanction list is declared but its handler panics, so enabling that mode blocks every transfer and it must be treated as unusable. Scoped disclosure to an auditor or regulator, and event coverage, are recorded in the repository as future work. Aztec has no mainnet and its API still changes substantially between releases; this contract was migrated from Aztec 0.63.1 to 5.2.0 as an effectively complete rewrite.
+**Known limitations and planned work.** Batching is capped at one address per call by protocol limits. There is no sanction-list mode, for lack of an on-chain register to screen against. Scoped disclosure to an auditor or regulator, and event coverage, are recorded in the repository as future work. Aztec has no mainnet and its API still changes substantially between releases; this contract was migrated from Aztec 0.63.1 to 5.2.0 as an effectively complete rewrite.
 
 **No mandatory criterion is answered `n`**, so under the rule stated in the template the implementation should be considered equivalent to CMTAT, subject to accepting the two mandatory `partial` answers on freeze and unfreeze. The three mandatory gaps recorded in earlier revisions of this assessment — deactivation, its status, and the reference to legally required documentation — have been implemented on the CMTAT Solidity model. What remains outstanding is not a mandatory criterion at all, but the optional ones that cannot be met in this design: forced transfer, forced burn and partial freeze, because the issuer cannot nullify another holder's notes. A reader should not read "equivalent" as "carries every regulatory recovery power a security token is expected to have", and the implementation has not been audited.
 

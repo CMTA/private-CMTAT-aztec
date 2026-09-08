@@ -22,7 +22,6 @@ unconstrained fn set_operations_test() {
     let operations = SetFlag {
         operate_blacklist: true,
         operate_whitelist: false,
-        operate_sanctionlist: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -41,7 +40,6 @@ unconstrained fn transfer_when_blacklisted() {
     let operations = SetFlag {
         operate_blacklist: true,
         operate_whitelist: false,
-        operate_sanctionlist: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -57,7 +55,6 @@ unconstrained fn transfer_when_blacklisted() {
     let userFlag = UserFlags {
         is_blacklisted: true,
         is_whitelisted: false,
-        is_in_sanction_list: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, userFlag));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -79,7 +76,6 @@ unconstrained fn transfer_when_not_whitelisted() {
     let operations = SetFlag {
         operate_blacklist: false,
         operate_whitelist: true,
-        operate_sanctionlist: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -108,7 +104,6 @@ unconstrained fn transfer_when_whitelisted() {
     let operations = SetFlag {
         operate_blacklist: false,
         operate_whitelist: true,
-        operate_sanctionlist: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -119,7 +114,6 @@ unconstrained fn transfer_when_whitelisted() {
     let userFlag = UserFlags {
         is_blacklisted: false,
         is_whitelisted: true,
-        is_in_sanction_list: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(issuer, userFlag));
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, userFlag));
@@ -165,7 +159,6 @@ unconstrained fn can_remove_from_list_when_role() {
     let operations = SetFlag {
         operate_blacklist: false,
         operate_whitelist: true,
-        operate_sanctionlist: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -185,7 +178,6 @@ unconstrained fn can_remove_from_list_when_role() {
     let whitelisted = UserFlags {
         is_blacklisted: false,
         is_whitelisted: true,
-        is_in_sanction_list: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(issuer, whitelisted));
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, whitelisted));
@@ -194,7 +186,6 @@ unconstrained fn can_remove_from_list_when_role() {
     let cleared = UserFlags {
         is_blacklisted: false,
         is_whitelisted: false,
-        is_in_sanction_list: false,
     };
     env.call_public(issuer, Token::at(token_contract_address).remove_from_list(user, cleared));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
