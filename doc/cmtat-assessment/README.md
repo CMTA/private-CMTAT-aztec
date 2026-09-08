@@ -1,0 +1,413 @@
+# CMTAT Equivalency Assessment — private CMTAT on Aztec
+
+> This document is a **filled copy** of the [CMTAT Equivalency Assessment Criteria](https://github.com/CMTA/CMTAT-equivalency-assessment) template, completed for the Aztec implementation in this repository. Columns 1–5 of every criteria table are the template's pre-filled reference data about CMTAT Solidity and MUST NOT be modified; columns 6–8 are the answers for this implementation.
+>
+> **This implementation has not been audited.** The answers below describe what the code does, not an assurance that it does so correctly.
+
+## Table of Contents
+
+- [Document Version](#document-version)
+- [Metadata](#metadata)
+- [Summary](#summary)
+  - [Scope of the count](#scope-of-the-count)
+  - [Answer values](#answer-values)
+  - [Compliance table](#compliance-table)
+- [CMTAT Function Equivalency Table](#cmtat-function-equivalency-table)
+  - [Token Attributes](#token-attributes)
+  - [Token module](#token-module)
+  - [Pause module (mandatory)](#pause-module-mandatory)
+  - [Enforcement](#enforcement)
+  - [Transfer restriction (optional)](#transfer-restriction-optional)
+  - [Access Control](#access-control)
+  - [Snapshot (optional)](#snapshot-optional)
+  - [Dividend (optional)](#dividend-optional)
+  - [Credit Events (optional)](#credit-events-optional)
+  - [Debt (optional)](#debt-optional)
+- [Guideline sections](#guideline-sections)
+  - [Freeze](#freeze)
+  - [Restriction (optional)](#restriction-optional)
+  - [Version](#version)
+  - [CMTAT Extended](#cmtat-extended)
+  - [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer)
+  - [Implementation Details](#implementation-details)
+  - [Self-Burn](#self-burn)
+  - [Cross-Chain Bridge Support](#cross-chain-bridge-support)
+  - [Privacy and Confidentiality](#privacy-and-confidentiality)
+- [Supplementary features](#supplementary-features)
+- [Conclusion](#conclusion)
+- [Reference](#reference)
+
+## Document Version
+
+| Version | Value |
+|---|---|
+| Template version — this document, as published by CMTA; pre-filled, MUST NOT be modified by the author of an assessment | `v0.3.0` |
+| Assessment version — the filled document, set by its author | `0.1.0-rc1` |
+
+> The assessment version is below `1.0` and carries an `rc` suffix: this is a **draft**. It is filled against an implementation that is itself a prototype and has not been audited.
+
+## Metadata
+
+| Field | Value |
+|---|---|
+| Implementation name | private CMTAT on Aztec (`CMTAToken`) |
+| Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
+| Implementation language | Noir / Aztec.nr v5.2.0 |
+| Implementation version | `0.3.0` (unreleased; the contract exposes no `version()` — see criterion 6) |
+| Source repository and commit | https://github.com/taurushq-io/private-CMTAT-aztec — `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
+| Assessment date | 2026-09-08 |
+| Assessed by | *(to be completed by the assessor)* |
+
+## Summary
+
+### Scope of the count
+
+| Category | Count | IDs |
+|---|---:|---|
+| Mandatory | 19 | 1–3, 7–11, 14–21, 29–31 |
+| Optional | 42 | 4–6, 12–13, 22–28, 32–61 |
+
+### Answer values
+
+| Value | Meaning |
+|---|---|
+| `y` | **Present** — an equivalent feature exists and covers the requirement, even if the name, the signature, or the chain-level mechanism differs from CMTAT Solidity. |
+| `partial` | **Partial** — an equivalent feature exists but covers only a part of the requirement, or covers it with a restriction, a different access control model, or different semantics. |
+| `n` | **Absent** — no equivalent feature is available in the implementation being approved. |
+
+### Compliance table
+
+| Answer         | Mandatory (19) | Optional (42) |
+| -------------- | -------------: | ------------: |
+| Present (`y`)  |             14 |            18 |
+| Partial        |              2 |             1 |
+| Absent (`n`)   |              3 |            23 |
+
+> **This implementation is NOT equivalent to CMTAT**: three mandatory criteria are answered `n` (2, 17, 18). The criterion for equivalency — no mandatory criterion answered `n` — is not met.
+
+#### Note
+
+**Mandatory `n` answers**
+
+> *Criterion 2 (Reference to legally required documentation) — Absent: the contract stores no `terms`, no document reference and no document hash. Nothing in the design prevents it: a `PublicImmutable<FieldCompressedString>` or a document module would carry a URI and hash the same way the `name` and `symbol` attributes are carried today. It is simply not implemented, and it is the cheapest of the three gaps to close.*
+
+> *Criterion 17 (Deactivate contract) — Absent: there is no `deactivateContract` entry point. The nearest compensating measure is an indefinite pause, which blocks every mint, transfer and burn because each private entry point enqueues a public call asserting the contract is not paused. That is reversible by anyone holding `PAUSE_ROLE`, so it is not a permanent deactivation. Aztec contracts are also not upgradeable here, so the "upgradeability pattern" exemption in the criterion does not apply.*
+
+> *Criterion 18 (Know deactivate status) — Absent: follows from criterion 17. The pause status is publicly readable via `public_get_pause`, so an observer can tell the token is halted, but cannot distinguish a temporary pause from a permanent deactivation.*
+
+**Mandatory `partial` answers**
+
+> *Criteria 19 and 20 (Freeze / Unfreeze) — Partial: `freeze` and `unfreeze` exist and are restricted to `ENFORCEMENT_ROLE`, but the flag is stored in a `DelayedPublicMutable`, so a change takes effect only after `CHANGE_ROLES_DELAY_SECONDS` (currently 360 s) rather than immediately. Until the delay elapses, the private transfer path still reads the old value and a holder about to be frozen can still move tokens. The delay is not a defect of the implementation but a consequence of the chain: a private function cannot read mutable public state without a delay that lets the circuit prove the value is stable, and reading it any other way would leak the caller's address. The compensating measure available to an issuer is to pause the token, freeze, wait out the delay, then unpause. This is documented in the repository README under "Limitations".*
+
+**Optional `partial` answer**
+
+> *Criterion 13 (Approve) — Partial: delegation exists, but as an Aztec authentication witness rather than a standing ERC-20 allowance. An authwit authorises one exact call (target, selector, arguments and nonce), is consumed by a nullifier on use, and can be revoked before use with `cancel_authwit`. It therefore covers delegated spending, which is what the criterion is for, but it cannot express "this spender may move up to X over time": a new witness is required per operation. Secondary-market flows that assume a persistent allowance would need adapting.*
+
+**Optional modules left out by design**
+
+> *Snapshot (criteria 32–37) and Dividend (criteria 38–43) are absent as whole modules — 12 of the 23 optional `n` answers. Snapshot in particular is not merely unimplemented: balances are UTXO notes held in each holder's own PXE, and there is no vantage point from which the contract can enumerate holders or sum balances at a past block. A snapshot would have to be reconstructed off-chain by the issuer from its copies of the notes.*
+
+> *Forced transfer (criterion 22) and the partial-freeze family (criteria 23–25) are absent for a cryptographic reason rather than a scheduling one: spending a note requires its owner's nullifier key, so the issuer cannot move or lock another holder's tokens. See [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer).*
+
+> *Conditional transfer (criteria 26–27) is absent; the validation module offers list-based restriction only.*
+
+> *Debt attributes 50, 52 and 54 (unique identifier/hash, currency of payments, minimum denomination) are absent: the remaining eleven debt attributes are present in `DebtBaseStruct`, but these three have no field. Adding them is a struct change plus a storage-layout break.*
+
+## CMTAT Function Equivalency Table
+
+### Token Attributes
+
+#### Mandatory
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 1 | Name attribute | ERC20 `name` | Public (`view`) |  | `y` | Public (`view`), in both contexts | `public_get_name()` and `private_get_name()`. Stored as a `PublicImmutable<FieldCompressedString>` set in the constructor; a `PublicImmutable` is readable from private functions, which is why a private variant exists. Not mutable post-deployment. |
+| 2 | Reference to legally required documentation | `terms` | Public (`view`) |  | `n` | — | No `terms`, document URI or document hash is stored. See the note in the [Compliance table](#compliance-table). |
+| 3 | Decimals (no fractions by default) | ERC20 `decimals` | Public (`view`) | - Decimals MUST be set to zero unless governing law permits fractions.<br />- The value MUST be readable, since a holder cannot interpret a balance without it.<br />- CMTAT Solidity allows configurable decimals at deployment | `y` | Public (`view`), in both contexts | `public_get_decimals()` / `private_get_decimals()`. `PublicImmutable<u8>` set at deployment, so configurable per issuance as CMTAT Solidity allows. |
+
+#### Optional
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 4 | Ticker symbol attribute | ERC20 `symbol` | Public (`view`) | Optional in the CMTA framework, which lists the attribute as "Ticker symbol (optional)". | `y` | Public (`view`), in both contexts | `public_get_symbol()` / `private_get_symbol()`, `PublicImmutable<FieldCompressedString>` set at deployment. |
+| 5 | Token ID attribute | `tokenId` | Public (`view`) | Optional parameter. | `n` | — | Not stored. |
+| 6 | Version attribute | `version()` (`IERC3643Version`, implemented by `VersionModule`) | Public (`view`) | Returns the version of the token implementation, for example `"3.2.0"`. In CMTAT Solidity the value is a constant of the contract code: it changes only through a new deployment or an upgrade, and it is not settable at runtime. | `n` | — | The contract exposes no version. An off-chain observer identifies the deployed code by its Aztec **contract class ID**, which is chain-native metadata derived from the compiled artifact — see [Version](#version). |
+
+### Token module
+
+#### Mandatory
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 7 | Know total supply | ERC20 `totalSupply` | Public (`view`) |  | `y` | Public (`view`) | `total_supply()` reads a `PublicMutable<u128>`. **Deliberately public**, and updated by the enqueued public half of every mint and burn — see [Privacy and Confidentiality](#privacy-and-confidentiality). |
+| 8 | Know balance | ERC20 `balanceOf` | Public (`view`) |  | `y` | The holder, and the issuer | `balance_of_private(owner)`, an `#[external("utility")]` function summing the owner's `UintNote`s in their PXE. Not publicly readable — this is the core privacy property of the implementation, and matches the CMTAT framework wording that only the issuer and the holder should know a balance. |
+| 9 | Transfer tokens | ERC20 `transfer` | Token holder (`msg.sender`) |  | `y` | Token holder, or a delegate holding an authwit | `transfer(from, to, amount, authwit_nonce)`, `#[external("private")]`. `transfer_batch` exists but is capped at one recipient per call by protocol limits. |
+| 10 | Create tokens | `mint` / `batchMint` | Role-restricted (issuer/minter authorized) |  | `y` | `MINTER_ROLE` | `mint(to, amount)` and `mint_batch(accounts, amounts)`. The role check runs in the enqueued public half (`_mint`), because roles live in public state. No authwit: only the minter may mint. |
+| 11 | Cancel tokens | `burn` / `batchBurn` / `burnFrom` | Role-restricted (issuer/burner authorized) | Implementations SHOULD use a dedicated issuer/authorized burn path for forced cancellation scenarios. | `y` | `BURNER_ROLE`, plus an authwit from the holder when the caller is not the holder | `burn(from, amount, authwit_nonce)` and `burn_batch(from, amounts, authwit_nonce)`. The holder's consent is cryptographically required, not merely policy — see criterion 12 and [Self-Burn](#self-burn). |
+
+#### Optional
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 12 | User-approved cancellation | `burnFrom(address account, uint256 value)` | Role-restricted (`BURNER_FROM_ROLE`) **and** an ERC-20 allowance granted by the token holder | The token holder authorizes the cancellation with an `approve`, and the issuer, or an address it has authorized such as a bridge, performs it. It lets the issuer distinguish a cancellation made to manage supply from one made to carry out a court order. Cancellation by the issuer alone is criterion 11; cancellation by the holder alone is not offered by default — see [Self-Burn](#self-burn). | `y` | `BURNER_ROLE` **and** an authwit granted by the holder | This is the *only* burn path available to the issuer: `burn` with `authwit_nonce != 0` requires a witness signed by `from`. The dual control the criterion describes — role plus holder authorisation — is therefore always enforced here, whereas in CMTAT Solidity criterion 11 offers a path without it. |
+| 13 | Approve | ERC20 `approve(address spender, uint256 value)` | Token holder | Grants a delegate permission to transfer a specific amount of tokens from the token account. This is optional, but implementations SHOULD include it since secondary market capability may depend on delegated approval to automate trading and settlement for regulated entities. Issuers SHOULD consult relevant trading and settlement venues if listing is contemplated. | `partial` | Token holder | Authentication witnesses, not allowances. Single-use, bound to one exact call, nullified on use, revocable with `cancel_authwit(inner_hash)`. No standing per-spender amount. See the note in the [Compliance table](#compliance-table). |
+
+### Pause module (mandatory)
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 14 | Pause tokens | `pause` | Role-restricted (pauser/admin authorized) | Pause must prevent all transfers until `unpause` is called. | `y` | `PAUSE_ROLE` | `pause_contract()`. Effective immediately, because the flag is a `PublicMutable<bool>` checked in the enqueued public half of mint, transfer and burn. A revert there reverts the whole transaction. |
+| 15 | Unpause tokens | `unpause` | Role-restricted (pauser/admin authorized) |  | `y` | `PAUSE_ROLE` | `unpause_contract()`. Reverts if the contract is not paused. |
+| 16 | Know pause status | `paused()` | Public (`view`) | Any person MUST be able to determine whether the token is paused; a pause that cannot be read leaves a holder unable to tell why a transfer was refused. | `y` | Public (`view`) | `public_get_pause()` returns `1` or `0`. |
+| 17 | Deactivate contract | `deactivateContract` | Role-restricted (admin authorized) | Must permanently disable the token (except in upgradeability patterns where deactivation behavior is explicitly defined). | `n` | — | Not implemented. See the note in the [Compliance table](#compliance-table). |
+| 18 | Know deactivate status | `deactivated()` | Public (`view`) | Any person MUST be able to determine whether the token has been deactivated. In CMTAT Solidity the function is declared by the draft `IERC8343` interface. | `n` | — | Not implemented; follows from criterion 17. |
+
+### Enforcement
+
+#### Mandatory
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 19 | Freeze | `freeze` or `setAddressFrozen(true)` *(inferred from extracted PDF text)* | Role-restricted (compliance/admin authorized) | Must block transfers to and from a given address. Single-function implementations are acceptable if they set a frozen status. | `partial` | `ENFORCEMENT_ROLE` | `freeze(user, FreezableFlag { is_freezed: true })`. Blocks both directions: the private internal half of mint, transfer and burn asserts `Frozen: Sender` / `Frozen: Recipient`. **Takes effect only after `CHANGE_ROLES_DELAY_SECONDS`** — see the note in the [Compliance table](#compliance-table). |
+| 20 | Unfreeze | `unfreeze` or `setAddressFrozen(false)` *(inferred from extracted PDF text)* | Role-restricted (compliance/admin authorized) | Single-function implementations are acceptable if they clear a frozen status. | `partial` | `ENFORCEMENT_ROLE` | `unfreeze(user, FreezableFlag { is_freezed: false })`. Same delay. Implemented as two functions rather than one setter, which the template explicitly permits — see [Freeze](#freeze). |
+| 21 | Know frozen status | `isFrozen(address account)` | Public (`view`) | Any person MUST be able to determine whether a given address is frozen. On a ledger providing confidentiality the reading MAY be restricted to the issuer, the holder concerned and the third parties the issuer authorizes — see [Privacy and Confidentiality](#privacy-and-confidentiality). | `y` | Public (`view`) | `get_frozen(user)` returns `1` or `0`. The flag is public even though balances are not; the template allows restricting it on a confidential ledger, but this implementation does not. |
+
+#### Optional
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 22 | Enforce a transfer | `forcedTransfer(address from, address to, uint256 value)` | Role-restricted (operator/compliance authorized) | Enforcement transfer is performed via `forcedTransfer`. | `n` | — | **Cryptographically impossible in this design**, not merely unimplemented — see [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer). |
+| 23 | Partial freeze | `freezePartialTokens(address account, uint256 value)` / `unfreezePartialTokens(address account, uint256 value)` | Role-restricted (operator/compliance authorized) | Intended only to block a sold amount to avoid double-spend during settlement. | `n` | — | Freezing is all-or-nothing per address. Locking part of a balance would require the contract to reason about note amounts it cannot read. |
+| 24 | Know active balance | `getActiveBalanceOf(address account)` | Public (`view`) | The balance the holder can still transfer, that is the total balance less the partially frozen amount. Only meaningful where partial freeze (criterion 23) is offered. | `n` | — | Only meaningful with criterion 23. |
+| 25 | Know frozen balance | `getFrozenTokens(address account)` | Public (`view`) | The partially frozen amount held on an address. Declared by the draft `IERC7943` interface in CMTAT Solidity. On a ledger providing confidentiality the reading MAY be restricted in the same way as the frozen status (criterion 21). | `n` | — | Only meaningful with criterion 23. |
+
+### Transfer restriction (optional)
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 26 | Conditional transfer request | `RuleConditionalTransferLight.detectTransferRestriction(from, to, value)` / `detectTransferRestrictionFrom(spender, from, to, value)` and `approvedCount(from, to, value)` | Public (`view`) | Request is represented by a transfer restricted until approval count is non-zero. | `n` | — | No per-transfer approval workflow. |
+| 27 | Conditional transfer approval | `RuleConditionalTransferLight.approveTransfer(from, to, value)` (or `approveAndTransferIfAllowed`) | Role-restricted (compliance/approver authorized) | Approval is consumed on transfer via `transferred(...)`; cancellation via `cancelTransferApproval(...)`. | `n` | — | See criterion 26. |
+| 28 | Assign to whitelist | CMTAT Allowlist: `setAddressAllowlist(account, status)`, `batchSetAddressAllowlist(accounts, status)`, `isAllowlisted(account)`; Rules whitelist: `addAddress`, `removeAddress`, `addAddresses`, `removeAddresses`, `isAddressListed` | Role-restricted for setters; public (`view`) for checks | CMTAT Allowlist and Rules whitelist are alternative whitelist implementations. | `y` | `ADDRESS_LIST_ADD_ROLE` to add, `ADDRESS_LIST_REMOVE_ROLE` to remove, `VALIDATION_ROLE` to switch the mode on; public read | `add_to_list(address, UserFlags)` / `remove_from_list(address, UserFlags)`, with `set_operations(SetFlag)` choosing which list is enforced and `get_operations()` reading it back. Blacklist and whitelist share one module; the rule engine of CMTAT Solidity is merged into it rather than being an external contract. List changes carry the same `CHANGE_ROLES_DELAY_SECONDS` delay as the freeze flag. |
+
+### Access Control
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 29 | Grant role | `grantRole(bytes32 role, address account)` (OpenZeppelin AccessControl via CMTAT/Rules modules) | Role admin (`DEFAULT_ADMIN_ROLE` or role admin) | Used for roles such as `ALLOWLIST_ROLE`, `DEBT_ROLE`, `OPERATOR_ROLE`, `COMPLIANCE_MANAGER_ROLE`. | `y` | `DEFAULT_ADMIN_ROLE` | `grant_role(role, account)`. Roles are numeric `Field` globals rather than `bytes32` hashes: `DEFAULT_ADMIN_ROLE` 1, `PAUSE_ROLE` 2, `ENFORCEMENT_ROLE` 3, `VALIDATION_ROLE` 4, `ADDRESS_LIST_ADD_ROLE` 5, `ADDRESS_LIST_REMOVE_ROLE` 6, `MINTER_ROLE` 7, `BURNER_ROLE` 8, `DEBT_ROLE` 9, `DEBT_CREDIT_EVENT_ROLE` 10. Emits a `NewRole` public event. |
+| 30 | Revoke role | `revokeRole(bytes32 role, address account)` | Role admin (`DEFAULT_ADMIN_ROLE` or role admin) | AccessControl role removal. | `y` | `DEFAULT_ADMIN_ROLE` | `revoke_role(role, account)`. Refuses to revoke from the caller itself. `renounce_role(role, callerConfirmation)` lets a holder drop its own role. |
+| 31 | Role attribution | `hasRole(bytes32 role, address account)` / `getRoleAdmin(bytes32 role)` | Public (`view`) | In CMTAT `AccessControlModule`, `DEFAULT_ADMIN_ROLE` is treated as having all roles in `hasRole`. | `y` | Public (`view`) | `has_role(role, account)` returns `1` or `0`. Two differences from CMTAT Solidity: `DEFAULT_ADMIN_ROLE` is **not** treated as implicitly holding every role, so `has_role` is an exact lookup; and `getRoleAdmin` is internal, returning `DEFAULT_ADMIN_ROLE` for every role, so the admin of a role cannot be changed. Note that because `DEFAULT_ADMIN_ROLE` administers itself, an admin can appoint another admin. |
+
+### Snapshot (optional)
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 32 | Schedule a snapshot | `scheduleSnapshot(uint256 time)` | Role-restricted (snapshot scheduler/admin authorized) | SnapshotEngine `ISnapshotScheduler`. | `n` | — | Module absent. See the note in the [Compliance table](#compliance-table) for why a snapshot is structurally hard here, not merely missing. |
+| 33 | Reschedule a snapshot | `rescheduleSnapshot(uint256 oldTime, uint256 newTime)` | Role-restricted (snapshot scheduler/admin authorized) | `newTime` must stay between adjacent scheduled snapshots (not before previous / not after next). | `n` | — | Module absent. |
+| 34 | Unschedule a snapshot | `unscheduleLastSnapshot(uint256 time)` / `unscheduleSnapshotNotOptimized(uint256 time)` | Role-restricted (snapshot scheduler/admin authorized) | `unscheduleLastSnapshot` is restricted to the latest scheduled snapshot; `unscheduleSnapshotNotOptimized` supports generic unscheduling. | `n` | — | Module absent. |
+| 35 | Snapshot time | `getAllSnapshots()` / `getNextSnapshots()` | Public (`view`) | Returns created snapshot times and pending scheduled times. | `n` | — | Module absent. |
+| 36 | Snapshot total supply | `snapshotTotalSupply(uint256 time)` | Public (`view`) | `ISnapshotState`. | `n` | — | Module absent. Note that the *current* total supply is public (criterion 7), so a historical supply can be recovered from chain history even without the module. |
+| 37 | Snapshot balance | `snapshotBalanceOf(uint256 time, address tokenHolder)` | Public (`view`) | `ISnapshotState` (see also `snapshotInfo`). | `n` | — | Module absent, and not reconstructable on-chain: balances are notes in holders' PXEs. |
+
+### Dividend (optional)
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 38 | Distribution create parameters |  |  |  | `n` | — | Module absent. |
+| 39 | Distribution set eligibility |  |  |  | `n` | — | Module absent. |
+| 40 | Distribution set deposit |  |  |  | `n` | — | Module absent. |
+| 41 | Distribution claim deposit |  |  |  | `n` | — | Module absent. |
+| 42 | Distribution schedule |  |  |  | `n` | — | Module absent. |
+| 43 | Distribution unschedule |  |  |  | `n` | — | Module absent. |
+
+### Credit Events (optional)
+
+| ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 44 | Flag as default | `setCreditEvents(CreditEvents)` -> `creditEvents().flagDefault` | Role-restricted (issuer/compliance/admin authorized) | Managed in `ICMTATCreditEvents.CreditEvents`. | `y` | `DEBT_CREDIT_EVENT_ROLE` | `set_credit_events(CreditEventsStruct { flagDefault, flagRedeemed, rating })`. Stored as a single `PublicMutable<CreditEventsStruct>`; read with `get_credit_events()`, which returns the three fields serialized. |
+| 45 | Remove default flag | `setCreditEvents(CreditEvents)` with `flagDefault = false` | Role-restricted (issuer/compliance/admin authorized) | Same function as ID 44 with a different value. | `y` | `DEBT_CREDIT_EVENT_ROLE` | Same entry point with `flagDefault: false`. As in CMTAT Solidity, the setter writes all three attributes at once, so a caller MUST re-supply the values it wants to keep. |
+| 46 | Flag as redeemed | `setCreditEvents(CreditEvents)` -> `creditEvents().flagRedeemed` | Role-restricted (issuer/compliance/admin authorized) | Managed in `ICMTATCreditEvents.CreditEvents`. | `y` | `DEBT_CREDIT_EVENT_ROLE` | Same entry point. |
+| 47 | Set rating | `setCreditEvents(CreditEvents)` -> `creditEvents().rating` | Role-restricted (issuer/compliance/admin authorized) | Managed in `ICMTATCreditEvents.CreditEvents`. | `y` | `DEBT_CREDIT_EVENT_ROLE` | Same entry point. `rating` is a `FieldCompressedString`, so it is capped at 31 characters. |
+
+### Debt (optional)
+
+All debt attributes are fields of a single `DebtBaseStruct` held in a `PublicMutable`, written by `set_debt_base(DebtBaseStruct)` under `DEBT_ROLE` and read by `get_debt_base()`. As with credit events, the setter replaces the whole struct. String-typed fields are `FieldCompressedString` and therefore capped at 31 characters each.
+
+| ID | Attribute | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|---|---|---|
+| 48 | Guarantor identifier | `debt().debtIdentifier.guarantor` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.guarantor` (`FieldCompressedString`). |
+| 49 | Debtholder representative identifier | `debt().debtIdentifier.debtHolder` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.bondHolder` (`FieldCompressedString`). |
+| 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `n` | — | Neither `tokenId` (criterion 5) nor a document hash (criterion 2) is stored. |
+| 51 | Issuance date | `debt().debtInstrument.issuanceDate` (set via `setDebt` / `setDebtInstrument`) | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`ICMTATDebt.DebtInstrument`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.issuanceDate` (`FieldCompressedString`). |
+| 52 | Currency of payments | `debt().debtInstrument.currency` / `debt().debtInstrument.currencyContract` | Read: public (`view`); write: role-restricted (`setDebt*`) | Supports symbol-like string and token/asset contract address. | `n` | — | No currency field. |
+| 53 | Par value | `debt().debtInstrument.parValue` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.parValue` (`Field`). |
+| 54 | Minimum denomination | `debt().debtInstrument.minimumDenomination` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `n` | — | No field. |
+| 55 | Maturity date | `debt().debtInstrument.maturityDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.maturityDate` (`FieldCompressedString`). |
+| 56 | Interest rate | `debt().debtInstrument.interestRate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestRate` (`Field`). |
+| 57 | Coupon payment frequency | `debt().debtInstrument.couponPaymentFrequency` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.couponFrequency` (`FieldCompressedString`). |
+| 58 | Interest schedule format: A) start date/end date/period; B) start date/end date/day of period; C) date 1/date 2/date 3 | `debt().debtInstrument.interestScheduleFormat` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestScheduleFormat` (`FieldCompressedString`). |
+| 59 | Interest payment date: A) period; B) specific date | `debt().debtInstrument.interestPaymentDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestPaymentDate` (`FieldCompressedString`). |
+| 60 | Day count convention | `debt().debtInstrument.dayCountConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.dayCountConvention` (`FieldCompressedString`). |
+| 61 | Business day convention | `debt().debtInstrument.businessDayConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.businessDayConvention` (`FieldCompressedString`). |
+
+## Guideline sections
+
+> The tables in this part of the template are **outside the equivalency count**.
+
+### Freeze
+
+The template permits non-EVM implementations to split the ERC-3643 single setter into two functions. This implementation takes that option: `freeze(user, value)` and `unfreeze(user, value)`, each guarded by `ENFORCEMENT_ROLE`. Both still take the flag value as an argument, so the pair is closer to two guarded setters than to two verbs; `freeze` additionally asserts the address is not already frozen, and `unfreeze` that it is.
+
+### Restriction (optional)
+
+Of the CMTAT Solidity rule catalogue, this implementation offers only list membership, and it lives **inside the token** rather than behind an external rule engine.
+
+| Restriction | CMTAT Solidity rule | Present in implementation being approved (`y/partial/n`) | Implementation details |
+|---|---|---|---|
+| Whitelist | `RuleWhitelist` | `y` | `UserFlags.is_whitelisted`, enforced on both parties of a transfer when `SetFlag.operate_whitelist` is on. |
+| Aggregated whitelists | `RuleWhitelistWrapper` | `n` | — |
+| Receiver whitelist | `RuleReceiverWhitelist` | `n` | Both parties are always checked; the receiver cannot be screened alone. |
+| Spender whitelist | `RuleSpenderWhitelist` | `n` | The authwit delegate is not screened. |
+| Blacklist | `RuleBlacklist` | `partial` | `UserFlags.is_blacklisted` blocks a listed sender or receiver on transfer. It is **not** applied to mint or burn, unlike `RuleBlacklist`. |
+| Sanctions list | `RuleSanctionsList` | `n` | `SANCTIONLIST_FLAG` and `UserFlags.is_in_sanction_list` are declared, and `operateOnTransfer` routes to a handler that unconditionally panics with `not implemented.`. Enabling `operate_sanctionlist` therefore **blocks every transfer** — fail-closed by accident rather than by design. It should be treated as unusable until implemented. |
+| Whitelist and frozen list (ERC-2980) | `RuleERC2980` | `n` | Freeze and lists are separate mechanisms here. |
+| Identity registry | `RuleIdentityRegistry` | `n` | — |
+| Maximum total supply | `RuleMaxTotalSupply` | `n` | No supply cap. |
+| Reserve-backed supply cap | `RuleChainlinkPoR` | `n` | No oracle integration. |
+| Maximum balance per address | `RuleMaxBalance` | `n` | Not expressible: the contract cannot read a holder's balance. |
+| Conditional transfer | `RuleConditionalTransferLight` | `n` | Criteria 26–27. |
+| Per-minter quota | `RuleMintAllowance` | `n` | — |
+
+**Order and failure mode.** `operateOnTransfer` evaluates exactly one mode per transfer, in the order blacklist, then whitelist, then sanction list, taking the first that is enabled — they do not compose. If no mode is enabled, no check runs. A rejected transfer **reverts**; there is no ERC-1404-style restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it. Because the flags are `DelayedPublicMutable`, a newly listed address is only screened after the delay.
+
+### Version
+
+Not implemented (criterion 6). On Aztec, the deployed code is identified by its **contract class ID**, a hash of the compiled artifact registered on-chain, and each deployment is a contract instance of that class. An observer can therefore determine which code is live from chain-native metadata without a `version()` entry point, but cannot read a semantic version. Since the contract is not upgradeable, the class ID cannot change under a live address, so the binding is stable. Adding a `PublicImmutable<FieldCompressedString>` set in the constructor would satisfy the criterion at negligible cost.
+
+### CMTAT Extended
+
+| CMTAT Functionalities | CMTAT Solidity corresponding features | Present in implementation being approved (`y/partial/n`) | Implementation details |
+|---|---|---|---|
+| On-chain snapshot | `snapshotModule` and `snapshotEngine` | `n` | Criteria 32–37. |
+| Forced transfer | `forcedTransfer` | `n` | Criterion 22; impossible by construction. |
+| Forced burn | `forcedBurn` | `n` | Burning always requires the holder's authwit. |
+| Freeze partial token | `freezePartialTokens` | `n` | Criteria 23–25. |
+| Integrated whitelisting/allowlisting | CMTAT Allowlist | `y` | The validation module is integrated in the token, not an external contract. |
+| External whitelisting/allowlisting | CMTAT with rule whitelist | `n` | No external rule contract is supported. |
+| RuleEngine / transfer hook | CMTAT with RuleEngine | `n` | Merged into the validation module; there is no pluggable hook. |
+| Upgradeability | CMTAT Upgradeable version | `n` | Not implemented. A change of contract logic means a new deployment and a migration of holders — and because private balances are notes in each holder's PXE rather than contract storage, that migration cannot be performed by the issuer alone. |
+| Fee payer / gasless | CMTAT with ERC-2771 module | `partial` | No ERC-2771 meta-transaction module, but Aztec provides fee abstraction natively: a **Fee Payment Contract** can pay a user's fee, and the repository's scripts and tests use the sponsored FPC for exactly this. The payer is chosen per transaction by the sender, not configured in the token, so the token itself carries no gasless logic. |
+
+### Forced Burn and Forced Transfer
+
+Neither is available, and the reason is cryptographic rather than a design preference.
+
+A private balance is a set of notes. Spending a note means publishing its **nullifier**, which is derived from the note and its owner's nullifying key. The issuer does not hold that key, so it cannot nullify a holder's notes — no role, and no contract logic, can grant that ability. `forcedTransfer` and `forcedBurn` are therefore not implementable in this design, and `burn` always requires an authwit from the holder.
+
+The compensating measure the repository documents is **freeze**: an issuer that must immobilise a position freezes the address, which blocks transfers in both directions after the delay. Where the tokens must also be removed from circulation, the README notes that a permanently frozen holding can be written off by reducing the public total supply, since the issuer knows the holder's balance from its note copies — an accounting remedy, not a transfer.
+
+The repository also records the theoretical escape: if the token were implemented at the account-contract level and the issuer held a shared nullifier for the account holding these notes, forced operations would become possible. That is a different trust model and is not implemented.
+
+### Implementation Details
+
+| Functionalities | CMTAT Solidity | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
+|---|---|---|---|---|
+| Mint while pause | ✔ | `n` | — | **Differs from CMTAT Solidity.** `_mint` asserts the contract is not paused, so a pause blocks minting too. |
+| Burn while pause | ✔ | `n` | — | **Differs from CMTAT Solidity.** `_burn` carries the same assertion. |
+| Self-Burn for everyone | ✘ | `n` | — | A holder cannot burn unilaterally: `burn` also requires `BURNER_ROLE` on the caller. |
+| Self-Burn for authorized addresses | ✔ | `y` | `BURNER_ROLE` | A holder that also holds `BURNER_ROLE` burns its own tokens with `authwit_nonce = 0`. |
+| Standard burn on a frozen address | ✘ | `n` | — | `_burn_internal` asserts the address is not frozen, and there is no forced path — so a frozen holding cannot be cancelled at all. This is a stricter position than CMTAT Solidity, which offers `forcedBurn` for exactly this case. |
+| Burn tokens with `forcedTransfer` | ✔ | `n` | — | No `forcedTransfer`. |
+
+### Self-Burn
+
+Self-burn in the CMTA sense — the holder cancelling alone — is **not** offered. `burn` requires `BURNER_ROLE`, so a holder without that role cannot burn even its own tokens, matching CMTAT Solidity's default and the legal reasoning behind it.
+
+What the implementation does guarantee, and CMTAT Solidity does not, is the converse: the issuer cannot burn **without** the holder, because the holder's authwit is cryptographically required. Every cancellation is therefore jointly authorised. An issuer that needs unilateral cancellation for a court order cannot obtain it in this design; see [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer).
+
+### Cross-Chain Bridge Support
+
+Not supported, and outside the equivalency count. The token has no bridge role, no dedicated cross-chain mint or burn entry point, and no ERC-7802 or CCIP equivalent. `mint` and `burn` are not reused for a bridge path, so the template's warning about bridge operations bypassing the pause check does not apply.
+
+Aztec's own L1↔L2 messaging exists at protocol level and could carry a burn-and-mint arrangement, but nothing in this contract uses it.
+
+### Privacy and Confidentiality
+
+Aztec is a privacy L2: a private function runs on the user's own device (in the **PXE**), and the network verifies a zero-knowledge proof of it. State is split in two. Private state is a set of **notes** — here `UintNote`s holding a `u128` amount — whose hashes are published on-chain while their contents are not; spending one publishes a **nullifier** derived from the note and its owner's key. Public state is an ordinary key-value store readable by anyone.
+
+This implementation deliberately keeps compliance state public and holdings private.
+
+#### Privacy table
+
+| Data | Visibility in CMTAT Solidity | Visibility in the implementation being approved | Available to the issuer (`y/n`) | Other readers | Implementation details |
+|---|---|---|---|---|---|
+| Balance of an address | `public` | `private` | `y` | The holder | Notes live in the holder's PXE. The issuer receives a copy of every note (see below), so it can reconstruct any holder's balance. Nobody else can. |
+| Transfer amount | `public` | `private` | `y` | Sender and recipient | Carried in encrypted note messages, never in public calldata. |
+| Transfer participants | `public` | `private` | `y` | Sender and recipient | The transaction reveals that *some* transfer occurred and its nullifiers and note hashes, but not who transacted with whom. |
+| Total supply | `public` | `public` | `y` | Everyone | `PublicMutable<u128>`, updated by the enqueued public half of mint and burn. **A deliberate design decision**: it makes the amount of every mint and burn inferable from the public delta, which is accepted so that supply remains auditable by anyone. |
+| Token decimals | `public` | `public` | `y` | Everyone | `PublicImmutable<u8>`. Same for `name` and `symbol`. |
+| Frozen / blacklisted addresses | `public` | `public` | `y` | Everyone | `get_frozen` is a public view, and the validation flags are public. The template would allow restricting these on a confidential ledger; this implementation does not, so an observer can see that a specific address has been frozen or listed even though it cannot see its balance. |
+| Allowlisted / whitelisted addresses | `public` | `public` | `y` | Everyone | As above, via the validation module's public state. |
+| Roles and role holders | `public` | `public` | `y` | Everyone | `has_role` is a public view. |
+| Pause status | `public` | `public` | `y` | Everyone | `public_get_pause`. |
+
+#### How the issuer retains visibility
+
+Every note this contract creates is delivered **twice**: once to the note's owner, and once to the address in `issuer_address`, using `deliver_to`. The issuer therefore receives the preimage of every note ever created for any holder and can reconstruct balances and the full transfer history. This is what allows the implementation to answer criterion 8 with the issuer as a reader, and it is the mechanism on which any off-chain snapshot or corporate action would be built.
+
+Three consequences MUST be recorded:
+
+- **The issuer's copy is delivered offchain, not onchain.** Aztec documents an onchain constrained copy to an auditor as the supported pattern, and the contract compiles that way, but the PXE cannot process an onchain note message addressed to someone who is not the note's owner — note discovery computes the note's nullifier, which needs the owner's key. The copy is therefore sent with `MessageDelivery::offchain()`. The issuer **must capture these messages as they are produced**; a sender who drops one is not detectable on-chain, and there is no on-chain data availability for the issuer's copy. This is the weakest point of the auditability guarantee and is documented in the repository README.
+- **The issuer is a single point of disclosure.** It sees every holding of every holder. There is no per-holder view key, no scoped disclosure to a regulator, and no way for a holder to prove its own balance to a third party without involving the issuer. Granting an auditor or a court a scoped read is listed as future work in the repository.
+- **Changing the issuer does not revoke past copies.** `issuer_address` is a `DelayedPublicMutable` and can be changed after the delay, but notes already delivered to the previous issuer remain readable by it.
+
+#### Consequences for the CMTAT features
+
+- **Total supply** is auditable by anyone because it is public, at the documented cost of leaking each mint and burn amount.
+- **Snapshot and dividend** would have to be computed off-chain by the issuer from its note copies; no on-chain module can enumerate holders.
+- **Freeze and list checks** are enforced *without* revealing balances, because the flags are public and are read in private functions through `DelayedPublicMutable` — which is precisely why those reads carry a delay. Making the lists private would remove the delay problem only by moving it, and would require a different construction.
+- **Forced transfer** cannot be recovered by any disclosure mechanism: reading a balance is not the same as being able to spend it, and only the owner's key can nullify a note.
+
+## Supplementary features
+
+- **Public holidays calendar** — `DebtBaseStruct.publicHolidaysCalendar`, a debt attribute with no counterpart among criteria 48–61.
+- **Authwit revocation** — `cancel_authwit(inner_hash)` lets a holder invalidate a granted authentication witness before it is used, by publishing its nullifier. CMTAT Solidity has no equivalent, because an ERC-20 allowance is revoked by overwriting it.
+- **Private reads of token attributes** — `private_get_name`, `private_get_symbol`, `private_get_decimals` and `private_get_issuer` allow a private function to read these values without a public call that would leak the caller's address.
+- **Batch entry points** — `mint_batch`, `transfer_batch` and `burn_batch` exist but are capped at `MAX_ADDR_PER_CALL = 1` by the per-call protocol limits (16 private logs and 8 nested private calls). The logic is written for larger batches and the cap can be raised as the limits allow.
+
+## Conclusion
+
+**Token model.** The token is a single Aztec contract, `CMTAToken`, written in Noir with Aztec.nr v5.2.0. There is no native token standard on Aztec comparable to ERC-20; the contract implements the CMTAT functions directly. A holder's balance is not a storage slot but a set of `UintNote`s (each a `u128`) held in that holder's own PXE, reached through an `Owned<BalanceSet>` state variable and summed by the utility function `balance_of_private`. Total supply, by contrast, is an ordinary `PublicMutable<u128>`, and `name`, `symbol` and `decimals` are `PublicImmutable` values fixed at deployment.
+
+**Architecture.** Noir has no inheritance, so the CMTAT modules are plain structs implementing the `StateVariable` trait and held as fields of one storage struct: access control, pause, enforcement (freeze), validation (lists), credit events and debt base. Every user-callable entry point must be re-declared in the contract itself; the module structs hold state and logic but are not independently callable. The contract is **not upgradeable**, and there is no proxy: changing the logic means deploying a new contract and migrating holders — which, because balances are notes in holders' PXEs rather than contract storage, the issuer cannot do unilaterally.
+
+**Access control.** Ten numeric roles in public state, administered by `DEFAULT_ADMIN_ROLE`, which administers itself and can therefore appoint further admins. Because the role table is public and a private function cannot read mutable public state, every private entry point that needs a role check enqueues a public call that performs it — which is also where the pause check runs. A revert in that public half reverts the whole transaction.
+
+**Transfer control flow.** A transfer runs in two halves. The private half checks that neither party is frozen, applies the validation module's list check, spends the sender's notes and creates the recipient's, delivering each note message to its owner and a copy to the issuer. The enqueued public half asserts the contract is not paused. Freeze and list flags are `DelayedPublicMutable`, so they are readable from the private half without leaking the caller — at the cost of a delay before any change to them takes effect. Delegated transfers use an authentication witness validated by the `#[authorize_once]` macro, which also nullifies the nonce to prevent replay.
+
+**Issuance and cancellation.** `mint` is restricted to `MINTER_ROLE` and takes no authwit. `burn` requires `BURNER_ROLE` **and**, whenever the caller is not the holder, an authwit from the holder — so every cancellation is jointly authorised. Both are blocked while the contract is paused, which differs from CMTAT Solidity, and both are blocked on a frozen address. There is no forced transfer and no forced burn.
+
+**Data and metadata storage.** Credit events and debt attributes are stored on-chain as packed structs in public state, written by role-restricted setters that replace the whole struct. String fields are `FieldCompressedString` and are limited to 31 characters. There is no document module, no `terms`, and no `tokenId`.
+
+**Main differences from CMTAT Solidity.**
+
+- Balances, transfer amounts and counterparties are private; total supply, compliance flags and roles are public.
+- The issuer receives a copy of every note, which is how auditability is preserved — but that copy is delivered off-chain, so its availability depends on the issuer capturing it.
+- Forced transfer, forced burn and partial freeze are absent because the issuer cannot nullify another holder's notes. This is the single largest functional gap and it is not closable within this design.
+- Freeze and list changes take effect only after a delay, a consequence of how private functions read mutable public state on Aztec.
+- Mint and burn are blocked while paused, where CMTAT Solidity allows them.
+- Snapshot and dividend modules are absent; a snapshot is not reconstructable on-chain.
+- Delegation is a single-use authentication witness rather than a standing allowance.
+
+**Known limitations and planned work.** Batching is capped at one address per call by protocol limits. The sanction list is declared but its handler panics, so enabling that mode blocks every transfer and it must be treated as unusable. Scoped disclosure to an auditor or regulator, and event coverage, are recorded in the repository as future work. Aztec has no mainnet and its API still changes substantially between releases; this contract was migrated from Aztec 0.63.1 to 5.2.0 as an effectively complete rewrite.
+
+**The implementation is not equivalent to CMTAT** under the rule stated in the template, because criteria 2, 17 and 18 are answered `n`. Criteria 2 (documentation reference) and 17–18 (deactivation and its status) are ordinary implementation gaps that could be closed without fighting the chain; the gaps that cannot be closed in this design are the optional ones — forced transfer, forced burn and partial freeze.
+
+## Reference
+
+| Item | Repository | Version | Commit |
+|---|---|---|---|
+| Implementation assessed | https://github.com/taurushq-io/private-CMTAT-aztec | `0.3.0` (unreleased) | `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
+| Assessment template | https://github.com/CMTA/CMTAT-equivalency-assessment | `v0.3.0` | `e2ddb6ee05354311fcf2c00f421f5a4f0fb94944` |
+| Aztec toolchain and aztec-nr | https://github.com/AztecProtocol/aztec-nr | `v5.2.0` | — |
+
+The template's own reference table lists the CMTA Solidity repositories the criteria are mapped against; they are not restated here.
