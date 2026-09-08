@@ -69,7 +69,7 @@ Noir has no inheritance and allows one contract per package, so the CMTAT varian
 | Access control, terms, token ID, version | ✔ | ✔ | ✔ |
 | Validation module (blacklist / whitelist) | ✘ | ✔ | ✔ |
 | Credit events (criteria 44–47) | ✘ | ✘ | ✔ |
-| Debt base (criteria 48–61) | ✘ | ✘ | ✔ |
+| Debt (criteria 48–61) | ✘ | ✘ | ✔ |
 
 Criteria 44–61 are answered `y` below because the feature exists in the implementation, in the variant built to carry it; an assessment of `CMTATAztec` or `CMTATAztecLight` alone would answer them `n`. An issuer deploying a bond deploys `CMTATAztecDebt`, exactly as a CMTAT Solidity issuer deploys CMTAT Debt rather than CMTAT Standard.
 
@@ -94,9 +94,9 @@ Criteria 44–61 are answered `y` below because the feature exists in the implem
 
 | Answer         | Mandatory (19) | Optional (42) |
 | -------------- | -------------: | ------------: |
-| Present (`y`)  |             19 |            21 |
+| Present (`y`)  |             19 |            23 |
 | Partial        |              0 |             1 |
-| Absent (`n`)   |              0 |            20 |
+| Absent (`n`)   |              0 |            18 |
 
 > **Every mandatory criterion is answered `y`.** Under the rule stated in this template, the implementation should be considered equivalent to CMTAT: no mandatory criterion is answered `n`, and none is answered `partial`.
 >
@@ -112,13 +112,13 @@ Criteria 44–61 are answered `y` below because the feature exists in the implem
 
 **Optional modules left out by design**
 
-> *Snapshot (criteria 32–37) and Dividend (criteria 38–43) are absent as whole modules — 12 of the 23 optional `n` answers. Snapshot in particular is not merely unimplemented: balances are UTXO notes held in each holder's own PXE, and there is no vantage point from which the contract can enumerate holders or sum balances at a past block. A snapshot would have to be reconstructed off-chain by the issuer from its copies of the notes.*
+> *Snapshot (criteria 32–37) and Dividend (criteria 38–43) are absent as whole modules — 12 of the 18 optional `n` answers. Snapshot in particular is not merely unimplemented: balances are UTXO notes held in each holder's own PXE, and there is no vantage point from which the contract can enumerate holders or sum balances at a past block. A snapshot would have to be reconstructed off-chain by the issuer from its copies of the notes.*
 
 > *Forced transfer (criterion 22) and the partial-freeze family (criteria 23–25) are absent because spending a note requires its owner's nullifier key, so the issuer cannot move or lock another holder's tokens — a different cause from the delay behind criteria 19 and 20. See [Forced Burn and Forced Transfer](#forced-burn-and-forced-transfer).*
 
 > *Conditional transfer (criteria 26–27) is absent; the validation module offers list-based restriction only.*
 
-> *Debt attributes 50, 52 and 54 (unique identifier/hash, currency of payments, minimum denomination) are absent: the remaining eleven debt attributes are present in `DebtBaseStruct`, but these three have no field. Adding them is a struct change plus a storage-layout break.*
+> *All fourteen debt criteria (48–61) are now answered `y`. The debt structs were realigned with the CMTAT Solidity `ICMTATDebt` interface, which added the fields behind criteria 52 (currency of payments) and 54 (minimum denomination); criterion 50 was already covered by `token_id()` and the terms document hash.*
 
 ## CMTAT Function Equivalency Table
 
@@ -364,39 +364,43 @@ The values are entirely public: an observer can read a token's default, redempti
 
 ### Debt (optional)
 
-All debt attributes are fields of a single `DebtBaseStruct` held in a `PublicMutable`, written by `set_debt_base(DebtBaseStruct)` under `DEBT_ROLE` and read by `get_debt_base()`. As with credit events, the setter replaces the whole struct. String-typed fields are `FieldCompressedString` and therefore capped at 31 characters each.
+The debt record is a single `PublicMutable<DebtInformation>`, and `DebtInformation` mirrors the Solidity `ICMTATDebt` interface exactly: a `DebtIdentifier` (who is involved) followed by a `DebtInstrument` (the terms). It is written by `set_debt(DebtInformation)` or `set_debt_instrument(DebtInstrument)` under `DEBT_ROLE` and read by `get_debt()`. As with credit events, a setter replaces everything it covers. String-typed fields are `FieldCompressedString` and therefore capped at 31 characters each.
 
 | ID | Attribute | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
 |---|---|---|---|---|---|---|---|
-| 48 | Guarantor identifier | `debt().debtIdentifier.guarantor` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.guarantor` (`FieldCompressedString`). |
-| 49 | Debtholder representative identifier | `debt().debtIdentifier.debtHolder` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.bondHolder` (`FieldCompressedString`). |
+| 48 | Guarantor identifier | `debt().debtIdentifier.guarantor` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtIdentifier.guarantor` (`FieldCompressedString`). |
+| 49 | Debtholder representative identifier | `debt().debtIdentifier.debtHolder` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtIdentifier.debtHolder` (`FieldCompressedString`). Renamed from `bondHolder` to match the Solidity field. |
 | 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `y` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | Both halves are now present: `token_id()` (criterion 5) and the terms document hash, `terms().documentHashHigh` / `documentHashLow` (criterion 2). |
-| 51 | Issuance date | `debt().debtInstrument.issuanceDate` (set via `setDebt` / `setDebtInstrument`) | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`ICMTATDebt.DebtInstrument`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.issuanceDate` (`FieldCompressedString`). |
-| 52 | Currency of payments | `debt().debtInstrument.currency` / `debt().debtInstrument.currencyContract` | Read: public (`view`); write: role-restricted (`setDebt*`) | Supports symbol-like string and token/asset contract address. | `n` | — | No currency field. |
-| 53 | Par value | `debt().debtInstrument.parValue` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.parValue` (`Field`). |
-| 54 | Minimum denomination | `debt().debtInstrument.minimumDenomination` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `n` | — | No field. |
-| 55 | Maturity date | `debt().debtInstrument.maturityDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.maturityDate` (`FieldCompressedString`). |
-| 56 | Interest rate | `debt().debtInstrument.interestRate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestRate` (`Field`). |
-| 57 | Coupon payment frequency | `debt().debtInstrument.couponPaymentFrequency` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.couponFrequency` (`FieldCompressedString`). |
-| 58 | Interest schedule format: A) start date/end date/period; B) start date/end date/day of period; C) date 1/date 2/date 3 | `debt().debtInstrument.interestScheduleFormat` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestScheduleFormat` (`FieldCompressedString`). |
-| 59 | Interest payment date: A) period; B) specific date | `debt().debtInstrument.interestPaymentDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.interestPaymentDate` (`FieldCompressedString`). |
-| 60 | Day count convention | `debt().debtInstrument.dayCountConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.dayCountConvention` (`FieldCompressedString`). |
-| 61 | Business day convention | `debt().debtInstrument.businessDayConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.businessDayConvention` (`FieldCompressedString`). |
+| 51 | Issuance date | `debt().debtInstrument.issuanceDate` (set via `setDebt` / `setDebtInstrument`) | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`ICMTATDebt.DebtInstrument`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.issuanceDate` (`FieldCompressedString`). |
+| 52 | Currency of payments | `debt().debtInstrument.currency` / `debt().debtInstrument.currencyContract` | Read: public (`view`); write: role-restricted (`setDebt*`) | Supports symbol-like string and token/asset contract address. | `y` | Read public; write `DEBT_ROLE` | Both halves: `DebtInstrument.currency` (`FieldCompressedString`) and `DebtInstrument.currencyContract` (`AztecAddress`). The address can only name a contract on Aztec, so a payment currency on another ledger has to be identified through the string. |
+| 53 | Par value | `debt().debtInstrument.parValue` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.parValue` (`Field`). |
+| 54 | Minimum denomination | `debt().debtInstrument.minimumDenomination` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.minimumDenomination` (`Field`). |
+| 55 | Maturity date | `debt().debtInstrument.maturityDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.maturityDate` (`FieldCompressedString`). |
+| 56 | Interest rate | `debt().debtInstrument.interestRate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.interestRate` (`Field`). |
+| 57 | Coupon payment frequency | `debt().debtInstrument.couponPaymentFrequency` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.couponPaymentFrequency` (`FieldCompressedString`). Renamed from `couponFrequency` to match the Solidity field. |
+| 58 | Interest schedule format: A) start date/end date/period; B) start date/end date/day of period; C) date 1/date 2/date 3 | `debt().debtInstrument.interestScheduleFormat` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.interestScheduleFormat` (`FieldCompressedString`). |
+| 59 | Interest payment date: A) period; B) specific date | `debt().debtInstrument.interestPaymentDate` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.interestPaymentDate` (`FieldCompressedString`). |
+| 60 | Day count convention | `debt().debtInstrument.dayCountConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.dayCountConvention` (`FieldCompressedString`). |
+| 61 | Business day convention | `debt().debtInstrument.businessDayConvention` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`string`). | `y` | Read public; write `DEBT_ROLE` | `DebtInstrument.businessDayConvention` (`FieldCompressedString`). |
 
 ##### Note
 
-All debt attributes live in one `PublicMutable<DebtBaseStruct>`, written by `set_debt_base` under `DEBT_ROLE` and read by `get_debt_base()`, which returns the twelve fields serialized. As with credit events, the setter **replaces the whole struct**, so a partial update requires re-supplying every field that must be preserved.
+The debt record lives in one `PublicMutable<DebtInformation>`, read by `get_debt()`, which returns the sixteen attributes serialized: the four `DebtIdentifier` fields first, then the twelve `DebtInstrument` fields, in the order of the Solidity structs.
 
-Eleven of the fourteen criteria map to a field directly. Three do not:
+**Two setters, as in CMTAT Solidity.**
 
-- **Currency of payments** (52) and **minimum denomination** (54) have no field at all.
-- **Unique identifier / hash** (50) is now `partial`: the document hash is available from `terms()` since the extra-information module was added, but `tokenId` (criterion 5) is still not stored.
+- `set_debt(DebtInformation)` replaces the whole record, identifier and instrument together.
+- `set_debt_instrument(DebtInstrument)` replaces only the terms and leaves the identifier as it is — the common case, since the guarantor and the debtholder representative rarely change when a coupon schedule does.
+- Both are guarded by `DEBT_ROLE`, and each **replaces everything it covers**: a partial update requires re-supplying every field that must be preserved.
 
-Adding any of them is a change to `DebtBaseStruct`, which is a **storage-layout break**: the packed length changes, so a deployed token cannot be migrated in place.
+All fourteen criteria now map to a field directly. Criterion 50 (unique identifier / hash) is answered from outside this module, by `token_id()` (criterion 5) and the terms document hash (criterion 2).
 
-Note also that every string-typed attribute is a `FieldCompressedString`, capped at **31 characters**. That is a real constraint for fields such as `interestScheduleFormat` or `businessDayConvention`, where CMTAT Solidity uses an unbounded `string` and an issuer may want a longer description. Where 31 characters is not enough, the value has to be a code or a reference resolved off-chain.
+Two constraints apply to the values themselves.
 
-`DebtBaseStruct` additionally carries `publicHolidaysCalendar`, which has no counterpart among criteria 48–61; it is listed under [Supplementary features](#supplementary-features).
+- Every string-typed attribute is a `FieldCompressedString`, capped at **31 characters**, where CMTAT Solidity uses an unbounded `string`. That is a real limit for fields such as `interestScheduleFormat` or `businessDayConvention`; where 31 characters is not enough, the value has to be a code or a reference resolved off-chain.
+- `interestRate`, `parValue` and `minimumDenomination` are `Field`, not `uint256`. A `Field` holds ~254 bits, so it carries any realistic value, but it is not a 256-bit integer and does not wrap like one.
+
+The whole record is **public state**: anyone can read the debt terms of a deployed token. That is the same visibility as CMTAT Solidity, and deliberate — the terms of an instrument are not what this contract keeps private; balances are.
 
 
 ## Guideline sections
@@ -602,24 +606,24 @@ Three consequences MUST be recorded:
 
 ## Supplementary features
 
-- **Public holidays calendar** — `DebtBaseStruct.publicHolidaysCalendar`, a debt attribute with no counterpart among criteria 48–61.
+- **Issuer name and description** — `DebtIdentifier.issuerName` and `DebtIdentifier.issuerDescription`, two debt attributes present in the Solidity `ICMTATDebt.DebtIdentifier` but with no counterpart among criteria 48–61.
 - **Authwit revocation** — `cancel_authwit(inner_hash)` lets a holder invalidate a granted authentication witness before it is used, by publishing its nullifier. CMTAT Solidity has no equivalent, because an ERC-20 allowance is revoked by overwriting it.
 - **Private reads of token attributes** — `private_get_name`, `private_get_symbol`, `private_get_decimals` and `private_get_issuer` allow a private function to read these values without a public call that would leak the caller's address.
 - **Batch entry points** — `mint_batch`, `transfer_batch` and `burn_batch` exist but are capped at `MAX_ADDR_PER_CALL = 1` by the per-call protocol limits (16 private logs and 8 nested private calls). The logic is written for larger batches and the cap can be raised as the limits allow.
 
 ## Conclusion
 
-**Token model.** The token is a single Aztec contract, `CMTAToken`, written in Noir with Aztec.nr v5.2.0. There is no native token standard on Aztec comparable to ERC-20; the contract implements the CMTAT functions directly. A holder's balance is not a storage slot but a set of `UintNote`s (each a `u128`) held in that holder's own PXE, reached through an `Owned<BalanceSet>` state variable and summed by the utility function `balance_of_private`. Total supply, by contrast, is an ordinary `PublicMutable<u128>`, and `name`, `symbol` and `decimals` are `PublicImmutable` values fixed at deployment.
+**Token model.** The token is an Aztec contract — `CMTATAztec`, or one of its two sibling variants — written in Noir with Aztec.nr v5.2.0. There is no native token standard on Aztec comparable to ERC-20; the contract implements the CMTAT functions directly. A holder's balance is not a storage slot but a set of `UintNote`s (each a `u128`) held in that holder's own PXE, reached through an `Owned<BalanceSet>` state variable and summed by the utility function `balance_of_private`. Total supply, by contrast, is an ordinary `PublicMutable<u128>`, and `name`, `symbol` and `decimals` are `PublicImmutable` values fixed at deployment.
 
-**Architecture.** Noir has no inheritance, so the CMTAT modules are plain structs implementing the `StateVariable` trait and held as fields of one storage struct: access control, pause, enforcement (freeze), validation (lists), credit events and debt base. Every user-callable entry point must be re-declared in the contract itself; the module structs hold state and logic but are not independently callable. The contract is **not upgradeable**, and there is no proxy: changing the logic means deploying a new contract and migrating holders — which, because balances are notes in holders' PXEs rather than contract storage, the issuer cannot do unilaterally.
+**Architecture.** Noir has no inheritance, so the CMTAT modules are plain structs implementing the `StateVariable` trait and held as fields of one storage struct: access control, pause, enforcement (freeze), validation (lists), extra information (terms and token ID), credit events and debt. Every user-callable entry point must be re-declared in the contract itself; the module structs hold state and logic but are not independently callable. The contract is **not upgradeable**, and there is no proxy: changing the logic means deploying a new contract and migrating holders — which, because balances are notes in holders' PXEs rather than contract storage, the issuer cannot do unilaterally.
 
-**Access control.** Ten numeric roles in public state, administered by `DEFAULT_ADMIN_ROLE`, which administers itself and can therefore appoint further admins. Because the role table is public and a private function cannot read mutable public state, every private entry point that needs a role check enqueues a public call that performs it — which is also where the pause check runs. A revert in that public half reverts the whole transaction.
+**Access control.** Eleven numeric roles in public state, administered by `DEFAULT_ADMIN_ROLE`, which administers itself and can therefore appoint further admins. Because the role table is public and a private function cannot read mutable public state, every private entry point that needs a role check enqueues a public call that performs it — which is also where the pause check runs. A revert in that public half reverts the whole transaction.
 
 **Transfer control flow.** A transfer runs in two halves. The private half checks that neither party is frozen, applies the validation module's list check, spends the sender's notes and creates the recipient's, delivering each note message to its owner and a copy to the issuer. The enqueued public half asserts the contract is not paused. Freeze and list flags are `DelayedPublicMutable`, so they are readable from the private half without leaking the caller — at the cost of a delay before any change to them takes effect. Delegated transfers use an authentication witness validated by the `#[authorize_once]` macro, which also nullifies the nonce to prevent replay.
 
 **Issuance and cancellation.** `mint` is restricted to `MINTER_ROLE` and takes no authwit. `burn` requires `BURNER_ROLE` **and**, whenever the caller is not the holder, an authwit from the holder — so every cancellation is jointly authorised. Both are blocked while the contract is paused, which differs from CMTAT Solidity, and both are blocked on a frozen address. There is no forced transfer and no forced burn.
 
-**Data and metadata storage.** Credit events and debt attributes are stored on-chain as packed structs in public state, written by role-restricted setters that replace the whole struct. String fields are `FieldCompressedString` and are limited to 31 characters. There is no document module, no `terms`, and no `tokenId`.
+**Data and metadata storage.** Credit events and debt attributes are stored on-chain as packed structs in public state, written by role-restricted setters that replace everything they cover. String fields are `FieldCompressedString` and are limited to 31 characters. There is no document module in the ERC-1643 sense, but the extra-information module holds `terms` (name, URI and document hash) and `tokenId`.
 
 **Main differences from CMTAT Solidity.**
 

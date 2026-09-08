@@ -20,7 +20,7 @@ A private version of the [CMTAT](https://github.com/CMTA/CMTAT) security token, 
 
 ## Key concepts
 
-- **Three deployment variants, one library.** `CMTATAztec` (base), `CMTATAztecDebt` (adds credit events and debt base) and `CMTATAztecLight` (drops the validation module) are separate packages that compose modules from `cmtat_aztec_lib`. Adding an entry point to a shared module means adding it to **every variant that should expose it** — there is no inheritance to do it for you. Keep the three `main.nr` files in step.
+- **Three deployment variants, one library.** `CMTATAztec` (base), `CMTATAztecDebt` (adds credit events and debt) and `CMTATAztecLight` (drops the validation module) are separate packages that compose modules from `cmtat_aztec_lib`. Adding an entry point to a shared module means adding it to **every variant that should expose it** — there is no inheritance to do it for you. Keep the three `main.nr` files in step.
 - **Single contract, module structs.** Noir has no Solidity-style inheritance, so "modules" are plain structs implementing `StateVariable<N, Context>` (which supplies both `new` and `get_storage_slot`) and held as fields of the contract's `#[storage] struct Storage<Context>`. Every user-callable entry point must be re-declared in `src/main.nr` — a module method alone is not callable.
 - **Access control is public.** `AccessControlModule` maps `role: Field -> AztecAddress -> bool` in public state; roles are numeric globals (`DEFAULT_ADMIN_ROLE = 1`, `PAUSE_ROLE = 2`, `ENFORCEMENT_ROLE = 3`, `VALIDATION_ROLE = 4`, `ADDRESS_LIST_ADD_ROLE = 5`, `ADDRESS_LIST_REMOVE_ROLE = 6`, `MINTER_ROLE = 7`, `BURNER_ROLE = 8`, `DEBT_ROLE = 9`, `DEBT_CREDIT_EVENT_ROLE = 10`, `EXTRA_INFORMATION_ROLE = 11`). Because the check is public, private entry points enqueue a public `_mint`/`_transfer`/`_burn` that performs both the role check and the pause check. Public-context module methods take `PublicContext` by value, not `&mut PublicContext`.
 - **Private/public split per operation.** `mint`, `transfer`, `burn` are `#[external("private")]`: they call an inlined `#[internal("private")]` `_*_internal` that mutates notes via `self.internal`, then `self.enqueue_self` a `#[external("public")] #[only_self]` counterpart that updates `total_supply` and asserts not-paused. A revert in the public part reverts the whole tx.
@@ -49,13 +49,13 @@ lib/                                 # cmtat_aztec_lib, type = "lib": every modu
     ├── extensions.nr
     └── extensions/
         ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
-        └── debtBaseModule.nr        # CMTAT debt terms (interest rate, par value, dates, conventions)
+        └── debtModule.nr            # CMTAT debt: DebtIdentifier + DebtInstrument, mirroring ICMTATDebt
 
 contracts/
 ├── cmtat-aztec/                     # CMTATAztec — the base token; carries the full Noir test suite
 │   └── src/{main.nr, test.nr, test/*.nr}
-├── cmtat-aztec-debt/                # CMTATAztecDebt — base + credit events + debt base
-│   └── src/{main.nr, test.nr, test/{utils,smoke,test_credit_events,test_debt_base}.nr}
+├── cmtat-aztec-debt/                # CMTATAztecDebt — base + credit events + debt
+│   └── src/{main.nr, test.nr, test/{utils,smoke,test_credit_events,test_debt}.nr}
 └── cmtat-aztec-light/               # CMTATAztecLight — base without the validation module
     └── src/{main.nr, test.nr, test/{utils,smoke}.nr}
 

@@ -31,7 +31,7 @@ pub contract CMTATAztecDebt {
         extraInformationModule::{DocumentInfo, ExtraInformation},
         extensions::{
             creditEventsModule::{CreditEvents, CreditEventsStruct},
-            debtBaseModule::{DebtBase, DebtBaseStruct},
+            debtModule::{Debt, DebtInformation, DebtInstrument},
         },
         pauseModule::PauseModule,
         validationModule::{SetFlag, UserFlags, ValidationModule},
@@ -95,6 +95,25 @@ pub contract CMTATAztecDebt {
         tokenId: FieldCompressedString,
     }
 
+    // CMTAT Solidity emits `DebtLogEvent`, `DebtInstrumentLogEvent` and `CreditEventsLogEvent` with
+    // no payload, to keep the contract small: a reader is expected to call the getter afterwards.
+    // These carry the caller instead, matching `NewRole` and `Deactivated` above - the values
+    // themselves are public state and can still be read with `get_debt()` / `get_credit_events()`.
+    #[event]
+    struct DebtLogEvent {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct DebtInstrumentLogEvent {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct CreditEventsLogEvent {
+        account: AztecAddress,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -102,7 +121,7 @@ pub contract CMTATAztecDebt {
         enforcement_module: Freezable<FreezableFlag, Context>,
         access_control: AccessControlModule<bool, Context>,
         credit_event_module: CreditEvents<bool, Context>,
-        debt_base_module: DebtBase<bool, Context>,
+        debt_module: Debt<bool, Context>,
         extra_information_module: ExtraInformation<bool, Context>,
 
         issuer_address: DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS, Context>,
@@ -284,6 +303,13 @@ pub contract CMTATAztecDebt {
      * ===================== CREDIT EVENTS MODULE ================
      * ======================================================== */
 
+    /**
+     * @dev Replaces all three credit-event attributes, as in CMTAT Solidity: a caller that wants to
+     * keep a value MUST re-supply it.
+     *
+     * Requirements:
+     * - the caller must have the DEBT_CREDIT_EVENT_ROLE role.
+     */
     #[external("public")]
     fn set_credit_events(credit_events: CreditEventsStruct) {
         self.storage.credit_event_module.setCreditEvents(
@@ -291,6 +317,7 @@ pub contract CMTATAztecDebt {
             self.msg_sender(),
             self.storage.access_control,
         );
+        self.emit(CreditEventsLogEvent { account: self.msg_sender() });
     }
 
     #[external("public")]
@@ -299,21 +326,50 @@ pub contract CMTATAztecDebt {
     }
 
     /** ==========================================================
-     * ===================== DEBT BASE MODULE ====================
+     * ===================== DEBT MODULE =========================
      * ======================================================== */
 
+    /**
+     * @dev Replaces the whole debt record - both the identifier and the instrument - as in CMTAT
+     * Solidity `setDebt`. A caller that wants to keep a value MUST re-supply it.
+     *
+     * Requirements:
+     * - the caller must have the DEBT_ROLE role.
+     */
     #[external("public")]
-    fn set_debt_base(debt_base_: DebtBaseStruct) {
-        self.storage.debt_base_module.setDebt(
-            debt_base_,
+    fn set_debt(debt_: DebtInformation) {
+        self.storage.debt_module.setDebt(
+            debt_,
             self.msg_sender(),
             self.storage.access_control,
         );
+        self.emit(DebtLogEvent { account: self.msg_sender() });
     }
 
+    /**
+     * @dev Replaces only the instrument's terms, leaving the debt identifier as it is, as in CMTAT
+     * Solidity `setDebtInstrument`.
+     *
+     * Requirements:
+     * - the caller must have the DEBT_ROLE role.
+     */
     #[external("public")]
-    fn get_debt_base() -> [Field; 12] {
-        self.storage.debt_base_module.get_debt_base()
+    fn set_debt_instrument(debt_instrument_: DebtInstrument) {
+        self.storage.debt_module.setDebtInstrument(
+            debt_instrument_,
+            self.msg_sender(),
+            self.storage.access_control,
+        );
+        self.emit(DebtInstrumentLogEvent { account: self.msg_sender() });
+    }
+
+    /**
+     * @dev Returns the debt record serialized: the four identifier attributes first, then the
+     * twelve instrument attributes, in the order of the CMTAT Solidity structs.
+     */
+    #[external("public")]
+    fn get_debt() -> [Field; 16] {
+        self.storage.debt_module.get_debt()
     }
 
     /** ==========================================================

@@ -9,7 +9,7 @@ Please follow [https://changelog.md/](https://changelog.md/) conventions.
 Given a version number MAJOR.MINOR.PATCH, increment the:
 
 1. MAJOR version when the new version makes:
-   - An incompatible change to contract **storage** — the `#[storage] struct Storage` layout, a state-variable type (`PublicMutable` / `SharedMutable` / `PrivateSet`), or the shape of a note (`UintNote`) or a packed struct (`UserFlags`, `FreezableFlag`, `CreditEventsStruct`, `DebtBaseStruct`)
+   - An incompatible change to contract **storage** — the `#[storage] struct Storage` layout, a state-variable type (`PublicMutable` / `DelayedPublicMutable` / `Owned<BalanceSet>`), or the shape of a note (`UintNote`) or a packed struct (`UserFlags`, `FreezableFlag`, `Terms`, `CreditEventsStruct`, `DebtInformation`)
    - A significant change in external APIs (`#[public]` / `#[private]` / `#[utility]` functions, their arguments, or the numeric role constants) or in the internal architecture
    - A change to the Aztec/`aztec-nr` version that alters the contract class ID or breaks previously generated artifacts
 2. MINOR version when the new version adds functionality in a backward compatible manner
@@ -104,6 +104,18 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- Realigned the debt module with the current CMTAT Solidity `ICMTATDebt` interface, adding the five attributes it had gained.
+  - `DebtBaseStruct`, a flat struct of twelve attributes, is replaced by `DebtInformation { debtIdentifier, debtInstrument }`, mirroring the Solidity structs field for field and in their order.
+  - New attributes: `issuerName` and `issuerDescription` on the identifier, and `minimumDenomination`, `currency` and `currencyContract` on the instrument. The last three close equivalency criteria 52 and 54, which the assessment recorded as absent.
+  - `currencyContract` is an `AztecAddress`, so it can only name a contract on this chain; a payment currency on another ledger has to be identified through the `currency` string.
+  - Removed `publicHolidaysCalendar`, which the CMTAT interface no longer carries.
+  - Renamed to match Solidity: `bondHolder` is now `debtHolder`, and `couponFrequency` is now `couponPaymentFrequency`.
+  - BREAKING CHANGE: the record grows from twelve fields to sixteen, so the module's storage span changes and every state variable declared after it moves. `set_debt_base(DebtBaseStruct)` and `get_debt_base()` are renamed `set_debt(DebtInformation)` and `get_debt()`, the getter now returns `[Field; 16]`, and the module file moves from `debtBaseModule.nr` to `debtModule.nr`. A deployed token cannot be migrated in place.
+- `set_debt_instrument`, which updates the instrument's terms and leaves the debt identifier untouched.
+  - Mirrors the Solidity `setDebtInstrument`, added alongside `setDebt` for the common case where a coupon schedule changes but the guarantor and debtholder representative do not.
+  - Without it, changing one term meant re-supplying the identifier as well, and a caller that forgot silently blanked it.
+- Public events on the debt entry points: `DebtLogEvent`, `DebtInstrumentLogEvent` and `CreditEventsLogEvent`.
+  - CMTAT Solidity emits these with no payload to keep the contract small. These carry the caller instead, matching the existing `NewRole` and `Deactivated` events; the values themselves stay readable through `get_debt()` and `get_credit_events()`.
 - `deactivate_contract` and `public_get_deactivated`, implementing the CMTAT permanent-deactivation feature (equivalency criteria 17 and 18).
   - Modelled on CMTAT Solidity's `PauseModule`: the caller needs the admin role, the contract must already be paused, and a second call is refused.
   - `unpause_contract` now refuses to run once the flag is set, which is what makes the deactivation permanent — the flag itself is never cleared.
@@ -144,6 +156,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Removed
 
+- `FLAG_DEFAULT_FLAG` and `FLAG_REDEEMED_FLAG` from the credit-events module. They were public constants that nothing read: the module has always stored the two flags as `bool` fields of `CreditEventsStruct`, never as bits of a field.
 - The sanction-list mode of the validation module, which was declared but never implemented.
   - `SANCTIONLIST_FLAG`, `SetFlag.operate_sanctionlist`, `UserFlags.is_in_sanction_list` and `get_is_in_sanction_list` are gone, and `operateOnTransfer` now dispatches to the blacklist and the whitelist only.
   - It was a trap rather than a gap: `operateOnTransfer` routed the mode to a handler that called `panic("not implemented.")`, so turning it on blocked every transfer instead of screening anything.

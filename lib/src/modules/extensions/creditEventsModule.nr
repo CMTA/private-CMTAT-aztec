@@ -5,9 +5,6 @@ use aztec::state_vars::{PublicMutable, StateVariable};
 use compressed_string::FieldCompressedString;
 use crate::modules::access_controlModule::{AccessControlModule, DEBT_CREDIT_EVENT_ROLE};
 
-pub global FLAG_DEFAULT_FLAG: Field = 1;
-pub global FLAG_REDEEMED_FLAG: Field = 2;
-
 global T_SERIALIZED_LEN: u32 = 3;
 
 #[derive(Deserialize, Eq, Packable, Serialize)]

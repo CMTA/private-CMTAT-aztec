@@ -78,7 +78,7 @@ Noir has no inheritance and allows one contract per package, so the variants are
 |---|---|
 | `CMTATAztecLight` | Private token, pause, deactivation, freeze, access control, terms, version — no transfer restriction lists |
 | `CMTATAztec` | The above plus the validation module (blacklist / whitelist) |
-| `CMTATAztecDebt` | The above plus credit events and debt base, for bond-like instruments |
+| `CMTATAztecDebt` | The above plus credit events and debt, for bond-like instruments |
 
 Because there is no inheritance, an entry point added to a shared module has to be declared in each variant's `main.nr` that should expose it.
 
@@ -325,7 +325,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 - **Access control module**: Same functionalities as CMTAT. Admin has the default role, which can be used to grant roles to themselves or others.
 - **Version**: `version()` returns the implementation version as a compile-time constant, as CMTAT Solidity's `VersionModule` does. Aztec's contract class ID identifies the deployed artifact, but being a hash it neither orders releases nor matches a release tag, so the two are complementary.
 - **Extra information module**: `set_token_id` / `token_id` carry the CMTAT token identifier, and `set_terms` / `terms` carry the reference to the legally required documentation, using the CMTAT Solidity notation (`DocumentInfo` of name, URI and document hash, with `lastModified` stamped by the contract). Guarded by `EXTRA_INFORMATION_ROLE`.
-- **Credit events and debt base modules**: Same functionalities as CMTAT.
+- **Credit events and debt modules**: Same functionalities as CMTAT. The debt record mirrors the Solidity `ICMTATDebt` interface field for field: a `DebtIdentifier` (issuer name and description, guarantor, debtholder representative) followed by a `DebtInstrument` (rate, par value, minimum denomination, dates, conventions, payment currency).
 
 ### What will we be able to do in the future?
 
@@ -399,7 +399,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 | Snapshot | ✘ | ✘ |
 | Upgradeability | ✘ | ✘ |
 | Documents (ERC-1643), tokenId, terms | ✘ | ✔ |
-| Credit events and debt base | ✔ | ✘ |
+| Credit events and debt | ✔ | ✘ |
 | Mutable name / symbol | ✘ (`PublicImmutable`) | ✔ post-deployment setters |
 | Roles | 10, numeric, in public state | 14, named, OpenZeppelin `AccessControl` |
 | Deployment variants | 1 | 4 (Lite, standard, RuleEngine, Whitelist) |
@@ -529,7 +529,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **`UintNote`** | The built-in note type holding a `u128`, used here for token amounts. |
 | **Note message / `MessageDelivery`** | Creating a note yields a message that **must** be delivered, and you choose how: `onchain_constrained()` (proven, most expensive), `onchain_unconstrained()` (onchain but trusts the sender), or `offchain()` (cheapest, no onchain data). See *Issuer's view of transactions and notes* for the choice made here. |
 | **`deliver_to(address, mode)`** | Delivers a copy of a note message to somebody who is *not* the note's owner. They learn the note exists; they cannot spend it, and cannot see when it is spent. This is the issuer's audit channel. |
-| **Module (in this repo)** | Because Noir has no inheritance, each concern is a plain struct held as a field of the contract's storage: `access_control`, `pause_module`, `enforcement_module`, `validation_module`, `extra_information_module`, and in the Debt variant `credit_event_module` and `debt_base_module`. They live in `lib/`, shared by every variant, and each user-callable entry point is still re-declared in that variant's `main.nr`. |
+| **Module (in this repo)** | Because Noir has no inheritance, each concern is a plain struct held as a field of the contract's storage: `access_control`, `pause_module`, `enforcement_module`, `validation_module`, `extra_information_module`, and in the Debt variant `credit_event_module` and `debt_module`. They live in `lib/`, shared by every variant, and each user-callable entry point is still re-declared in that variant's `main.nr`. |
 | **`EmbeddedWallet`** | The TypeScript wallet used by `scripts/` and the end-to-end tests. It owns its own PXE and holds several accounts; each call names its sender with `from`. |
 | **`aztec codegen`** | Generates the typed TypeScript contract bindings in `src/artifacts/` from the compiled artifact. Re-run it after any change to the contract's interface. |
 
@@ -548,7 +548,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Validation module** | Transfer restriction by address list. Holds each address's flags and the switch saying which lists are enforced. |
 | **Blacklist / whitelist** | The two list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2). Blacklist blocks listed addresses, whitelist allows only listed ones. Exactly one mode is enforced per transfer. |
 | **Credit events extension** | CMTAT bond attributes recording default, redemption and rating. |
-| **Debt base extension** | CMTAT bond terms: interest rate, par value, maturity date, day-count and business-day conventions, and related fields. |
+| **Debt extension** | CMTAT bond attributes, mirroring the Solidity `ICMTATDebt`: a *debt identifier* (issuer name and description, guarantor, debtholder representative) and a *debt instrument* (interest rate, par value, minimum denomination, issuance and maturity dates, coupon frequency, interest schedule and payment date, day-count and business-day conventions, payment currency and its contract address). |
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
 | **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
 | **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `1`) because the protocol limits how many messages and nested calls one call may produce. |
