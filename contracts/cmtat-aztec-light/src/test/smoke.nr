@@ -1,5 +1,6 @@
+use compressed_string::FieldCompressedString;
 use crate::test::utils;
-use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, ENFORCEMENT_ROLE, PAUSE_ROLE};
+use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, ENFORCEMENT_ROLE, EXTRA_INFORMATION_ROLE, PAUSE_ROLE};
 use cmtat_aztec_lib::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
 use crate::CMTATAztecLight as Token;
 
@@ -41,4 +42,14 @@ unconstrained fn transfer_blocked_when_frozen() {
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
     env.call_private(issuer, Token::at(token).transfer(issuer, user1, 100 as u128, 0));
+}
+
+#[test]
+unconstrained fn token_id_available() {
+    let (env, token, issuer, _, _) = utils::setup_and_mint(/* with_account_contracts */ false);
+
+    env.call_public(issuer, Token::at(token).grant_role(EXTRA_INFORMATION_ROLE, issuer));
+    let token_id = FieldCompressedString::from_string("ISIN CH0000000000 0000000000000");
+    env.call_public(issuer, Token::at(token).set_token_id(token_id));
+    assert(env.view_public(Token::at(token).token_id()) == token_id);
 }

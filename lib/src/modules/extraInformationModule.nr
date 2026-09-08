@@ -5,7 +5,9 @@ use aztec::state_vars::{PublicMutable, StateVariable};
 use compressed_string::FieldCompressedString;
 use crate::modules::access_controlModule::{AccessControlModule, EXTRA_INFORMATION_ROLE};
 
-global T_SERIALIZED_LEN: u32 = 5;
+global TERMS_SERIALIZED_LEN: u32 = 5;
+// `terms` occupies TERMS_SERIALIZED_LEN slots, `tokenId` the one after them.
+global MODULE_SLOTS: u32 = TERMS_SERIALIZED_LEN + 1;
 
 /**
 * @dev The reference to the legally required documentation (CMTAT equivalency criterion 2).
@@ -42,16 +44,21 @@ pub struct Terms {
 
 pub struct ExtraInformation<T, Context> {
     pub terms: PublicMutable<Terms, Context>,
+    pub tokenId: PublicMutable<FieldCompressedString, Context>,
 }
 
 // TODO(#13824): remove this impl once we allow structs to hold state variables.
-impl<T, Context> StateVariable<T_SERIALIZED_LEN, Context> for ExtraInformation<T, Context> {
+impl<T, Context> StateVariable<MODULE_SLOTS, Context> for ExtraInformation<T, Context> {
     fn new(context: Context, storage_slot: Field) -> Self {
         assert(storage_slot != 0, "Storage slot 0 not allowed. Storage slots must start from 1.");
-        Self { terms: PublicMutable::new(context, storage_slot) }
+        Self {
+            terms: PublicMutable::new(context, storage_slot),
+            tokenId: PublicMutable::new(context, storage_slot + TERMS_SERIALIZED_LEN as Field),
+        }
     }
 
     fn get_storage_slot(self) -> Field {
+        // the *first* slot; the framework reserves the rest for `tokenId`
         self.terms.get_storage_slot()
     }
 }
@@ -82,7 +89,25 @@ impl<T> ExtraInformation<T, PublicContext> {
         self.terms.write(terms);
     }
 
-    pub fn get_terms(self: Self) -> [Field; T_SERIALIZED_LEN] {
+    pub fn get_terms(self: Self) -> [Field; TERMS_SERIALIZED_LEN] {
         self.terms.read().serialize()
+    }
+
+    /**
+    * @notice Set the token identifier used for the tokenized asset.
+    * @dev As in CMTAT Solidity, the value is written even when it equals the current one.
+    */
+    pub fn setTokenId(
+        self: Self,
+        tokenId_: FieldCompressedString,
+        caller: AztecAddress,
+        ac: AccessControlModule<bool, PublicContext>,
+    ) {
+        ac.only_role(EXTRA_INFORMATION_ROLE, caller);
+        self.tokenId.write(tokenId_);
+    }
+
+    pub fn get_token_id(self: Self) -> FieldCompressedString {
+        self.tokenId.read()
     }
 }

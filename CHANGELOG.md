@@ -115,6 +115,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - Credit events and debt base are now carried only by `CMTATAztecDebt`; the validation module only by `CMTATAztec` and `CMTATAztecDebt`.
   - Measured artifact sizes are 6.25 MB (Light), 6.46 MB (base) and 6.50 MB (Debt), so dropping modules saves about 4% — the bulk is the private circuits for mint, transfer and burn, which every variant carries. The split is about deploying only what an issuance needs, not about size.
   - BREAKING CHANGE: the contract is renamed from `CMTAToken` to `CMTATAztec`, so its class ID, its generated TypeScript (`src/artifacts/CMTATAztec.ts`) and every deployment reference change. `yarn compile` and `yarn test:nr` now run across the workspace.
+- `set_token_id` and `token_id`, the CMTAT token identifier (equivalency criterion 5), in all three variants.
+  - Lives on the same extra-information module as the terms, guarded by `EXTRA_INFORMATION_ROLE`, and follows CMTAT Solidity in writing the value even when it equals the current one.
+  - A `PublicMutable<FieldCompressedString>`, so it is settable after deployment as in Solidity, and capped at 31 characters — enough for an ISIN.
+  - Completes criterion 50 (unique identifier / hash), which needs `tokenId` alongside the terms document hash.
+  - BREAKING CHANGE: the extra-information module now occupies six storage slots instead of five, so every state variable declared after it moves.
 - `version()`, returning the implementation version as a compile-time constant (equivalency criterion 6).
   - Follows the CMTAT Solidity `VersionModule`: a constant of the code, not stored state, so it cannot be desynchronised from the deployed contract and changes only through a new deployment.
   - Aztec's contract class ID already identifies the deployed artifact, but it is a hash: it does not order releases and does not correspond to a release tag, so it does not answer the same question.

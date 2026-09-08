@@ -90,6 +90,11 @@ pub contract CMTATAztecDebt {
         account: AztecAddress,
     }
 
+    #[event]
+    struct TokenId {
+        tokenId: FieldCompressedString,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -334,6 +339,28 @@ pub contract CMTATAztecDebt {
     #[external("public")]
     fn terms() -> [Field; 5] {
         self.storage.extra_information_module.get_terms()
+    }
+
+
+    /**
+     * @roles: onlyExtraInformationManager
+     * @notice: Sets the token identifier of the tokenized asset.
+     * @dev: As in CMTAT Solidity, the value is written even when it equals the current one.
+     */
+    #[external("public")]
+    fn set_token_id(tokenId_: FieldCompressedString) {
+        self.storage.extra_information_module.setTokenId(
+            tokenId_,
+            self.msg_sender(),
+            self.storage.access_control,
+        );
+        self.emit(TokenId { tokenId: tokenId_ });
+    }
+
+    #[external("public")]
+    #[view]
+    fn token_id() -> pub FieldCompressedString {
+        self.storage.extra_information_module.get_token_id()
     }
 
     /** ==========================================================

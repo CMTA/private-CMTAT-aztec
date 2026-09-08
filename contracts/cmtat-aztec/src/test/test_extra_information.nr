@@ -82,3 +82,59 @@ unconstrained fn set_terms_replaces_every_field() {
     assert(ret[2] == 1);
     assert(ret[3] == 2);
 }
+
+global TOKEN_ID: str<31> = "ISIN CH0000000000 0000000000000";
+
+#[test]
+unconstrained fn token_id_empty_by_default() {
+    let (env, token_contract_address, _, _) = utils::setup(/* with_account_contracts */ false);
+
+    // An unwritten PublicMutable reads as zero, which is not the same as a string of spaces.
+    let ret = env.view_public(Token::at(token_contract_address).token_id());
+    assert(ret.serialize()[0] == 0);
+}
+
+#[test]
+unconstrained fn set_and_get_token_id() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(
+        issuer,
+        Token::at(token_contract_address).grant_role(EXTRA_INFORMATION_ROLE, issuer),
+    );
+
+    let token_id = FieldCompressedString::from_string(TOKEN_ID);
+    env.call_public(issuer, Token::at(token_contract_address).set_token_id(token_id));
+
+    let ret = env.view_public(Token::at(token_contract_address).token_id());
+    assert(ret == token_id);
+}
+
+#[test(should_fail_with = "AccessControlUnauthorizedAccount")]
+unconstrained fn set_token_id_requires_role() {
+    let (env, token_contract_address, _, user) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(
+        user,
+        Token::at(token_contract_address).set_token_id(FieldCompressedString::from_string(TOKEN_ID)),
+    );
+}
+
+#[test]
+unconstrained fn token_id_is_independent_of_terms() {
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+
+    env.call_public(
+        issuer,
+        Token::at(token_contract_address).grant_role(EXTRA_INFORMATION_ROLE, issuer),
+    );
+
+    // The two share a module but not a storage slot: writing one must not disturb the other.
+    let token_id = FieldCompressedString::from_string(TOKEN_ID);
+    env.call_public(issuer, Token::at(token_contract_address).set_token_id(token_id));
+    env.call_public(issuer, Token::at(token_contract_address).set_terms(sample_terms()));
+
+    assert(env.view_public(Token::at(token_contract_address).token_id()) == token_id);
+    let terms: [Field; 5] = env.call_public(issuer, Token::at(token_contract_address).terms());
+    assert(terms[2] == HASH_HIGH as Field);
+}

@@ -66,7 +66,7 @@ Noir has no inheritance and allows one contract per package, so the CMTAT varian
 |---|---|---|---|
 | Private mint / transfer / burn, issuer audit copies | ✔ | ✔ | ✔ |
 | Pause, deactivation, freeze | ✔ | ✔ | ✔ |
-| Access control, terms, version | ✔ | ✔ | ✔ |
+| Access control, terms, token ID, version | ✔ | ✔ | ✔ |
 | Validation module (blacklist / whitelist) | ✘ | ✔ | ✔ |
 | Credit events (criteria 44–47) | ✘ | ✘ | ✔ |
 | Debt base (criteria 48–61) | ✘ | ✘ | ✔ |
@@ -94,9 +94,9 @@ Criteria 44–61 are answered `y` below because the feature exists in the implem
 
 | Answer         | Mandatory (19) | Optional (42) |
 | -------------- | -------------: | ------------: |
-| Present (`y`)  |             19 |            19 |
-| Partial        |              0 |             2 |
-| Absent (`n`)   |              0 |            21 |
+| Present (`y`)  |             19 |            21 |
+| Partial        |              0 |             1 |
+| Absent (`n`)   |              0 |            20 |
 
 > **Every mandatory criterion is answered `y`.** Under the rule stated in this template, the implementation should be considered equivalent to CMTAT: no mandatory criterion is answered `n`, and none is answered `partial`.
 >
@@ -106,11 +106,9 @@ Criteria 44–61 are answered `y` below because the feature exists in the implem
 
 #### Note
 
-**Optional `partial` answers**
+**Optional `partial` answer**
 
 > *Criterion 13 (Approve) — Partial: delegation exists, but as an Aztec authentication witness rather than a standing ERC-20 allowance. An authwit authorises one exact call (target, selector, arguments and nonce), is consumed by a nullifier on use, and can be revoked before use with `cancel_authwit`. It therefore covers delegated spending, which is what the criterion is for, but it cannot express "this spender may move up to X over time": a new witness is required per operation. Secondary-market flows that assume a persistent allowance would need adapting.*
-
-> *Criterion 50 (Unique identifier / hash) — Partial: the criterion asks for `tokenId()` **and** the terms document hash. The hash is present since the terms module was added; `tokenId` is not stored, so half the criterion is met.*
 
 **Optional modules left out by design**
 
@@ -150,12 +148,12 @@ Two chain-level constraints shape how faithfully the document can be recorded. `
 | ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
 |---|---|---|---|---|---|---|---|
 | 4 | Ticker symbol attribute | ERC20 `symbol` | Public (`view`) | Optional in the CMTA framework, which lists the attribute as "Ticker symbol (optional)". | `y` | Public (`view`), in both contexts | `public_get_symbol()` / `private_get_symbol()`, `PublicImmutable<FieldCompressedString>` set at deployment. |
-| 5 | Token ID attribute | `tokenId` | Public (`view`) | Optional parameter. | `n` | — | Not stored. |
+| 5 | Token ID attribute | `tokenId` | Public (`view`) | Optional parameter. | `y` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | `set_token_id(FieldCompressedString)` and `token_id()`, in all three variants. As in CMTAT Solidity the value is written even when it equals the current one. Capped at 31 characters by `FieldCompressedString`, which fits an ISIN with room to spare. |
 | 6 | Version attribute | `version()` (`IERC3643Version`, implemented by `VersionModule`) | Public (`view`) | Returns the version of the token implementation, for example `"3.2.0"`. In CMTAT Solidity the value is a constant of the contract code: it changes only through a new deployment or an upgrade, and it is not settable at runtime. | `y` | Public (`view`) | `version()` returns a `FieldCompressedString`, currently `0.3.0`, padded to the 31 characters that type requires. As in the CMTAT Solidity `VersionModule` it is a **compile-time constant**, not stored state, so it cannot be desynchronised from the deployed code and changes only through a new deployment. |
 
 ##### Note
 
-`tokenId` (criterion 5) is the one optional attribute still absent. It is simply not stored; adding it would be one more `PublicImmutable<FieldCompressedString>`, at the cost of a storage-layout change.
+`tokenId` (criterion 5) is present in all three variants, as `set_token_id` / `token_id` on the same extra-information module that carries the terms. It is a `PublicMutable`, not a `PublicImmutable`, because CMTAT Solidity allows it to be changed after deployment; the write is guarded by `EXTRA_INFORMATION_ROLE` and, as in Solidity, happens even when the new value equals the old one.
 
 `version` (criterion 6) is present as a compile-time constant returned by `version()`. It is worth being clear about why that is needed, because Aztec already identifies deployed code natively: every deployment is an instance of a **contract class ID**, a hash of the compiled artifact registered on-chain, and since this contract is not upgradeable the class ID cannot change under a live address. An observer can therefore always tell *which artifact* is running from chain-native metadata. What a class ID cannot give is a *semantic* version: it is a hash, so it does not order releases and does not correspond to anything a reader could match against a release tag in the repository. The two are complementary — the class ID identifies the artifact, `version()` names the release it was built from. See [Version](#version).
 
@@ -372,7 +370,7 @@ All debt attributes are fields of a single `DebtBaseStruct` held in a `PublicMut
 |---|---|---|---|---|---|---|---|
 | 48 | Guarantor identifier | `debt().debtIdentifier.guarantor` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.guarantor` (`FieldCompressedString`). |
 | 49 | Debtholder representative identifier | `debt().debtIdentifier.debtHolder` (set via `setDebt`) | Read: public (`view`); write: role-restricted (`setDebt`) | Debt module (`ICMTATDebt.DebtIdentifier`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.bondHolder` (`FieldCompressedString`). |
-| 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `partial` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | The document hash half of this criterion is now present, as `terms().documentHashHigh` / `documentHashLow`. `tokenId` (criterion 5) is still not stored, so the criterion is only half covered. |
+| 50 | Unique identifier / hash | `tokenId()` and `terms().doc.documentHash` | Public (`view`) | `tokenId` is optional (implementations MAY omit it); document hash is in `terms` metadata. | `y` | Read public (`view`); write `EXTRA_INFORMATION_ROLE` | Both halves are now present: `token_id()` (criterion 5) and the terms document hash, `terms().documentHashHigh` / `documentHashLow` (criterion 2). |
 | 51 | Issuance date | `debt().debtInstrument.issuanceDate` (set via `setDebt` / `setDebtInstrument`) | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`ICMTATDebt.DebtInstrument`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.issuanceDate` (`FieldCompressedString`). |
 | 52 | Currency of payments | `debt().debtInstrument.currency` / `debt().debtInstrument.currencyContract` | Read: public (`view`); write: role-restricted (`setDebt*`) | Supports symbol-like string and token/asset contract address. | `n` | — | No currency field. |
 | 53 | Par value | `debt().debtInstrument.parValue` | Read: public (`view`); write: role-restricted (`setDebt*`) | Debt module (`uint256`). | `y` | Read public; write `DEBT_ROLE` | `DebtBaseStruct.parValue` (`Field`). |

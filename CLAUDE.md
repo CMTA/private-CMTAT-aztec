@@ -45,7 +45,7 @@ lib/                                 # cmtat_aztec_lib, type = "lib": every modu
     ├── pauseModule.nr               # PublicMutable<bool> pause + deactivation flags (2 slots)
     ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
     ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
-    ├── extraInformationModule.nr    # CMTAT terms: DocumentInfo/Terms, set_terms + terms
+    ├── extraInformationModule.nr    # CMTAT terms + token ID (6 slots): set_terms/terms, set_token_id/token_id
     ├── extensions.nr
     └── extensions/
         ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
