@@ -1,7 +1,7 @@
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { createLogger } from "@aztec/aztec.js/log";
 
-import { CMTATokenContract as TokenContract } from "../src/artifacts/CMTAToken.js";
+import { CMTATAztecContract as TokenContract } from "../src/artifacts/CMTATAztec.js";
 import { deploySchnorrAccount } from "../src/utils/deploy_account.js";
 import { getSponsoredPaymentMethod } from "../src/utils/sponsored_fpc.js";
 import { setupWalletTestnet } from "../src/utils/setup_pxe_testnet.js";

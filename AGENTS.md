@@ -20,6 +20,7 @@ A private version of the [CMTAT](https://github.com/CMTA/CMTAT) security token, 
 
 ## Key concepts
 
+- **Three deployment variants, one library.** `CMTATAztec` (base), `CMTATAztecDebt` (adds credit events and debt base) and `CMTATAztecLight` (drops the validation module) are separate packages that compose modules from `cmtat_aztec_lib`. Adding an entry point to a shared module means adding it to **every variant that should expose it** — there is no inheritance to do it for you. Keep the three `main.nr` files in step.
 - **Single contract, module structs.** Noir has no Solidity-style inheritance, so "modules" are plain structs implementing `StateVariable<N, Context>` (which supplies both `new` and `get_storage_slot`) and held as fields of the contract's `#[storage] struct Storage<Context>`. Every user-callable entry point must be re-declared in `src/main.nr` — a module method alone is not callable.
 - **Access control is public.** `AccessControlModule` maps `role: Field -> AztecAddress -> bool` in public state; roles are numeric globals (`DEFAULT_ADMIN_ROLE = 1`, `PAUSE_ROLE = 2`, `ENFORCEMENT_ROLE = 3`, `VALIDATION_ROLE = 4`, `ADDRESS_LIST_ADD_ROLE = 5`, `ADDRESS_LIST_REMOVE_ROLE = 6`, `MINTER_ROLE = 7`, `BURNER_ROLE = 8`, `DEBT_ROLE = 9`, `DEBT_CREDIT_EVENT_ROLE = 10`, `EXTRA_INFORMATION_ROLE = 11`). Because the check is public, private entry points enqueue a public `_mint`/`_transfer`/`_burn` that performs both the role check and the pause check. Public-context module methods take `PublicContext` by value, not `&mut PublicContext`.
 - **Private/public split per operation.** `mint`, `transfer`, `burn` are `#[external("private")]`: they call an inlined `#[internal("private")]` `_*_internal` that mutates notes via `self.internal`, then `self.enqueue_self` a `#[external("public")] #[only_self]` counterpart that updates `total_supply` and asserts not-paused. A revert in the public part reverts the whole tx.
@@ -32,47 +33,40 @@ A private version of the [CMTAT](https://github.com/CMTA/CMTAT) security token, 
 
 ## File tree
 
+The repository is a **Nargo workspace**: Noir has no inheritance and allows one contract per package, so the CMTAT deployment variants are separate contract packages over a shared library.
+
 ```
-src/
-├── main.nr                          # the CMTAToken contract: storage, events, all entry points
-├── modules.nr                       # module declarations
-├── modules/
-│   ├── access_controlModule.nr      # role constants, RoleData map, has_role/only_role/grant/revoke/renounce
-│   ├── pauseModule.nr               # PublicMutable<bool> pause + deactivation flags (2 slots)
-│   ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
-│   ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
-│   ├── extraInformationModule.nr    # CMTAT terms: DocumentInfo/Terms, set_terms + terms
-│   ├── extensions.nr                # extension declarations
-│   └── extensions/
-│       ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
-│       └── debtBaseModule.nr        # CMTAT debt terms (interest rate, par value, dates, conventions)
-├── types.nr                         # dead: superseded by the balance_set library, delete
-├── types/
-│   └── balance_set.nr               # dead: superseded by the balance_set library, delete
-├── test.nr                          # Noir test module declarations
-├── test/
-│   ├── utils.nr                     # TestEnvironment setup, check_private_balance, call_private_on_behalf_of
-│   ├── reading_constants.nr         # name/symbol/decimals/total_supply reads
-│   ├── test_mint.nr                 # mint + mint_batch, role and freeze failure cases
-│   ├── test_burn.nr                 # burn + burn_batch, authwit cases
-│   ├── transfer_private.nr          # private transfer, authwit, insufficient balance
-│   ├── test_pause_module.nr         # pause/unpause and paused-operation reverts
-│   ├── test_enforcement_module.nr   # freeze/unfreeze across the DelayedPublicMutable delay
-│   ├── test_validation_module.nr    # blacklist/whitelist operate flags
-│   ├── test_credit_events.nr        # credit events extension
-│   ├── test_debt_base.nr            # debt base extension
-│   └── e2e/
-│       ├── index.test.ts            # end-to-end token flow against a sandbox
-│       └── accounts.test.ts         # account deployment / multi-wallet flow
-└── utils/                           # TypeScript helpers shared by tests and scripts
-    ├── setup_pxe.ts                 # setupWallet(): EmbeddedWallet + node for a local sandbox
-    ├── setup_pxe_testnet.ts         # setupWalletTestnet(): same for testnet (NODE_URL from .env)
-    ├── deploy_account.ts            # deploy a Schnorr account
-    ├── create_account_from_env.ts   # rebuild accounts from SECRET/SALT in .env
-    └── sponsored_fpc.ts             # getSponsoredPaymentMethod(): registers the FPC and returns the payment method
+Nargo.toml                           # [workspace] — lib + the three contract packages
+lib/                                 # cmtat_aztec_lib, type = "lib": every module lives here
+├── src/lib.nr
+├── src/modules.nr
+└── src/modules/
+    ├── access_controlModule.nr      # role constants, RoleData map, has_role/only_role/grant/revoke/renounce
+    ├── pauseModule.nr               # PublicMutable<bool> pause + deactivation flags (2 slots)
+    ├── enforcementModule.nr         # Freezable: per-address DelayedPublicMutable<FreezableFlag> freeze
+    ├── validationModule.nr          # blacklist/whitelist/sanction-list flags, operateOnTransfer
+    ├── extraInformationModule.nr    # CMTAT terms: DocumentInfo/Terms, set_terms + terms
+    ├── extensions.nr
+    └── extensions/
+        ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
+        └── debtBaseModule.nr        # CMTAT debt terms (interest rate, par value, dates, conventions)
+
+contracts/
+├── cmtat-aztec/                     # CMTATAztec — the base token; carries the full Noir test suite
+│   └── src/{main.nr, test.nr, test/*.nr}
+├── cmtat-aztec-debt/                # CMTATAztecDebt — base + credit events + debt base
+│   └── src/{main.nr, test.nr, test/{utils,smoke,test_credit_events,test_debt_base}.nr}
+└── cmtat-aztec-light/               # CMTATAztecLight — base without the validation module
+    └── src/{main.nr, test.nr, test/{utils,smoke}.nr}
+
+src/                                 # TypeScript only
+├── artifacts/                       # generated: one .ts per variant
+├── test/e2e/{index,accounts}.test.ts
+└── utils/                           # setup_pxe.ts, setup_pxe_testnet.ts, deploy_account.ts,
+                                     # create_account_from_env.ts, sponsored_fpc.ts
 
 scripts/                             # tsx entry points, run via yarn
-├── deploy_contract.ts               # deploy CMTAToken on testnet and grant MINTER_ROLE
+├── deploy_contract.ts               # deploy CMTATAztec on testnet and grant MINTER_ROLE
 ├── deploy_account.ts                # deploy a single account
 ├── interaction.ts                   # mint/transfer/read against a deployed contract
 ├── multiple_pxe.ts                  # two wallets with separate PXEs on one node
@@ -105,10 +99,10 @@ scripts/                             # tsx entry points, run via yarn
 ## Common commands
 
 - `yarn install` — install JS dependencies.
-- `yarn compile` — `aztec-nargo compile` (override with `AZTEC_NARGO`).
+- `yarn compile` — `aztec-nargo compile --workspace` (override the binary with `AZTEC_NARGO`); builds all three variants.
 - `yarn codegen` — generate TS artifacts from `target/` into `src/artifacts/` (required before any TS test or script).
 - `yarn test` — `test:nr` (Noir `aztec test`) then `test:js` (Jest e2e); the e2e suite needs a running sandbox (`aztec start --sandbox`).
-- `yarn test:nr` / `yarn test:js` — run one suite only.
+- `yarn test:nr` / `yarn test:js` — run one suite only. `test:nr` is `aztec test --workspace`; add a package path to run one variant.
 - `yarn deploy`, `yarn deploy-account`, `yarn interaction`, `yarn multiple-pxe`, `yarn get-block`, `yarn fees`, `yarn profile` — testnet scripts (need `.env`).
 - `yarn clean` / `yarn clear-store` — drop `src/artifacts`, `target`, `codegenCache.json` / drop the local PXE `store`.
 

@@ -3,9 +3,9 @@ use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::Deserialize;
 use aztec::test::helpers::test_environment::{CallPrivateOptions, TestEnvironment};
 
-use crate::modules::access_controlModule::MINTER_ROLE;
-use crate::CMTAToken as Token;
-use crate::CMTAToken::CHANGE_ROLES_DELAY_SECONDS;
+use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
+use crate::CMTATAztec as Token;
+use crate::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
 
 pub unconstrained fn setup(
     with_account_contracts: bool,
@@ -30,7 +30,7 @@ pub unconstrained fn setup(
         18,
     );
     let token_contract_address =
-        env.deploy("CMTAToken").with_public_initializer(issuer, initializer_call);
+        env.deploy("CMTATAztec").with_public_initializer(issuer, initializer_call);
 
     // The constructor only *schedules* the issuer address, because issuer_address is a
     // DelayedPublicMutable. Nothing that reads the issuer (every mint, transfer and burn does) works

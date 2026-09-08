@@ -1,7 +1,7 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::DEBT_ROLE;
-use crate::modules::extensions::debtBaseModule::DebtBaseStruct;
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::DEBT_ROLE;
+use cmtat_aztec_lib::modules::extensions::debtBaseModule::DebtBaseStruct;
+use crate::CMTATAztecDebt as Token;
 use aztec::protocol::traits::Serialize;
 use compressed_string::FieldCompressedString;
 

@@ -1,6 +1,6 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::{MINTER_ROLE, PAUSE_ROLE};
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::{MINTER_ROLE, PAUSE_ROLE};
+use crate::CMTATAztec as Token;
 
 #[test]
 unconstrained fn get_paused() {

@@ -1,5 +1,5 @@
 use crate::test::utils;
-use crate::CMTAToken as Token;
+use crate::CMTATAztec as Token;
 use compressed_string::FieldCompressedString;
 
 // It is not possible to deserialize strings in Noir ATM, so name and symbol cannot be checked yet.
@@ -54,7 +54,7 @@ unconstrained fn check_version() {
 
     // A compile-time constant, so it must equal VERSION exactly - including the padding that
     // `FieldCompressedString` requires.
-    assert(result == FieldCompressedString::from_string(crate::CMTAToken::VERSION));
+    assert(result == FieldCompressedString::from_string(crate::CMTATAztec::VERSION));
     // and it must not be empty, which is what a forgotten bump would look like
     assert(result != FieldCompressedString::from_string("                               "));
 }

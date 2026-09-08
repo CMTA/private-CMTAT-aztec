@@ -1,6 +1,6 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE};
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE};
+use crate::CMTATAztec as Token;
 use aztec::test::helpers::authwit::add_private_authwit_from_call;
 
 global AUTHWIT_NONCE: Field = 7;

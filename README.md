@@ -125,6 +125,18 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `1`) because the protocol limits how many messages and nested calls one call may produce. |
 | **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to the issuer address, a freeze or a list entry becomes current. Nothing that reads those values sees the new one before it elapses — including every mint, transfer and burn, which all read the issuer address. |
 
+## Deployment variants
+
+Noir has no inheritance and allows one contract per package, so the variants are separate contract packages over a shared module library (`lib/`), built together as a Nargo workspace.
+
+| Variant | Contents |
+|---|---|
+| `CMTATAztecLight` | Private token, pause, deactivation, freeze, access control, terms, version — no transfer restriction lists |
+| `CMTATAztec` | The above plus the validation module (blacklist / whitelist) |
+| `CMTATAztecDebt` | The above plus credit events and debt base, for bond-like instruments |
+
+Because there is no inheritance, an entry point added to a shared module has to be declared in each variant's `main.nr` that should expose it.
+
 ## Functionalities overview
 
 The private CMTAT supports the following core features:

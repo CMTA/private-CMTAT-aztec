@@ -10,7 +10,7 @@
     "clean": "rm -rf ./src/artifacts ./target codegenCache.json",
     "clear-store": "rm -rf ./store",
     "codegen": "aztec codegen target --outdir src/artifacts",
-    "compile": "${AZTEC_NARGO:-aztec-nargo} compile",
+    "compile": "${AZTEC_NARGO:-aztec-nargo} compile --workspace",
     "deploy": "tsx scripts/deploy_contract.ts",
     "deploy-account": "tsx scripts/deploy_account.ts",
     "interaction": "tsx scripts/interaction.ts",
@@ -19,7 +19,7 @@
     "profile": "tsx scripts/profile_deploy.ts",
     "test": "yarn test:js && yarn test:nr",
     "test:js": "rm -rf store/pxe && NODE_NO_WARNINGS=1 node --experimental-vm-modules $(yarn bin jest) --no-cache --runInBand --config jest.integration.config.json",
-    "test:nr": "aztec test"
+    "test:nr": "aztec test --workspace"
   },
   "dependencies": {
     "@aztec/accounts": "5.2.0",

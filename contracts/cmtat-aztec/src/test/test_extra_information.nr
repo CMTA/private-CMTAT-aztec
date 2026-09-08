@@ -1,7 +1,7 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::EXTRA_INFORMATION_ROLE;
-use crate::modules::extraInformationModule::DocumentInfo;
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::EXTRA_INFORMATION_ROLE;
+use cmtat_aztec_lib::modules::extraInformationModule::DocumentInfo;
+use crate::CMTATAztec as Token;
 use aztec::protocol::traits::Serialize;
 use compressed_string::FieldCompressedString;
 

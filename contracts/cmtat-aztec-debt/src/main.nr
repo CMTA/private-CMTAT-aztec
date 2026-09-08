@@ -1,10 +1,9 @@
 mod test;
-mod modules;
 
 use aztec::macros::aztec;
 
 #[aztec]
-pub contract CMTAToken {
+pub contract CMTATAztecDebt {
     // Libs
     use compressed_string::FieldCompressedString;
     use std::ops::{Add, Sub};
@@ -24,7 +23,7 @@ pub contract CMTAToken {
 
     use balance_set::BalanceSet;
 
-    use crate::modules::{
+    use cmtat_aztec_lib::modules::{
         access_controlModule::{
             AccessControlModule, BURNER_ROLE, DEFAULT_ADMIN_ROLE, MINTER_ROLE, VALIDATION_ROLE,
         },

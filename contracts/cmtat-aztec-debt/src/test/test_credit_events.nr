@@ -1,7 +1,7 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::DEBT_CREDIT_EVENT_ROLE;
-use crate::modules::extensions::creditEventsModule::CreditEventsStruct;
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::DEBT_CREDIT_EVENT_ROLE;
+use cmtat_aztec_lib::modules::extensions::creditEventsModule::CreditEventsStruct;
+use crate::CMTATAztecDebt as Token;
 use aztec::protocol::traits::Serialize;
 use compressed_string::FieldCompressedString;
 

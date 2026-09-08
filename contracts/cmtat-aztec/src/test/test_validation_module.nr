@@ -1,9 +1,9 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::{
+use cmtat_aztec_lib::modules::access_controlModule::{
     ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, VALIDATION_ROLE,
 };
-use crate::modules::validationModule::{CHANGE_ROLES_DELAY_SECONDS, SetFlag, UserFlags};
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::validationModule::{CHANGE_ROLES_DELAY_SECONDS, SetFlag, UserFlags};
+use crate::CMTATAztec as Token;
 
 #[test]
 unconstrained fn get_operations_test() {

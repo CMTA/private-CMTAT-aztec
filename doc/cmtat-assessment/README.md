@@ -50,13 +50,28 @@
 
 | Field | Value |
 |---|---|
-| Implementation name | private CMTAT on Aztec (`CMTAToken`) |
+| Implementation name | private CMTAT on Aztec — variants `CMTATAztec` (base), `CMTATAztecDebt`, `CMTATAztecLight` |
 | Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
 | Implementation language | Noir / Aztec.nr v5.2.0 |
 | Implementation version | `0.3.0` (unreleased), as returned by `version()` — see criterion 6 |
 | Source repository and commit | https://github.com/taurushq-io/private-CMTAT-aztec — `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
 | Assessment date | 2026-09-08 |
 | Assessed by | *(to be completed by the assessor)* |
+
+## Deployment variants
+
+Noir has no inheritance and allows one contract per package, so the CMTAT variants are separate contract packages composing a shared module library, rather than a base contract with mixins. This assessment answers for **`CMTATAztec`**, the base variant, and marks the criteria that only a different variant satisfies.
+
+| | `CMTATAztecLight` | `CMTATAztec` | `CMTATAztecDebt` |
+|---|---|---|---|
+| Private mint / transfer / burn, issuer audit copies | ✔ | ✔ | ✔ |
+| Pause, deactivation, freeze | ✔ | ✔ | ✔ |
+| Access control, terms, version | ✔ | ✔ | ✔ |
+| Validation module (blacklist / whitelist) | ✘ | ✔ | ✔ |
+| Credit events (criteria 44–47) | ✘ | ✘ | ✔ |
+| Debt base (criteria 48–61) | ✘ | ✘ | ✔ |
+
+Criteria 44–61 are answered `y` below because the feature exists in the implementation, in the variant built to carry it; an assessment of `CMTATAztec` or `CMTATAztecLight` alone would answer them `n`. An issuer deploying a bond deploys `CMTATAztecDebt`, exactly as a CMTAT Solidity issuer deploys CMTAT Debt rather than CMTAT Standard.
 
 ## Summary
 

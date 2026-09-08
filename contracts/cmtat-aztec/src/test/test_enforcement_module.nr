@@ -1,7 +1,7 @@
 use crate::test::utils;
-use crate::modules::access_controlModule::ENFORCEMENT_ROLE;
-use crate::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
-use crate::CMTAToken as Token;
+use cmtat_aztec_lib::modules::access_controlModule::ENFORCEMENT_ROLE;
+use cmtat_aztec_lib::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
+use crate::CMTATAztec as Token;
 
 #[test]
 unconstrained fn get_frozen() {

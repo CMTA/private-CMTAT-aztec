@@ -7,7 +7,7 @@ import type { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
 import type { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { spawn } from "child_process";
 
-import { CMTATokenContract as TokenContract } from "../../artifacts/CMTAToken.js";
+import { CMTATAztecContract as TokenContract } from "../../artifacts/CMTATAztec.js";
 import { getSponsoredPaymentMethod } from "../../utils/sponsored_fpc.js";
 import { setupWallet } from "../../utils/setup_pxe.js";
 

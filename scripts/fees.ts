@@ -13,7 +13,7 @@ import { Fr, GrumpkinScalar } from "@aztec/aztec.js/fields";
 import { createLogger } from "@aztec/aztec.js/log";
 import * as dotenv from 'dotenv';
 
-import { CMTATokenContract as TokenContract } from "../src/artifacts/CMTAToken.js";
+import { CMTATAztecContract as TokenContract } from "../src/artifacts/CMTATAztec.js";
 import { deploySchnorrAccount } from "../src/utils/deploy_account.js";
 import { getSponsoredPaymentMethod } from "../src/utils/sponsored_fpc.js";
 import { setupWallet } from "../src/utils/setup_pxe.js";

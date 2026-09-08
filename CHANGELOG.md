@@ -109,6 +109,12 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - No deactivation check was added to mint, transfer or burn: each already asserts not-paused in its enqueued public half, and a deactivated contract is paused for good. CMTAT Solidity needs an explicit check on mint and burn only because its mint and burn are permitted while paused.
   - Emits a new `Deactivated` public event carrying the caller.
   - BREAKING CHANGE: `PauseModule` now occupies two storage slots instead of one, so every state variable declared after it moves. A deployed token cannot be migrated in place.
+- Split into three deployment variants over a shared module library, as a Nargo workspace.
+  - `CMTATAztecLight`, `CMTATAztec` and `CMTATAztecDebt` are separate contract packages in `contracts/`; every module moved to `lib/` (`cmtat_aztec_lib`, `type = "lib"`).
+  - Noir has no inheritance and allows one contract per package, so a variant is a separate package composing a different subset of modules, not a subclass. An entry point added to a shared module must be declared in each variant's `main.nr` that should expose it.
+  - Credit events and debt base are now carried only by `CMTATAztecDebt`; the validation module only by `CMTATAztec` and `CMTATAztecDebt`.
+  - Measured artifact sizes are 6.25 MB (Light), 6.46 MB (base) and 6.50 MB (Debt), so dropping modules saves about 4% — the bulk is the private circuits for mint, transfer and burn, which every variant carries. The split is about deploying only what an issuance needs, not about size.
+  - BREAKING CHANGE: the contract is renamed from `CMTAToken` to `CMTATAztec`, so its class ID, its generated TypeScript (`src/artifacts/CMTATAztec.ts`) and every deployment reference change. `yarn compile` and `yarn test:nr` now run across the workspace.
 - `version()`, returning the implementation version as a compile-time constant (equivalency criterion 6).
   - Follows the CMTAT Solidity `VersionModule`: a constant of the code, not stored state, so it cannot be desynchronised from the deployed contract and changes only through a new deployment.
   - Aztec's contract class ID already identifies the deployed artifact, but it is a hash: it does not order releases and does not correspond to a release tag, so it does not answer the same question.
