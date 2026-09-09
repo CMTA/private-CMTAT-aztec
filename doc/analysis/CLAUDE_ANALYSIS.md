@@ -50,8 +50,8 @@
 | G-6 | `yarn compile` produces artifacts `yarn codegen` cannot consume | ✅ fixed |
 | H-1 | `burn` publishes the caller's address and the amount | ⬜ decide — document, do not redesign |
 | H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — and protect from "simplification" |
-| H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — document |
-| H-4 | The `Transfer` event adds a DA record the note delivery already covers | ⬜ decide (see C-2) |
+| H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — 4 options costed; only one removes the leak |
+| H-4 | The `Transfer` event: nobody consumes it and the issuer never gets it | ⬜ decide — run the one-line experiment first |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
 | J-1 | `UserFlagsTrait` / `FreezableFlagTrait` are not `pub` | ⬜ implement — one word each |
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
@@ -67,7 +67,9 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 |---|---|---|
 | C-1, C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
-| B-3, C-2, C-6, G-3, H-1, H-3, H-4 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| B-3, C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
+| H-3 | The public selector | Four options costed in H-3. Only one — making the pause flag delayed so `transfer` enqueues nothing — actually removes the leak, and it trades an immediate pause for it. That is a compliance decision, not an engineering one. |
 
 ---
 
@@ -257,7 +259,7 @@ Three things are worth separating:
 - **The recipient set.** Only `to`. The sender gets no record of their own transfer, and neither does the issuer.
 - **The issuer omission is a rule violation.** `CLAUDE.md` states: *"Any note written for a user must also be delivered to the current `issuer_address` — auditability is a hard requirement of the design."* Both note messages in `_transfer_internal` honour that. The event does not. An event is not a note, so this is not a contradiction of the letter — but the event carries `from`, `to` and `amount` in one place, which is precisely what an auditor wants, and it is the one message the issuer does not receive.
 
-**Verdict: decide.** The defensible combination is `offchain()` to `to` and `from` and the issuer — same information, no blob cost, and consistent with how the issuer's note copies are already delivered. The counter-argument for keeping DA is that an offchain-only trail is exactly the weakness the CHANGELOG's Security section already documents for the issuer's note copies, and doubling down on it makes that weakness total. Whichever way it goes, the choice should be recorded next to the emit, as the issuer-copy decision already is at `main.nr:57`.
+**Verdict: decide — the options are costed in [H-4](#h-4-the-transfer-event-what-to-do-with-it--expanded-from-c-2), which also proposes a one-line experiment that may make the strongest option available.** The short version: `offchain()` to `to`, `from` and the issuer is the cheapest coherent answer, but it is worth first testing whether an `onchain_constrained()` event to the issuer works — the PXE limitation that forced the *note* copies offchain is about note discovery and may not apply to events. Whichever way it goes, record the choice next to the emit, as the issuer-copy decision already is at `main.nr:57`.
 
 ### C-3. `set_terms` emits nothing while `set_token_id` emits `TokenId` — `main.nr:288` vs `:309`
 
@@ -525,13 +527,63 @@ Tabulating the observable public footprint per private entry point:
 
 `cancel_authwit` enqueues nothing, so it is distinguishable from every value-moving operation by having zero public calls — but it also moves no value, so there is little to learn.
 
-**Verdict: decide, and the honest answer is probably "document".** Collapsing the three public halves into one `_post_op(kind, …)` would hide the selector but move `kind` into the arguments, publishing the same fact one level down; it only helps if the operation kind can be folded into something already public, which it cannot here. Padding every private entry point to a common public-call count is already satisfied. The residual leak is small and structural — worth a row in the README's privacy table rather than a redesign.
+**What can actually be done.** Four options, in increasing order of disruption. Only the last two change anything real.
 
-### H-4. The `Transfer` event's DA record — see C-2
+**1. Document it (recommended baseline).** Add the table above to the README's privacy section. The residual leak is genuinely small, and the reason is worth stating rather than assuming: `total_supply` is a `PublicMutable<u128>` that moves visibly on every mint and burn, so **an observer can already tell mint from burn from transfer without looking at the selector at all** — mint increases it, burn decreases it, transfer leaves it alone. The selector's marginal contribution is confirming that *this contract* was the one used. That is worth writing down; it is not worth a redesign on its own.
 
-The privacy angle on C-2: `onchain_unconstrained()` posts a log to data availability whose recipient set is `{to}`. The content is encrypted, so this does not publish `from`/`to`/`amount` in the clear, but it does add a durable onchain artifact tied to the transaction, on top of the two note messages already delivered `onchain_constrained()`. Since the recipient does not depend on it, it is DA cost and an extra artifact for no guarantee.
+**2. Collapse the three public halves into one `_post_op(caller, kind, amount)` — do not do this.** It equalises the selector but publishes `kind` as an argument instead, so it hides nothing. Worse, it would drag `transfer` down to the level of the other two: `_transfer()` currently takes **no arguments at all**, and merging it into a common signature would newly publish the transferring caller's address on every transfer. This option makes the contract strictly less private and is listed only so it is not proposed again.
 
-**Verdict: decide — folded into C-2.**
+**3. Drop the public call from `transfer` entirely — the one structural fix that works.** `_transfer()` does exactly one thing:
+
+```noir
+fn _transfer() {
+    assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
+}
+```
+
+The entire public half of a transfer exists to read one boolean. It has to be public because `is_paused` is a `PublicMutable<bool>`, and a private function cannot read current mutable public state. If the pause flag were a `DelayedPublicMutable<bool, DELAY>` — exactly what the freeze and validation flags already are, and for exactly the same reason — the check could run in the private half and `transfer` would enqueue nothing. A transfer would then produce **zero public calls**, removing the clearest public signal that this contract was used for a transfer.
+
+- **What it costs:** pausing stops being immediate. An emergency pause would take effect on transfers only after `DELAY`, during which transfers continue. That is a real compliance regression: CMTAT treats pause as the emergency lever, and criteria 14–16 are answered `y` here partly on it being immediate.
+- **A middle position exists.** Keep the public pause check on `mint` and `burn` — they already enqueue a public call for `total_supply`, so it is free there — and accept the delay only on `transfer`. Pause would then halt issuance and redemption instantly and transfers after `DELAY`. Whether that is acceptable is a compliance question, not an engineering one.
+- **It is also a gate saving**, though a small one, and it would need measuring rather than assuming: a `DelayedPublicMutable` read in private costs gates where an enqueued call costs none in the private circuit.
+
+**4. Make the role table `DelayedPublicMutable` too.** This is the symmetric fix for H-1: if roles could be read privately, `_mint`/`_burn` would not need the caller as an argument and the role-holder's address would stop being published. **The cost is worse than the disease** — a revoked minter would keep the ability to mint for the whole delay window, which is a live security regression, not a privacy trade. Recorded so the symmetry is visible and the answer is on file.
+
+**Verdict: decide — take 1 now, and treat 3 as a real design question for a later release.** Option 3 is the only one that removes the leak rather than relocating it, and it is a token-policy decision (delayed pause) rather than a code change, so it belongs to whoever owns the compliance posture. Options 2 and 4 are recorded as rejected with reasons.
+
+### H-4. The `Transfer` event: what to do with it — expanded from C-2
+
+Currently:
+
+```noir
+self.emit(Transfer { from, to, amount }).deliver_to(
+    to,
+    MessageDelivery::onchain_unconstrained(),
+);
+```
+
+The content is encrypted, so this does not publish `from`/`to`/`amount` in the clear. What it does is pay for a durable onchain artifact that **nobody in this repository consumes** — no TypeScript reads the event, and the recipient already receives their balance through an `onchain_constrained()` note two lines earlier.
+
+**The party with a real need is the issuer, and it is the one party that does not receive it.** This is worth spelling out because it is not obvious: the issuer's note copies carry *owners and amounts as separate notes*. Reconstructing "`from` sent `amount` to `to`" means correlating a change note and a recipient note within the same transaction and inferring the direction. The `Transfer` event states it directly, in one message. Meanwhile `CLAUDE.md` requires that "any note written for a user must also be delivered to the current `issuer_address`" — the event is the one message where that rule is not applied, and it is the most useful one for audit.
+
+**The options:**
+
+| | Mode and recipients | DA cost | Proving cost | What it buys |
+|---|---|---|---|---|
+| **A** | Drop the event | none | −1,679 gates | Simplest. The issuer must correlate note copies to recover direction. |
+| **B** | `offchain()` to `to`, `from` and the issuer | none | ~1,679, unchanged | A direct audit record for all three parties, at zero DA cost, consistent with how the issuer's note copies are already delivered. No delivery guarantee. |
+| **C** | `onchain_unconstrained()` to `to` (current) | 1 log | 1,679 | A DA record nobody depends on, with no guarantee it is correct. |
+| **D** | `onchain_constrained()` to the issuer (and `to`) | 1 log each | more than 1,679 | A guaranteed, onchain-available audit record. |
+
+**B is the cheapest coherent answer** and is what the report recommends if nothing consumes the event: it fixes the audit gap, costs no DA, and matches the existing issuer policy exactly.
+
+**But D deserves testing before B is chosen, and this is the useful finding in this section.** The issuer's *note* copies were forced offchain by a specific PXE limitation, documented in the CHANGELOG: PXE cannot process an onchain note message addressed to someone who is not the note's owner, because note discovery computes the note's **nullifier**, which needs the owner's nullifier key. **An event is not a note.** It has no nullifier and no discovery step of that kind, so the reason the note copies had to go offchain may simply not apply to events — in which case the issuer could receive a guaranteed, onchain-available `Transfer` record even though it cannot receive guaranteed note copies.
+
+That would materially improve the auditability story: today the issuer's entire audit trail is offchain and a sender who drops a message leaves no onchain trace, which the CHANGELOG records as a known weakness. An onchain-constrained `Transfer` event to the issuer would put the most important part of that trail back on chain.
+
+**This is a hypothesis, not a measurement — I did not test it.** The test is small: change the delivery to `onchain_constrained()` with the issuer as recipient, run the Noir suite, and check whether the issuer's PXE processes it or fails discovery the way the note copies did. If it works, D; if it fails, B.
+
+**Verdict: decide, in this order.** (i) Run the D experiment — it is one line and one test run, and it answers whether the offchain compromise is narrower than assumed. (ii) If D fails, take B. (iii) Either way, emit from `transfer_batch` as well (C-1), so the two paths leave the same trail. Option C, the current state, is the one choice that should not survive: it pays for data availability and buys no guarantee.
 
 ### H-5. Patterns checked and absent
 
