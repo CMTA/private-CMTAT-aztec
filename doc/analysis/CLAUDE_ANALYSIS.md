@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -23,7 +23,7 @@
 | ID | Finding | Outcome |
 |---|---|---|
 | A-1 | Duplicated `is_frozen(from)` read in `burn` — 1,920 gates | ✅ fixed |
-| A-2 | Issuer and freeze reads sit inside the per-address loop | ⬜ decide before raising `MAX_ADDR_PER_CALL` |
+| A-2 | Issuer read sat inside the per-address loop | ✅ fixed — cap raised to 4, issuer hoisted, 5,748 gates |
 | A-3 | `#[internal("private")]` on the three `_*_internal` helpers | ✅ keep — correct as written |
 | A-4 | No runtime-bounded loops, no unconstrained-then-constrained patterns | ✅ nothing to do |
 | B-1 | `SetFlag` derives `Packable` (N=2) where `UserFlags` hand-packs (N=1) | ⚠️ **corrected** — measured +7 gates, do not change |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 12 ✅ (9 checked/keep, 3 fixed), 2 ⚠️ corrected, 21 ⬜ open (9 *implement*, 10 *decide*, 2 *leave*).
+**Counts:** 35 rows — 13 ✅ (9 checked/keep, 4 fixed), 2 ⚠️ corrected, 20 ⬜ open (9 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -66,7 +66,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 | ID | Item | Why it is still open |
 |---|---|---|
 | C-1, C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
-| A-2, D-1 | Loop hoisting; cross-variant drift | Both are latent: A-2 costs nothing at `MAX_ADDR_PER_CALL = 1`, D-1 costs nothing while the three files agree. Both become expensive exactly when someone changes the thing that makes them matter. |
+| D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3, C-2, C-6, G-3, H-1, H-3, H-4 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 
 ---
@@ -129,21 +129,43 @@ Because `_burn_internal` is `#[internal("private")]` it is inlined, so both read
 
 **Verdict: implement — done.** Line 562 was deleted and the surviving assertion in `_burn_internal` now reads `"Frozen: Sender"` (G-2), in all three variants. Re-profiled after the change: `burn` is **81,736**, exactly matching `burn_batch`, as predicted. The regression test is `burn_batch_restricted_when_freezed` (see G-2); the full suite is 76 tests passing, up from 75.
 
-### A-2. The issuer read and the freeze reads sit inside the per-address loop — `:508`, `:511`, `:406`, `:540`
+### A-2. The issuer read sat inside the per-address loop — fixed, and the cap raised to 4
 
-`mint_batch`, `transfer_batch` and `burn_batch` call their `_*_internal` helper once per array entry, and each helper reads `issuer_address.get_current_value()` — a `DelayedPublicMutable` read — plus one or two freeze flags:
+**The finding as written.** `mint_batch`, `transfer_batch` and `burn_batch` call their `_*_internal` helper once per array entry, and because the helper is `#[internal("private")]` it is inlined — so each entry re-executed everything in the body, including reads that are the same for the whole call:
 
-```noir
-for i in 0..MAX_ADDR_PER_CALL {
-    self.internal._transfer_internal(from, accounts[i], amount[i]);
-}
-```
+| Read | Varies per entry? |
+|---|---|
+| `issuer_address.get_current_value()` | **No** — one issuer per call |
+| `is_frozen(from)` in `_transfer_internal`, `is_frozen(account)` in `_burn_internal` | **No** — a single sender/debited account |
+| `operateOnTransfer`'s `operationsFlag` and sender flags | **No** |
+| `is_frozen(to)` and the recipient's list flags | Yes — genuinely per-recipient |
 
-At `MAX_ADDR_PER_CALL = 1` this costs nothing, which is why it does not show up in the baseline. The issuer address is loop-invariant, and in `transfer_batch` and `burn_batch` so is `is_frozen(from)` — only the recipient varies.
+At `MAX_ADDR_PER_CALL = 1` this cost nothing, which is why it did not appear in the baseline. The original verdict was therefore "decide before raising the cap", with the cheap action being to write the dependency into the `MAX_ADDR_PER_CALL` comment.
 
-**Consequence.** The comment at `main.nr:49` observes that the protocol now allows 16 private logs and 8 nested private calls, and that the cap "could now be raised". Raising it to 3 makes the contract pay 3 issuer reads and 3 sender-freeze reads where 1 of each is correct. This is the finding that turns from free into expensive at exactly the moment someone acts on that comment.
+**What was done instead: the cap was measured and raised.** The comment invited raising the value ("could now be raised above 1") on reasoning that turns out to be wrong in two ways — it cited the 8-nested-private-call limit, which is irrelevant because the helpers are inlined and a batch makes no nested calls at all; and it did not identify transfer as the binding path. So the cap was established by experiment: set the global, adjust the tests, run the full suite.
 
-**Verdict: decide, and record the decision next to the cap.** Either hoist the invariant reads into the batch entry points and pass them down, or add a line to the `MAX_ADDR_PER_CALL` comment saying that hoisting is a prerequisite for raising it. The second is cheaper today and loses nothing, provided it is written down.
+| `MAX_ADDR_PER_CALL` | Suite result |
+|---:|---|
+| 1, 2, 4 | all tests pass |
+| 5 | `transfer_batch` passes; batched mint and burn finish with a wrong total supply (cause not pinned down — TXE `println` output could not be captured) |
+| 6, 8 | `transfer_batch` aborts with `Assertion failed: push out of bounds` — a per-call protocol array overflowing |
+
+**4 is the verified ceiling.** At N=4 the batch tests were rewritten with distinct amounts and repeated recipients (`[user1, user2, user1, user2]` / `[1000, 2000, 300, 400]`) and assert each holder's balance separately, so a dropped, duplicated or misdirected note changes an assertion. All 76 tests pass. N=5 was not adopted: transfer passes there, but two batch tests fail without a protocol error, and an unexplained failure is not a basis for shipping a limit.
+
+**The hoist, measured.** The issuer read was moved out of all three loops and passed into the helpers as a parameter:
+
+| Function | N=1 | N=4, unhoisted | N=4, hoisted | Saved |
+|---|---:|---:|---:|---:|
+| `mint_batch` | 30,776 | 113,619 | **107,871** | 5,748 |
+| `burn_batch` | 81,736 | 312,568 | **306,820** | 5,748 |
+| `transfer_batch` | 119,145 | 453,051 | **447,303** | 5,748 |
+| `mint` / `transfer` / `burn` | 30,776 / 120,824 / 81,736 | — | unchanged | 0 |
+
+5,748 is exactly 1,916 × 3 — one redundant `DelayedPublicMutable` read per extra address, at almost precisely the 1,920 gates A-1 measured for the same thing. The single-entry paths are byte-for-byte unchanged in cost, confirming the refactor is neutral where there is no loop.
+
+**What was deliberately not hoisted, and why.** The sender freeze check and the validation module's `operationsFlag` and sender-flag reads are also loop-invariant, and hoisting them would save roughly three times as much again. They were left because moving them changes *where a safety check lives*: `CLAUDE.md` states the invariant chain explicitly — "freeze check + validation check in the private internal function, role check + pause check in the enqueued public internal function" — and lifting a freeze check into the batch entry point puts the single-entry and batch paths on different guarantees. The issuer read has no such semantics: it is a value the helper needs, not a check it performs. Hoisting the rest is a real optimisation but it should be a deliberate change to that convention, not a side effect of a gate saving.
+
+**Cost, stated honestly.** Batching moves work rather than removing it: a 4-recipient transfer is a 447,303-gate circuit against 119,145 for one transfer, and that proof is produced on the user's own device. What is saved is the fixed per-transaction protocol overhead that four separate transfers would pay four times (~290,000 each by the framework's figure, **not measured here**). Batch for one transaction, not for a cheaper circuit.
 
 ### A-3. The `#[internal("private")]` helpers are the right structure — keep
 

@@ -156,6 +156,13 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- `MAX_ADDR_PER_CALL` raised from 1 to **4**, so `mint_batch`, `transfer_batch` and `burn_batch` act on up to four addresses.
+  - The ceiling was measured rather than derived: at 5 the batched mint and burn finish with a wrong total supply, and at 6 and above `transfer_batch` aborts with `push out of bounds`. Everything passes at 4.
+  - `transfer` is what sets the cap for all three, because it creates two notes and two constrained deliveries per recipient where mint and burn create one.
+  - The previous comment blamed the 8-nested-private-call limit. That was never the constraint: the `_*_internal` helpers are inlined, so a batch makes no nested private calls at any cap.
+  - The issuer address is now read once per call and passed into the helpers, instead of once per address. That saves 5,748 gates in each batch function at the new cap and leaves the single-entry paths unchanged.
+  - Batching does not make the circuit cheaper: a four-recipient transfer is 447,303 gates against 119,145 for a single transfer, and the user's own device produces that proof. What it saves is the fixed per-transaction overhead that four separate transfers would pay four times.
+  - BREAKING CHANGE: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the ABI, so callers passing one-element arrays must now pass four.
 - `burn` and `burn_batch` name their target `account`, not `from`, following the CMTAT Solidity burn module.
   - CMTAT Solidity uses `account` for `burn` and `mint` and reserves `from`/`to` for transfers, where there really are two parties. A burn has one.
   - This is what produced the frozen-holder message bug fixed below: `from` implied a counterparty, and the assertion copied from the mint module named the one a burn does not have.

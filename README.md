@@ -39,6 +39,7 @@ been audited and may not be fully compliant with the Swiss law.
   - [Mint private specifications](#mint-private-specifications)
   - [Transfer private specifications](#transfer-private-specifications)
   - [Burn private specifications](#burn-private-specifications)
+  - [Batching limits](#batching-limits)
   - [Security and confidentiality properties](#security-and-confidentiality-properties)
   - [Modules](#modules)
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
@@ -151,7 +152,7 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **16 private logs** can be emitted in a function call and only **8 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the mint function, our bottleneck is the encrypted logs, which means we can only batch **2 mint functions** at the same time.
+- `mint_batch` is capped at `MAX_ADDR_PER_CALL` recipients. See [Batching limits](#batching-limits) for how that number was arrived at.
 
 ### Transfer private specifications
 
@@ -167,7 +168,7 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **16 private logs** can be emitted in a function call. As the mint already emits 4 (2 for the user, 2 for the issuer), we can only have **1 transfer** in the transfer batch.
+- `transfer_batch` is capped at `MAX_ADDR_PER_CALL` recipients, and transfer is the operation that sets that cap for all three. See [Batching limits](#batching-limits).
 
 ### Burn private specifications
 
@@ -186,7 +187,32 @@ features, at your own risk.
 
 **Limitations**:
 
-- According to protocol limitations, only **16 private logs** can be emitted in a function call and only **8 private functions** can be called from a function call. As we have 2 encrypted logs emitted in the burn function, our bottleneck is the encrypted logs, which means we can only batch **2 burn functions** at the same time.
+- `burn_batch` is capped at `MAX_ADDR_PER_CALL` entries, all debited from the same account. See [Batching limits](#batching-limits).
+
+### Batching limits
+
+`mint_batch`, `transfer_batch` and `burn_batch` all act on at most `MAX_ADDR_PER_CALL` addresses, currently **4**.
+
+That number is measured, not derived from the protocol constants. Every value was tried by setting the global, adjusting the tests and running the full Noir suite:
+
+| `MAX_ADDR_PER_CALL` | `mint_batch` | `burn_batch` | `transfer_batch` | Result |
+|---:|---:|---:|---:|---|
+| 1 | 30,776 | 81,736 | 119,145 | all tests pass |
+| 2 | 60,169 | 160,189 | 230,444 | all tests pass |
+| **4** | **107,871** | **306,820** | **447,303** | **all tests pass** |
+| 5 | — | — | — | transfer passes; batched mint and burn end with a wrong total supply |
+| 6 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
+| 8 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
+
+Gate counts are from `aztec profile gates` on `CMTATAztec`; the N=4 row is the current code, with the issuer read hoisted out of the loop.
+
+Three things are worth drawing out of that table.
+
+- **Transfer sets the cap for all three.** It creates two notes and two constrained deliveries per recipient, where mint and burn create one, so it saturates the per-call note-hash and log budgets at roughly twice the rate. The cap is uniform because the three functions share one global.
+- **The number of nested private calls is irrelevant.** The `_mint_internal` / `_transfer_internal` / `_burn_internal` helpers are `#[internal("private")]`, so the compiler inlines them: a batch makes no nested private calls at all, whatever the cap is. Earlier revisions of this document cited the 8-private-call limit as a constraint on batching; it never was one.
+- **Batching moves work, it does not remove it.** A 4-recipient transfer is a 447,303-gate circuit against 119,145 for a single transfer — and that proof is produced on the *user's own device*. What batching saves is the fixed per-transaction protocol overhead, which four separate transfers would pay four times. Batch because you want one transaction, not because you want a cheaper circuit.
+
+Raising the cap further means repeating the measurement, not re-reading the protocol constants. It is also an ABI change: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the generated interface.
 
 ### Security and confidentiality properties
 
@@ -329,9 +355,9 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 ### What will we be able to do in the future?
 
-- **Batched mint/transfer/burn**:
-  - Protocol limitations currently restrict us to 8 private calls and 16 private logs per function call.
-  - In the long run, these limitations will be lifted, enabling batched transactions. The logic is already implemented in the contracts.
+- **Larger batches**:
+  - The cap is currently 4 addresses per call, set by the per-call note-hash and log budgets rather than by the private-call budget — see [Batching limits](#batching-limits).
+  - As those budgets grow, the cap can be raised: the logic is already written for arbitrary batch sizes. Each raise needs re-measuring rather than re-reading the constants, and the per-recipient proving cost grows with it.
 
 > These functions are not separated into their own “abstract contract” as it does not exist in Aztec. We could put them in a library but this would mean much more boilerplate code. Following Aztec improvements, we may improve composition/abstraction in the future. 
 
@@ -450,9 +476,9 @@ Note that the two disagree about total supply in opposite directions: this imple
     - Accept the delay.
     - Encrypt the blacklist with a key (implementation unclear).
 
-- **Protocol limitations**: 
-  - Only **8 private calls** can be made from a private function, limiting batch functions.
-  - Only **16 private logs** can be emitted in a function call, further limiting batching.
+- **Protocol limitations**:
+  - A private function may emit only **16 private logs** and create only **16 note hashes** per call, which is what caps batching at 4 addresses — see [Batching limits](#batching-limits).
+  - The **8 nested private calls** per call limit does not affect batching here, because the batch helpers are inlined.
 
 ## Miscellaneous
 
@@ -551,7 +577,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Debt extension** | CMTAT bond attributes, mirroring the Solidity `ICMTATDebt`: a *debt identifier* (issuer name and description, guarantor, debtholder representative) and a *debt instrument* (interest rate, par value, minimum denomination, issuance and maturity dates, coupon frequency, interest schedule and payment date, day-count and business-day conventions, payment currency and its contract address). |
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
 | **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
-| **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `1`) because the protocol limits how many messages and nested calls one call may produce. |
+| **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `4`) because the protocol limits how many note hashes and private logs one call may produce. The cap is measured, not derived — see [Batching limits](#batching-limits). |
 | **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to the issuer address, a freeze or a list entry becomes current. Nothing that reads those values sees the new one before it elapses — including every mint, transfer and burn, which all read the issuer address. |
 
 ## Intellectual property

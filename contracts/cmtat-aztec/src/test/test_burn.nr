@@ -110,33 +110,27 @@ unconstrained fn burn_private_failure_on_behalf_of_other_wrong_designated_caller
 #[test]
 unconstrained fn burn_private_batch_success() {
     // Setup without account contracts. We are not using authwits here, so dummy accounts are enough
-    let (env, token_contract_address, issuer, user1, _, _) =
+    let (env, token_contract_address, issuer, user1, user2, _) =
         utils::setup_and_more_addresses(/* with_account_contracts */ false);
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(MINTER_ROLE, issuer));
 
-    let mint_amount = [10000 as u128];
-    let addresses = [user1];
+    let mint_amount = [1000 as u128, 2000 as u128, 300 as u128, 400 as u128];
+    let addresses = [user1, user2, user1, user2];
 
     env.call_private(
         issuer,
         Token::at(token_contract_address).mint_batch(addresses, mint_amount),
     );
 
-    utils::check_private_balance(env, token_contract_address, addresses[0], mint_amount[0]);
-
     let total_supply = env.view_public(Token::at(token_contract_address).total_supply());
-
-    let mut total_mint_amount = 0 as u128;
-    for i in 0..1 {
-        total_mint_amount += mint_amount[i];
-    }
-
-    assert(total_supply == total_mint_amount);
+    assert(total_supply == 3700 as u128);
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(BURNER_ROLE, user1));
 
-    let burn_amount = [mint_amount[0] / 2 as u128];
+    // burn_batch debits a single account, so every entry comes out of user1's 1300.
+    let burn_amount = [100 as u128, 200 as u128, 30 as u128, 40 as u128];
+    let burnt = 370 as u128;
 
     // user1 burns from their own balance, so no authwit is needed and the nonce must be zero.
     env.call_private(
@@ -144,12 +138,9 @@ unconstrained fn burn_private_batch_success() {
         Token::at(token_contract_address).burn_batch(user1, burn_amount, 0),
     );
 
-    utils::check_private_balance(
-        env,
-        token_contract_address,
-        addresses[0],
-        mint_amount[0] - burn_amount[0],
-    );
+    utils::check_private_balance(env, token_contract_address, user1, 1300 as u128 - burnt);
+    utils::check_private_balance(env, token_contract_address, user2, 2400 as u128);
+
     let total_supply_after_burn = env.view_public(Token::at(token_contract_address).total_supply());
-    assert(total_supply_after_burn == total_supply - burn_amount[0]);
+    assert(total_supply_after_burn == total_supply - burnt);
 }

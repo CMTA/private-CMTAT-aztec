@@ -122,14 +122,14 @@ unconstrained fn transfer_private_batch_success() {
     let (env, token_contract_address, issuer, user1, mint_amount) =
         utils::setup_and_mint(/* with_account_contracts */ false);
 
-    let total_transfer_amount = 100 as u128;
+    let total_transfer_amount = 460 as u128;
 
     env.call_private(
         issuer,
         Token::at(token_contract_address).transfer_batch(
             issuer,
-            [user1],
-            [100 as u128],
+            [user1, user1, user1, user1],
+            [100 as u128, 200 as u128, 130 as u128, 30 as u128],
             0,
         ),
     );

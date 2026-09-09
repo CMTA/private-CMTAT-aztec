@@ -130,6 +130,6 @@ unconstrained fn burn_batch_restricted_when_freezed() {
     env.call_public(issuer, Token::at(token_contract_address).freeze(user, freezable_flag));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
-    let burn_amount = [10000 as u128];
+    let burn_amount = [10000 as u128, 0 as u128, 0 as u128, 0 as u128];
     env.call_private(user, Token::at(token_contract_address).burn_batch(user, burn_amount, 0));
 }

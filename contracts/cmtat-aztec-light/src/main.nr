@@ -44,13 +44,24 @@ pub contract CMTATAztecLight {
     // consumers should trim the trailing spaces.
     pub global VERSION: str<31> = "0.3.0                          ";
 
-    // This global is used when doing batching. The protocol allows MAX_PRIVATE_LOGS_PER_CALL (16)
-    // private logs and MAX_PRIVATE_CALL_STACK_LENGTH_PER_CALL (8) nested private calls per call. A
-    // transfer delivers 5 messages per address (change note and its issuer copy, recipient note and
-    // its issuer copy, and the Transfer event), so the value could now be raised above 1 - it is kept
-    // at 1 here so that this migration does not change the contract's ABI beyond what the framework
-    // forced.
-    global MAX_ADDR_PER_CALL: u32 = 1;
+    // How many addresses one batched call may act on.
+    //
+    // 4 is the measured ceiling, not a guess. `transfer` is the binding path: it creates two notes
+    // and two constrained deliveries per recipient, so it saturates the per-call note-hash and log
+    // budgets at roughly twice the rate of mint. Running the Noir suite at each value:
+    //
+    //   1, 2, 4 -> every test passes
+    //   5       -> transfer passes, but batched mint and burn end with a wrong total supply
+    //   6, 8    -> transfer aborts with "Assertion failed: push out of bounds"
+    //
+    // The private-call budget (MAX_PRIVATE_CALL_STACK_LENGTH_PER_CALL) does not enter into it: the
+    // `_*_internal` helpers are `#[internal("private")]` and are inlined, so a batch makes no nested
+    // private calls at all whatever this value is.
+    //
+    // Raising this further requires re-measuring, not re-reading the protocol constants - and note
+    // that the per-recipient work is what grows, so the proof the *user's own device* must produce
+    // grows with it (453k gates for a 4-recipient transfer against 119k for one).
+    global MAX_ADDR_PER_CALL: u32 = 4;
 
     // How every note created by this contract is additionally delivered to the issuer (see the
     // `deliver_to(issuer, ...)` calls below), which is what makes holder balances auditable.
@@ -358,10 +369,8 @@ pub contract CMTATAztecLight {
     @info: the minting function is called by the issuer, who is the only one allowed to mint.
     */
     #[internal("private")]
-    fn _mint_internal(to: AztecAddress, amount: u128) {
+    fn _mint_internal(to: AztecAddress, amount: u128, issuer: AztecAddress) {
         assert(!self.storage.enforcement_module.is_frozen(to), "Frozen: Recipient");
-
-        let issuer = self.storage.issuer_address.get_current_value();
 
         // The recipient's new note is delivered to the recipient, and a second copy of the same message
         // is delivered to the issuer so that it can audit the holder's balance. See the note
@@ -385,7 +394,8 @@ pub contract CMTATAztecLight {
     */
     #[external("private")]
     fn mint(to: AztecAddress, amount: u128) {
-        self.internal._mint_internal(to, amount);
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._mint_internal(to, amount, issuer);
         self.enqueue_self._mint(self.msg_sender(), amount);
     }
 
@@ -396,8 +406,12 @@ pub contract CMTATAztecLight {
         assert(accounts.len() == amount.len(), "Accounts and values arrays mismatch");
         let mut acc: u128 = 0;
 
+        // The issuer is the same for every entry, so it is read once here rather than once per
+        // address inside the inlined helper.
+        let issuer = self.storage.issuer_address.get_current_value();
+
         for i in 0..MAX_ADDR_PER_CALL {
-            self.internal._mint_internal(accounts[i], amount[i]);
+            self.internal._mint_internal(accounts[i], amount[i], issuer);
             acc += amount[i];
         }
 
@@ -429,7 +443,8 @@ pub contract CMTATAztecLight {
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
     fn transfer(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
-        self.internal._transfer_internal(from, to, amount);
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._transfer_internal(from, to, amount, issuer);
         self.enqueue_self._transfer();
         self.emit(Transfer { from, to, amount }).deliver_to(
             to,
@@ -452,18 +467,24 @@ pub contract CMTATAztecLight {
         assert(accounts.len() != 0, "Mint module empty");
         assert(accounts.len() == amount.len(), "Accounts and values arrays mismatch");
 
+        // Loop-invariant: one issuer for the whole call, read once rather than per recipient.
+        let issuer = self.storage.issuer_address.get_current_value();
+
         for i in 0..MAX_ADDR_PER_CALL {
-            self.internal._transfer_internal(from, accounts[i], amount[i]);
+            self.internal._transfer_internal(from, accounts[i], amount[i], issuer);
         }
         self.enqueue_self._transfer();
     }
 
     #[internal("private")]
-    fn _transfer_internal(from: AztecAddress, to: AztecAddress, amount: u128) {
+    fn _transfer_internal(
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: u128,
+        issuer: AztecAddress,
+    ) {
         assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
         assert(!self.storage.enforcement_module.is_frozen(to), "Frozen: Recipient");
-
-        let issuer = self.storage.issuer_address.get_current_value();
 
         // Both the sender's change note and the recipient's new note are copied to the issuer.
         let change_message = self.storage.private_balances.at(from).sub(amount);
@@ -491,13 +512,11 @@ pub contract CMTATAztecLight {
      * ======================================================== */
 
     #[internal("private")]
-    fn _burn_internal(account: AztecAddress, amount: u128) {
+    fn _burn_internal(account: AztecAddress, amount: u128, issuer: AztecAddress) {
         // `account` is the address being debited, named as in the CMTAT Solidity burn module. Both
         // `burn` and `burn_batch` reach the freeze check here, so this message is the one an
         // operator sees on either path.
         assert(!self.storage.enforcement_module.is_frozen(account), "Frozen: Sender");
-
-        let issuer = self.storage.issuer_address.get_current_value();
 
         let change_message = self.storage.private_balances.at(account).sub(amount);
         change_message.deliver(MessageDelivery::onchain_constrained());
@@ -517,7 +536,8 @@ pub contract CMTATAztecLight {
     #[authorize_once("account", "authwit_nonce")]
     #[external("private")]
     fn burn(account: AztecAddress, amount: u128, authwit_nonce: Field) {
-        self.internal._burn_internal(account, amount);
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._burn_internal(account, amount, issuer);
         self.enqueue_self._burn(self.msg_sender(), amount);
     }
 
@@ -537,8 +557,11 @@ pub contract CMTATAztecLight {
 
         let mut acc: u128 = 0;
 
+        // Loop-invariant: one issuer for the whole call, read once rather than per entry.
+        let issuer = self.storage.issuer_address.get_current_value();
+
         for i in 0..MAX_ADDR_PER_CALL {
-            self.internal._burn_internal(account, amount[i]);
+            self.internal._burn_internal(account, amount[i], issuer);
             acc += amount[i];
         }
 
