@@ -378,6 +378,8 @@ There is no recipient in a burn. The caller at `:562` gets it right (`"Frozen: S
 
 **Consequence.** `burn_batch` reaches `_burn_internal` without the `:562` check, so a frozen holder's batched burn fails with `Frozen: Recipient` — pointing the operator at the wrong address to investigate. On a circuit the assertion message is the only debugging output there is.
 
+**Root cause, addressed separately.** The parameter was called `from`, which implies a counterparty and invites the mint module's wording. CMTAT Solidity avoids this by naming the target of `burn` and `mint` `account`, reserving `from`/`to` for transfers. The burn path has been renamed to match (`burn`, `burn_batch` and `_burn_internal` now take `account`), which removes the conditions that produced the bug rather than only its symptom. `mint` still uses `to`; aligning it too would be a second ABI change and was left.
+
 **Verdict: implement — done**, together with A-1.
 
 The fix was pinned by a test written *before* it and confirmed to fail against the unfixed code, which is the only thing that makes it a regression test rather than a guess:

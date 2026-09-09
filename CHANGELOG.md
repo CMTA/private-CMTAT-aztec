@@ -154,6 +154,14 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - Observed with toolchain 5.2.0, which bundles TypeScript 6.0.3 against the project's 5.5.x pin: the release check failed on a deprecation warning the project's own compiler does not emit.
   - A `yarn` or `npm` script prepends `./node_modules/.bin` to `PATH`, so the pinned compiler wins regardless of what else is installed. The checklist now calls the script.
 
+### Changed
+
+- `burn` and `burn_batch` name their target `account`, not `from`, following the CMTAT Solidity burn module.
+  - CMTAT Solidity uses `account` for `burn` and `mint` and reserves `from`/`to` for transfers, where there really are two parties. A burn has one.
+  - This is what produced the frozen-holder message bug fixed below: `from` implied a counterparty, and the assertion copied from the mint module named the one a burn does not have.
+  - The authwit macro takes the parameter by name, so it is now `#[authorize_once("account", "authwit_nonce")]`.
+  - BREAKING CHANGE: the generated TypeScript signature becomes `burn(account, amount, authwit_nonce)`. Arguments are positional, so existing calls behave identically, but any caller using the generated named types must be updated. `mint` still names its target `to`; aligning it with CMTAT would be a second ABI change and has not been made.
+
 ### Fixed
 
 - `yarn compile` produced artifacts that `yarn codegen` could not consume.

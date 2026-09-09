@@ -491,14 +491,15 @@ pub contract CMTATAztecLight {
      * ======================================================== */
 
     #[internal("private")]
-    fn _burn_internal(from: AztecAddress, amount: u128) {
-        // `from` is the address being debited. Both `burn` and `burn_batch` reach the freeze check
-        // here, so this message is the one an operator sees on either path.
-        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
+    fn _burn_internal(account: AztecAddress, amount: u128) {
+        // `account` is the address being debited, named as in the CMTAT Solidity burn module. Both
+        // `burn` and `burn_batch` reach the freeze check here, so this message is the one an
+        // operator sees on either path.
+        assert(!self.storage.enforcement_module.is_frozen(account), "Frozen: Sender");
 
         let issuer = self.storage.issuer_address.get_current_value();
 
-        let change_message = self.storage.private_balances.at(from).sub(amount);
+        let change_message = self.storage.private_balances.at(account).sub(amount);
         change_message.deliver(MessageDelivery::onchain_constrained());
         change_message.deliver_to(issuer, MessageDelivery::offchain());
     }
@@ -506,17 +507,17 @@ pub contract CMTATAztecLight {
     /**
     * @dev Burns tokens on behalf of the specified address. Enqueues a public call to decrease the total supply and to check for pause.
     *
-    * An authwit from the 'from' address is required to burn tokens on their behalf.
+    * An authwit from the `account` address is required to burn tokens on their behalf.
     *
     * Requirements:
     * - The contract must not be paused.
     * - The sender must not be frozen.
     * - The caller must have the burner role.
     */
-    #[authorize_once("from", "authwit_nonce")]
+    #[authorize_once("account", "authwit_nonce")]
     #[external("private")]
-    fn burn(from: AztecAddress, amount: u128, authwit_nonce: Field) {
-        self.internal._burn_internal(from, amount);
+    fn burn(account: AztecAddress, amount: u128, authwit_nonce: Field) {
+        self.internal._burn_internal(account, amount);
         self.enqueue_self._burn(self.msg_sender(), amount);
     }
 
@@ -525,10 +526,10 @@ pub contract CMTATAztecLight {
     * one authwit per entry; the authwit check is now the #[authorize_once] macro, which authorizes a
     * single `from`, so the batch debits one holder.
     */
-    #[authorize_once("from", "authwit_nonce")]
+    #[authorize_once("account", "authwit_nonce")]
     #[external("private")]
     fn burn_batch(
-        from: AztecAddress,
+        account: AztecAddress,
         amount: [u128; MAX_ADDR_PER_CALL],
         authwit_nonce: Field,
     ) {
@@ -537,7 +538,7 @@ pub contract CMTATAztecLight {
         let mut acc: u128 = 0;
 
         for i in 0..MAX_ADDR_PER_CALL {
-            self.internal._burn_internal(from, amount[i]);
+            self.internal._burn_internal(account, amount[i]);
             acc += amount[i];
         }
 
