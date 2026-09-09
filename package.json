@@ -10,7 +10,7 @@
     "clean": "rm -rf ./src/artifacts ./target codegenCache.json",
     "clear-store": "rm -rf ./store",
     "codegen": "aztec codegen target --outdir src/artifacts",
-    "compile": "${AZTEC_NARGO:-aztec-nargo} compile --workspace",
+    "compile": "${AZTEC_COMPILE:-aztec} compile --workspace",
     "deploy": "tsx scripts/deploy_contract.ts",
     "deploy-account": "tsx scripts/deploy_account.ts",
     "interaction": "tsx scripts/interaction.ts",

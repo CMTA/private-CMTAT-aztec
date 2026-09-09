@@ -492,7 +492,9 @@ pub contract CMTATAztecLight {
 
     #[internal("private")]
     fn _burn_internal(from: AztecAddress, amount: u128) {
-        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Recipient");
+        // `from` is the address being debited. Both `burn` and `burn_batch` reach the freeze check
+        // here, so this message is the one an operator sees on either path.
+        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
 
         let issuer = self.storage.issuer_address.get_current_value();
 
@@ -514,8 +516,6 @@ pub contract CMTATAztecLight {
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
     fn burn(from: AztecAddress, amount: u128, authwit_nonce: Field) {
-        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
-
         self.internal._burn_internal(from, amount);
         self.enqueue_self._burn(self.msg_sender(), amount);
     }

@@ -78,6 +78,7 @@ scripts/                             # tsx entry points, run via yarn
 ## Other important files
 
 - `README.md` — the specification: assumptions, per-operation privacy requirements, module design, known limitations. Read before changing behaviour.
+- `doc/analysis/CLAUDE_ANALYSIS.md` — code-quality review (not a security audit) against Aztec 5.2.0, with a measured gate-count baseline. Findings carry stable IDs (`A-1`, `H-3`, …); cite them by ID in commits and code comments. Two entries are corrections of findings that measurement disproved — read those before re-proposing the change.
 - `src/main.nr` holds `VERSION`, a compile-time `str<31>` returned by `version()`. It is not stored state, so it cannot drift from the code — but it must be bumped by hand with every release; the `CHANGELOG.md` checklist carries the step.
 - `CHANGELOG.md` — release history plus the project's semver policy (storage/note-layout and external-API breaks are MAJOR) and the pre-release checklist. Add an entry with every release; follow the entry-style rules stated in the file.
 - `LEARN-AZTEC.md` — condensed Aztec/Noir notes written while building; useful background, explicitly not kept up to date.
@@ -99,7 +100,7 @@ scripts/                             # tsx entry points, run via yarn
 ## Common commands
 
 - `yarn install` — install JS dependencies.
-- `yarn compile` — `aztec-nargo compile --workspace` (override the binary with `AZTEC_NARGO`); builds all three variants.
+- `yarn compile` — `aztec compile --workspace` (override the binary with `AZTEC_COMPILE`); builds all three variants. It must be `aztec compile`, not `aztec-nargo compile`: at 5.2.0 `aztec-nargo` is a bare symlink to `nargo` and does not run the AVM transpiler, so `yarn codegen` then fails with `Contract's public bytecode has not been transpiled`.
 - `yarn codegen` — generate TS artifacts from `target/` into `src/artifacts/` (required before any TS test or script).
 - `yarn test` — `test:nr` (Noir `aztec test`) then `test:js` (Jest e2e); the e2e suite needs a running sandbox (`aztec start --sandbox`).
 - `yarn test:nr` / `yarn test:js` — run one suite only. `test:nr` is `aztec test --workspace`; add a package path to run one variant.

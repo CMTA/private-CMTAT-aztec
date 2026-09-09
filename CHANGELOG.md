@@ -154,6 +154,17 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - Observed with toolchain 5.2.0, which bundles TypeScript 6.0.3 against the project's 5.5.x pin: the release check failed on a deprecation warning the project's own compiler does not emit.
   - A `yarn` or `npm` script prepends `./node_modules/.bin` to `PATH`, so the pinned compiler wins regardless of what else is installed. The checklist now calls the script.
 
+### Fixed
+
+- `yarn compile` produced artifacts that `yarn codegen` could not consume.
+  - The script called `aztec-nargo compile`, and at Aztec 5.2.0 `aztec-nargo` is a bare symlink to `nargo`: it compiles Noir but does not run the AVM transpiler, so codegen aborted with `Contract's public bytecode has not been transpiled`.
+  - It went unnoticed because `aztec test` transpiles as a side effect, so anyone running the tests between compiling and generating never saw it. The pre-release checklist in this file is the one path that does not — it rebuilds from a clean tree without a test run.
+  - The script is now `aztec compile --workspace`, and the environment override is renamed from `AZTEC_NARGO` to `AZTEC_COMPILE` because it names the `aztec` CLI rather than the nargo binary.
+- `burn_batch` reported a frozen holder as `Frozen: Recipient`, naming a party a burn does not have.
+  - `_burn_internal` asserted with the mint module's message; `burn` happened to mask it by checking the same flag itself first, so only the batch path showed it. On a circuit an assertion message is the only diagnostic there is, so the wrong one sends an operator after the wrong address.
+  - The duplicate check in `burn` is removed as part of the fix, which also drops `burn` from 83,656 to 81,736 gates — the same circuit size as `burn_batch`. Behaviour is unchanged: the check still runs, once, inside `_burn_internal`.
+  - Covered by `burn_batch_restricted_when_freezed`, added and confirmed to fail against the unfixed contract.
+
 ### Removed
 
 - `FLAG_DEFAULT_FLAG` and `FLAG_REDEEMED_FLAG` from the credit-events module. They were public constants that nothing read: the module has always stored the two flags as `bool` fields of `CreditEventsStruct`, never as bits of a field.
@@ -189,6 +200,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `doc/analysis/CLAUDE_ANALYSIS.md`, a code-quality review of the Noir sources against Aztec 5.2.0.
+  - It is explicitly not a security audit: nothing it reports lets an unauthorized party move value, bypass a restriction or brick a contract.
+  - Carries a measured per-function gate baseline from `aztec profile gates`, so a future change can be compared against a number rather than an impression.
+  - Findings have stable IDs and each ends in a verdict — implement, decide, or leave with the reason recorded. Two are marked as corrections, where measurement disproved the finding as first written.
 - README updated for the renamed state variables, the per-call protocol limits (now 8 private calls and 16 private logs, up from 4 and 4), the `aztec-up install 5.2.0` instruction, and the delivery mode of the issuer's note copy.
 
 ## 0.2 — 2025-02-20
