@@ -1,0 +1,45 @@
+@startuml
+title Private mint — CMTATAztec
+
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 250
+
+actor "Minter\n(the issuer)" as Minter
+box "Client side — proved on the minter's device" #F4F8FC
+participant "mint(to, amount)\nexternal private" as Priv
+end box
+database "Public state" as PS
+box "Sequencer — public" #FDF4F4
+participant "_mint(caller, amount)\nexternal public, only_self" as Pub
+end box
+participant "Issuer" as Issuer
+participant "Recipient" as To
+
+Minter -> Priv : mint(to, amount)
+note right of Priv
+  No authwit. Minting is authorised by a role, not by
+  the recipient, so there is nothing for `to` to sign.
+end note
+
+Priv -> PS : read issuer_address
+Priv -> PS : read is_frozen(to)
+note over Priv, PS
+  Only the freeze flag is checked. The blacklist and whitelist
+  are NOT applied to mint: operateOnTransfer runs on transfer only.
+end note
+
+Priv -> To : new note for `to`, onchain_constrained
+Priv -> Issuer : copy of that note, offchain
+
+Priv -> Pub : enqueue_self _mint(msg_sender(), amount)
+note over Pub
+  What becomes public here: the MINTER's address and the amount.
+  The recipient `to` is never passed across, so who received the
+  tokens stays private. The amount is public either way, because
+  total_supply is public and moves by exactly that much.
+end note
+Pub -> PS : only_role(MINTER_ROLE, caller)
+Pub -> PS : assert not paused
+Pub -> PS : total_supply += amount
+
+@enduml

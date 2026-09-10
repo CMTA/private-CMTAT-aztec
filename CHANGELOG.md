@@ -215,6 +215,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added six PlantUML diagrams to the README, with sources under `doc/img/`.
+  - Two structural: the three contract packages over the shared module library, and what the contract keeps public against what lives as notes in each holder's PXE.
+  - Three flows: private mint, private transfer, and burn with and without an authwit. Each shows where the private half ends and the enqueued public half begins, and calls out exactly which values become public.
+  - One explaining why the compliance flags are `DelayedPublicMutable` at all, and the window that opens between scheduling a freeze and its taking effect.
+  - The `.puml` files are the source of truth; regenerate a PNG with `plantuml -tpng doc/img/<name>.puml` after editing one.
 - Added `doc/analysis/CLAUDE_ANALYSIS.md`, a code-quality review of the Noir sources against Aztec 5.2.0.
   - It is explicitly not a security audit: nothing it reports lets an unauthorized party move value, bypass a restriction or brick a contract.
   - Carries a measured per-function gate baseline from `aztec profile gates`, so a future change can be compared against a number rather than an impression.

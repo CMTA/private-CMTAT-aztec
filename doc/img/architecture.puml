@@ -1,0 +1,53 @@
+@startuml
+title Workspace layout — three variants over one module library
+
+skinparam componentStyle rectangle
+skinparam maxMessageSize 250
+
+package "contracts/ — one contract per Nargo package" {
+  component "CMTATAztecLight\ncore token" as Light
+  component "CMTATAztec\ncore + validation" as Base
+  component "CMTATAztecDebt\ncore + validation + debt" as Debt
+}
+
+package "lib/ — cmtat_aztec_lib (type = lib)" {
+  component "access_controlModule\nroles 1..11" as AC
+  component "pauseModule\npause + permanent deactivation" as Pause
+  component "enforcementModule\nper-address freeze" as Enf
+  component "extraInformationModule\nterms + tokenId" as Extra
+  component "validationModule\nblacklist / whitelist" as Val
+  component "creditEventsModule" as Credit
+  component "debtModule\nDebtIdentifier + DebtInstrument" as DebtM
+}
+
+Light --> AC
+Light --> Pause
+Light --> Enf
+Light --> Extra
+
+Base --> AC
+Base --> Pause
+Base --> Enf
+Base --> Extra
+Base --> Val
+
+Debt --> AC
+Debt --> Pause
+Debt --> Enf
+Debt --> Extra
+Debt --> Val
+Debt --> Credit
+Debt --> DebtM
+
+note as N1
+  Noir has no inheritance and allows ONE contract per package,
+  so a variant is a separate package composing a different subset
+  of modules — not a subclass. Every user-callable entry point
+  must be re-declared in that variant's own main.nr; a module
+  method alone is not callable. The three main.nr files are
+  therefore near-identical by construction.
+end note
+
+N1 .. Base
+
+@enduml

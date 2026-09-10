@@ -36,6 +36,7 @@ been audited and may not be fully compliant with the Swiss law.
 - [Private token implementation](#private-token-implementation)
   - [Assumptions and requirements](#assumptions-and-requirements)
   - [Storage](#storage)
+  - [Overview](#overview)
   - [Mint private specifications](#mint-private-specifications)
   - [Transfer private specifications](#transfer-private-specifications)
   - [Burn private specifications](#burn-private-specifications)
@@ -133,12 +134,30 @@ features, at your own risk.
 
     > **Note**: Under the above assumptions, a public function will reduce the total supply when a burn happens. Therefore, the updated total supply will be visible to everyone, and the amount of the change can be traced back to a specific private proof.
 
+### Overview
+
+Three deployment variants compose modules from one shared library. Noir has no inheritance and allows one contract per package, so a variant is a different *composition*, not a subclass.
+
+![Workspace layout: three contract packages over the shared module library](doc/img/architecture.png)
+
+_Diagram source: `doc/img/architecture.puml`._
+
+What the token keeps private is the holder balances and the transfers between them. Everything an issuer needs to administer publicly — supply, roles, pause state, the compliance flags — stays public by design.
+
+![What is public and what is private](doc/img/state-split.png)
+
+_Diagram source: `doc/img/state-split.puml`._
+
 ### Storage
 
 - **Issuer_address**: `DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS>` - The address of the issuer, which serves as a base reference to encrypt users' notes. As it is a `DelayedPublicMutable`, it can be changed if compromised, though only after the delay.
 - **Balances**: `Owned<BalanceSet>` - Token balance of every user inside their PXE, accessed as `private_balances.at(address)`. The balance of a user is the sum of the amounts of all their private `UintNote`. `BalanceSet` now comes from the `balance_set` aztec-nr library rather than being defined in this repository.
 
 ### Mint private specifications
+
+![Private mint sequence](doc/img/mint-flow.png)
+
+_Diagram source: `doc/img/mint-flow.puml`._
 
 **Issuer**:
 
@@ -156,6 +175,12 @@ features, at your own risk.
 
 ### Transfer private specifications
 
+The transfer is the flow worth reading closely: it shows the private half doing all the work on the user's own device, and the enqueued public half deliberately taking no arguments at all.
+
+![Private transfer sequence, private and public halves](doc/img/transfer-flow.png)
+
+_Diagram source: `doc/img/transfer-flow.puml`._
+
 **Issuer**:
 
 - The added notes from sender and recipient are broadcasted to the issuer.
@@ -171,6 +196,10 @@ features, at your own risk.
 - `transfer_batch` is capped at `MAX_ADDR_PER_CALL` recipients, and transfer is the operation that sets that cap for all three. See [Batching limits](#batching-limits).
 
 ### Burn private specifications
+
+![Private burn sequence, with and without an authwit](doc/img/burn-flow.png)
+
+_Diagram source: `doc/img/burn-flow.puml`._
 
 **Issuer**:
 
@@ -252,6 +281,12 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 - Currently, no operations can be added; there is only blacklist/whitelist.
 
 **Delay issue**:
+
+The diagram below is the whole argument in one picture: why the flags must be delayed, and what that delay costs.
+
+![Why compliance flags are delayed, and the window it opens](doc/img/delayed-flag.png)
+
+_Diagram source: `doc/img/delayed-flag.puml`._
 
 - The delay is caused by the fact that the roles are stored in a `DelayedPublicMutable` variable type.
 - This is needed to preserve privacy when doing a private transfer between two users while maintaining the strict rule that no tokens should be transferred from/to a blacklisted address.

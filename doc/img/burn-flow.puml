@@ -1,0 +1,54 @@
+@startuml
+title Private burn — CMTATAztec
+
+skinparam sequenceMessageAlign left
+skinparam maxMessageSize 250
+
+actor "Burner\n(holds BURNER_ROLE)" as Burner
+actor "Holder\n(`account`)" as Holder
+box "Client side" #F4F8FC
+participant "burn(account, amount, authwit_nonce)\nexternal private" as Priv
+participant "PXE\n(holder's notes)" as PXE
+end box
+database "Public state" as PS
+box "Sequencer — public" #FDF4F4
+participant "_burn(caller, amount)\nexternal public, only_self" as Pub
+end box
+participant "Issuer" as Issuer
+
+note over Burner, Holder
+  A burn needs BOTH: BURNER_ROLE on the caller AND the holder's consent.
+  Unlike Solidity CMTAT there is no forced burn — the issuer cannot
+  spend another holder's notes, because that needs the owner's key.
+  A holder cannot burn their own tokens without the role either.
+end note
+
+alt the holder burns their own tokens — they must ALSO hold BURNER_ROLE
+  Holder -> Priv : burn(account = self, amount, authwit_nonce = 0)
+else a burner acts on the holder's behalf
+  Holder -> Burner : sign an authwit for this exact call
+  Burner -> Priv : burn(account = holder, amount, authwit_nonce != 0)
+  Priv -> Priv : validate the authwit, then nullify the nonce
+end
+
+Priv -> PS : read issuer_address
+Priv -> PS : read is_frozen(account)
+note right of Priv : fails with "Frozen: Sender" —\n`account` is the address being debited
+
+Priv -> PXE : sub(amount) on `account`
+PXE --> Priv : nullify the spent notes, create a change note
+Priv -> Holder : change note, onchain_constrained
+Priv -> Issuer : copy of the change note, offchain
+
+Priv -> Pub : enqueue_self _burn(msg_sender(), amount)
+note over Pub
+  What becomes public: the caller's address and the amount.
+  The caller always holds BURNER_ROLE, and the role table is
+  public anyway — so this reveals which role-holder acted,
+  not which holder was debited. `account` never crosses over.
+end note
+Pub -> PS : only_role(BURNER_ROLE, caller)
+Pub -> PS : assert not paused
+Pub -> PS : total_supply -= amount
+
+@enduml
