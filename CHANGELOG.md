@@ -91,7 +91,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - The macro also adds replay protection, which the previous hand-written check left to the caller.
 - `SharedMutable` became `DelayedPublicMutable`, and its delay is a **duration in seconds** rather than a number of blocks.
   - `CHANGE_ROLES_DELAY_BLOCKS = 2` is now `CHANGE_ROLES_DELAY_SECONDS = 360` in the contract and in the enforcement and validation modules.
-  - This affects operators: freezing an account, blacklisting an address and changing the issuer now take six minutes rather than two blocks.
+  - This affects operators: freezing an account and blacklisting an address now take six minutes rather than two blocks, and a freshly deployed contract cannot mint, transfer or burn until the delay has elapsed, because all three read the issuer address the constructor scheduled.
 - Private balances moved from a hand-written `BalanceSet` over `Map<AztecAddress, ...>` to `Owned<BalanceSet>` from the `balance_set` aztec-nr library, accessed as `private_balances.at(address)`.
 - Module structs implement `StateVariable<N, Context>` (which now owns both `new` and `get_storage_slot`) instead of the old `Storage<N>` trait, and take `PublicContext` by value rather than `&mut PublicContext`.
 - `burn_batch` now debits a single `from` account rather than one holder per array entry.
@@ -215,6 +215,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Corrected the README's claim that the issuer address can be rotated. It cannot: the constructor schedules `issuer_address` once and no entry point rewrites it, in any of the three variants.
+  - Three places said or implied otherwise — the storage description, the issuer-auditability comparison against CMTAT-Confidential, and the delay glossary entry.
+  - The constraint now appears under *Limitations* as well, because it is the audit endpoint for every note the contract will ever create: a compromised issuer key means redeploying and migrating holders, and that migration needs every holder's cooperation since balances are notes in their own PXE.
+  - Also fixed two broken in-page links in the same section that pointed at headings which no longer exist.
 - Added six PlantUML diagrams to the README, with sources under `doc/img/`.
   - Two structural: the three contract packages over the shared module library, and what the contract keeps public against what lives as notes in each holder's PXE.
   - Three flows: private mint, private transfer, and burn with and without an authwit. Each shows where the private half ends and the enqueued public half begins, and calls out exactly which values become public.
