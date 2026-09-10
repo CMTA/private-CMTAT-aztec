@@ -21,10 +21,7 @@ unconstrained fn set_and_get_credit_test() {
     };
     env.call_public(issuer, Token::at(token_contract_address).set_credit_events(credit_events));
 
-    let ret: [Field; 3] = env.call_public(
-        issuer,
-        Token::at(token_contract_address).get_credit_events(),
-    );
+    let ret: [Field; 3] = env.view_public(Token::at(token_contract_address).get_credit_events());
 
     assert(ret[0] == 1);
     assert(ret[1] == 0);

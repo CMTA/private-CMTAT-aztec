@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, E-1, E-2, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -38,8 +38,8 @@
 | C-6 | Nine state-changing admin entry points emit nothing | ⬜ decide (README already lists this as future work) |
 | D-1 | The three `main.nr` files are 99–100% identical | ⬜ decide — guard mechanically, extraction is not available |
 | D-2 | `test/utils.nr` duplicated 75/78 lines across three crates | ⬜ implement (partially) |
-| E-1 | `#[view]` missing on four read-only entry points | ⬜ implement |
-| E-2 | Three getters return without `pub`, unlike every sibling | ⬜ implement |
+| E-1 | `#[view]` missing on four read-only entry points | ✅ fixed |
+| E-2 | Getters returning without `pub`, unlike every sibling | ✅ fixed — four, not three |
 | E-3 | `#[only_self]`, `#[initializer]`, `#[noinitcheck]` discipline | ✅ checked — clean |
 | F-1 | Should this token implement AIP-20? | ⬜ decide — answered: no, but take its note budget (36% of a transfer) |
 | G-1 | `mint` NatSpec claims a validation check that does not run | ⬜ implement |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 17 ✅ (9 checked/keep, 8 fixed), 2 ⚠️ corrected, 16 ⬜ open (4 *implement*, 10 *decide*, 2 *leave*).
+**Counts:** 35 rows — 19 ✅ (9 checked/keep, 10 fixed), 2 ⚠️ corrected, 14 ⬜ open (2 *implement*, 10 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| D-2, E-1, E-2, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| D-2, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
@@ -399,13 +399,23 @@ The contract's own convention is unambiguous — `has_role`, `get_operations`, `
 
 The evidence that this is drift rather than intent is the sibling test: `get_operations` — the same shape of function, in the same banner block, written by the same hand — has it.
 
-**Verdict: implement.** Add `#[view]` to all four in all variants that declare them. The guard is a test that compiles: a caller exercising the read path, so that removing the attribute breaks the build rather than passing silently.
+**Verdict: implement — done.** `#[view]` added to all four, in every variant that declares them.
 
-### E-2. Three getters return without `pub`
+**The guard turned out to be stronger than predicted, and it is worth recording why.** The prediction was "a test that compiles". In fact `TestEnvironment::view_public` is *typed* on the attribute — calling it against a non-view function does not compile at all:
+
+```
+error: Expected type PublicStaticCall<_, _, _>, found type PublicCall<5, 0, [Field; 5]>
+```
+
+That was verified by removing `#[view]` from `terms` and rebuilding. So switching the tests for `terms`, `get_credit_events` and `get_debt` from `call_public` to `view_public` — which is also simply the correct call for a read — makes the attribute impossible to drop silently.
+
+`only_role` had no test caller at all, so its attribute would have stayed unguarded. `only_role_passes_for_a_holder` and `only_role_reverts_for_a_non_holder` were added: the first pins the attribute, the second confirms the assertion still fires through a static call.
+
+### E-2. Four getters return without `pub`
 
 `terms() -> [Field; 5]` (`:298`), `get_credit_events() -> [Field; 3]`, `get_debt() -> [Field; 16]`, and `total_supply() -> u128` (`:379`) return without the `pub` return marker that every other getter uses (`-> pub Field`, `-> pub FieldCompressedString`, `-> pub AztecAddress`). `total_supply` is the interesting one: it has `#[view]` but not `pub`, so it is not the same omission as the other three and is likely older.
 
-**Verdict: implement** alongside E-1 — same files, same edit, and consistency is the entire value.
+**Verdict: implement — done.** All four now return `-> pub`, matching every other getter in the contract. `total_supply` remains the odd one out in origin: it already carried `#[view]`, so it was never the same omission as the other three.
 
 ### E-3. Attribute discipline elsewhere — checked, clean
 

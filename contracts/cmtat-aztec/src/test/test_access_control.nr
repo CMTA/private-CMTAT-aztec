@@ -28,3 +28,23 @@ unconstrained fn grant_role_by_non_admin_fails() {
 
     env.call_public(user1, Token::at(token_contract_address).grant_role(MINTER_ROLE, user1));
 }
+
+/// `only_role` is an assertion exposed as an entry point, so it reads state and never writes.
+/// Calling it through `view_public` is what pins its `#[view]`: without the attribute the call
+/// does not type-check (`Expected type PublicStaticCall, found PublicCall`), so this test guards
+/// the attribute at compile time rather than at run time.
+#[test]
+unconstrained fn only_role_passes_for_a_holder() {
+    let (env, token_contract_address, issuer, _) =
+        utils::setup(/* with_account_contracts */ false);
+
+    env.view_public(Token::at(token_contract_address).only_role(DEFAULT_ADMIN_ROLE, issuer));
+}
+
+#[test(should_fail_with = "AccessControlUnauthorizedAccount")]
+unconstrained fn only_role_reverts_for_a_non_holder() {
+    let (env, token_contract_address, _, user1) =
+        utils::setup(/* with_account_contracts */ false);
+
+    env.view_public(Token::at(token_contract_address).only_role(DEFAULT_ADMIN_ROLE, user1));
+}

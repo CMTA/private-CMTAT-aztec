@@ -83,6 +83,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- `terms`, `get_credit_events`, `get_debt` and `only_role` are now `#[view]`, and those three getters plus `total_supply` return `-> pub`, matching every other read-only entry point.
+  - `#[view]` is an enforced guarantee rather than a hint, and its absence mattered most on the getters other contracts call: without it a caller composing against them could not rely on their being side-effect-free.
+  - The evidence that this was drift rather than intent is that `get_operations` — the same shape of function, in the same file — already had it.
+  - The tests for those getters now call `view_public` instead of `call_public`, which is both the correct call for a read and a compile-time guard: `view_public` does not type-check against a non-view function, so the attribute cannot be dropped silently.
+  - `only_role` had no test caller at all, so two were added to pin its attribute and confirm it still reverts for a non-holder through a static call.
 - Dropped `downlevelIteration` from [tsconfig.json](./tsconfig.json). The option only affects ES5/ES3 emit and the project targets `es2020`, so it was already inert; TypeScript 6 reports it as deprecated.
 - Contract functions use the `#[external("private" | "public" | "utility")]` macros instead of `#[private]` / `#[public]` / `#[utility]`, and contract state is reached through `self.storage` instead of a free `storage` binding.
 - Private-to-public calls go through `self.enqueue_self`, private-to-private helpers through `self.internal`, and the enqueued public halves (`_mint`, `_transfer`, `_burn`) are now `#[external("public")] #[only_self]`.

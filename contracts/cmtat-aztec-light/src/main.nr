@@ -152,6 +152,7 @@ pub contract CMTATAztecLight {
     }
 
     #[external("public")]
+    #[view]
     fn only_role(role: Field, caller: AztecAddress) {
         self.storage.access_control.only_role(role, caller);
     }
@@ -284,7 +285,8 @@ pub contract CMTATAztecLight {
     }
 
     #[external("public")]
-    fn terms() -> [Field; 5] {
+    #[view]
+    fn terms() -> pub [Field; 5] {
         self.storage.extra_information_module.get_terms()
     }
 
@@ -365,7 +367,7 @@ pub contract CMTATAztecLight {
 
     #[external("public")]
     #[view]
-    fn total_supply() -> u128 {
+    fn total_supply() -> pub u128 {
         self.storage.total_supply.read()
     }
 

@@ -48,7 +48,7 @@ unconstrained fn set_and_get_debt_test() {
 
     env.call_public(issuer, Token::at(token_contract_address).set_debt(debt));
 
-    let ret: [Field; 16] = env.call_public(issuer, Token::at(token_contract_address).get_debt());
+    let ret: [Field; 16] = env.view_public(Token::at(token_contract_address).get_debt());
 
     let string_val = FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];
 
@@ -98,7 +98,7 @@ unconstrained fn set_debt_instrument_keeps_identifier_test() {
         Token::at(token_contract_address).set_debt_instrument(instrument),
     );
 
-    let ret: [Field; 16] = env.call_public(issuer, Token::at(token_contract_address).get_debt());
+    let ret: [Field; 16] = env.view_public(Token::at(token_contract_address).get_debt());
 
     // The identifier survived untouched...
     let string_val = FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];

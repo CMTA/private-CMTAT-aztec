@@ -182,6 +182,7 @@ pub contract CMTATAztecDebt {
     }
 
     #[external("public")]
+    #[view]
     fn only_role(role: Field, caller: AztecAddress) {
         self.storage.access_control.only_role(role, caller);
     }
@@ -345,7 +346,8 @@ pub contract CMTATAztecDebt {
     }
 
     #[external("public")]
-    fn get_credit_events() -> [Field; 3] {
+    #[view]
+    fn get_credit_events() -> pub [Field; 3] {
         self.storage.credit_event_module.get_credit_events()
     }
 
@@ -392,7 +394,8 @@ pub contract CMTATAztecDebt {
      * twelve instrument attributes, in the order of the CMTAT Solidity structs.
      */
     #[external("public")]
-    fn get_debt() -> [Field; 16] {
+    #[view]
+    fn get_debt() -> pub [Field; 16] {
         self.storage.debt_module.get_debt()
     }
 
@@ -426,7 +429,8 @@ pub contract CMTATAztecDebt {
     }
 
     #[external("public")]
-    fn terms() -> [Field; 5] {
+    #[view]
+    fn terms() -> pub [Field; 5] {
         self.storage.extra_information_module.get_terms()
     }
 
@@ -507,7 +511,7 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     #[view]
-    fn total_supply() -> u128 {
+    fn total_supply() -> pub u128 {
         self.storage.total_supply.read()
     }
 

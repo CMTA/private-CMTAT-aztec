@@ -24,7 +24,7 @@ unconstrained fn sample_terms() -> DocumentInfo {
 unconstrained fn terms_empty_by_default() {
     let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
 
-    let ret: [Field; 5] = env.call_public(issuer, Token::at(token_contract_address).terms());
+    let ret: [Field; 5] = env.view_public(Token::at(token_contract_address).terms());
     for i in 0..5 {
         assert(ret[i] == 0);
     }
@@ -41,7 +41,7 @@ unconstrained fn set_and_get_terms() {
 
     env.call_public(issuer, Token::at(token_contract_address).set_terms(sample_terms()));
 
-    let ret: [Field; 5] = env.call_public(issuer, Token::at(token_contract_address).terms());
+    let ret: [Field; 5] = env.view_public(Token::at(token_contract_address).terms());
 
     assert(ret[0] == FieldCompressedString::from_string(DOC_NAME).serialize()[0]);
     assert(ret[1] == FieldCompressedString::from_string(DOC_URI).serialize()[0]);
@@ -78,7 +78,7 @@ unconstrained fn set_terms_replaces_every_field() {
     };
     env.call_public(issuer, Token::at(token_contract_address).set_terms(updated));
 
-    let ret: [Field; 5] = env.call_public(issuer, Token::at(token_contract_address).terms());
+    let ret: [Field; 5] = env.view_public(Token::at(token_contract_address).terms());
     assert(ret[2] == 1);
     assert(ret[3] == 2);
 }
@@ -135,6 +135,6 @@ unconstrained fn token_id_is_independent_of_terms() {
     env.call_public(issuer, Token::at(token_contract_address).set_terms(sample_terms()));
 
     assert(env.view_public(Token::at(token_contract_address).token_id()) == token_id);
-    let terms: [Field; 5] = env.call_public(issuer, Token::at(token_contract_address).terms());
+    let terms: [Field; 5] = env.view_public(Token::at(token_contract_address).terms());
     assert(terms[2] == HASH_HIGH as Field);
 }
