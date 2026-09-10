@@ -225,6 +225,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `doc/standards/cmtat-vs-aip20.md`, a detailed comparison of CMTAT with Aztec's AIP-20 fungible-token standard.
+  - Explains why this contract is deliberately not AIP-20: public balances would add a transparent second ledger to a token built to avoid one, and partial-note transfers cannot coexist with recipient screening, because the recipient is unknown by design when the funds are locked.
+  - Carries suggestions in both directions — extension points AIP-20 would need before a compliant token could conform to it, and patterns CMTAT should adopt for ledgers that are not account-model and transparent.
+  - The strongest of those is measured rather than argued: sizing a transfer's note budget the way AIP-20 does is worth 43,046 gates, 36% of a transfer, on the proof the user's own device produces.
 - Added `EXTRA_INFORMATION_ROLE` (11) to the role enumerations that still stopped at `DEBT_CREDIT_EVENT_ROLE` (10).
   - Three places were stale: the README glossary, the assessment's grant-role criterion, and the assessment's access-control note. The role itself has existed since the terms and token-id module was added.
   - The list is maintained by hand in four places — the code plus three documents — with nothing tying them together, so the next role added will drift the same way unless a check is added.

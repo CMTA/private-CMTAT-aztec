@@ -421,6 +421,8 @@ The evidence that this is drift rather than intent is the sibling test: `get_ope
 
 ### F-1. Should this token implement AIP-20?
 
+> The full standard-to-standard comparison behind this finding — every axis, both conflicts, and suggestions in each direction — is in [`doc/standards/cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md). This section states the decision for *this* contract.
+
 Checked against the bundled `aztec-nr/standards/aip-20.md` and the DeFi Wonderland `aztec-standards` repository it names as the source. **Short answer: no, not as a whole — two of its central features are incompatible with what a CMTAT is for. But one part of it is worth taking on its own merits, and the measurement below says it is worth 36% of a transfer.**
 
 #### What AIP-20 requires that this contract does not have
