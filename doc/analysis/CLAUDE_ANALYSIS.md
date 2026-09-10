@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -45,7 +45,7 @@
 | G-1 | `mint` NatSpec claims a validation check that does not run | ⬜ implement |
 | G-2 | `_burn_internal` asserts `"Frozen: Recipient"` on a burn's sender | ✅ fixed |
 | G-3 | `issuer_address` has no setter, but three documents describe changing it | ⬜ decide |
-| G-4 | `EXTRA_INFORMATION_ROLE = 11` missing from two role lists | ⬜ implement |
+| G-4 | `EXTRA_INFORMATION_ROLE = 11` missing from role lists | ✅ fixed — three places, not two |
 | G-5 | Doc-comment length; no `.md` pointers in contract source | ✅ checked — clean |
 | G-6 | `yarn compile` produces artifacts `yarn codegen` cannot consume | ✅ fixed |
 | H-1 | `burn` publishes the caller's address and the amount | ⬜ decide — document, do not redesign |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 15 ✅ (9 checked/keep, 6 fixed), 2 ⚠️ corrected, 18 ⬜ open (7 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 16 ✅ (9 checked/keep, 7 fixed), 2 ⚠️ corrected, 17 ⬜ open (6 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| C-4, D-2, E-1, E-2, F-1, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
@@ -476,7 +476,11 @@ The code defines eleven roles (`access_controlModule.nr`), and `CLAUDE.md` lists
 
 Both were written before the extra-information module existed and were not revisited when it landed. (The assessment's prose count of roles was corrected to eleven during the debt work; these two enumerations were missed.)
 
-**Verdict: implement.** Append `EXTRA_INFORMATION_ROLE` 11 to both.
+**Verdict: implement — done.** There turned out to be **three** stale enumerations, not two: a second one in the assessment's Access Control note (`:295`) said the roles run "up to `DEBT_CREDIT_EVENT_ROLE` at `10`", which the first pass over this finding missed because it reads as prose rather than a list.
+
+All three now end at `EXTRA_INFORMATION_ROLE` 11. A sweep for role-count claims confirms nothing else stops short: the assessment's Conclusion already says "Eleven numeric roles", and `CLAUDE.md` / `AGENTS.md` were correct throughout.
+
+The underlying hazard remains and is worth naming: the role table is a hand-maintained list duplicated across the code and three documents, with nothing tying them together. The next role added will drift the same way. A cheap guard would be a check that every `pub global .*_ROLE` in `access_controlModule.nr` appears in each enumeration — the same shape of mechanical check proposed for D-1.
 
 ### G-6. `yarn compile` produces artifacts that `yarn codegen` cannot consume — `package.json:13`
 

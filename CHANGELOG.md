@@ -220,6 +220,9 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `EXTRA_INFORMATION_ROLE` (11) to the role enumerations that still stopped at `DEBT_CREDIT_EVENT_ROLE` (10).
+  - Three places were stale: the README glossary, the assessment's grant-role criterion, and the assessment's access-control note. The role itself has existed since the terms and token-id module was added.
+  - The list is maintained by hand in four places — the code plus three documents — with nothing tying them together, so the next role added will drift the same way unless a check is added.
 - Corrected the README's claim that the issuer address can be rotated. It cannot: the constructor schedules `issuer_address` once and no entry point rewrites it, in any of the three variants.
   - Three places said or implied otherwise — the storage description, the issuer-auditability comparison against CMTAT-Confidential, and the delay glossary entry.
   - The constraint now appears under *Limitations* as well, because it is the audit endpoint for every note the contract will ever create: a compromised issuer key means redeploying and migrating holders, and that migration needs every holder's cooperation since balances are notes in their own PXE.
