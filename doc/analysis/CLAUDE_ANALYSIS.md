@@ -41,7 +41,7 @@
 | E-1 | `#[view]` missing on four read-only entry points | ⬜ implement |
 | E-2 | Three getters return without `pub`, unlike every sibling | ⬜ implement |
 | E-3 | `#[only_self]`, `#[initializer]`, `#[noinitcheck]` discipline | ✅ checked — clean |
-| F-1 | No AIP-20 conformance claim, and no AIP-20 surface | ⬜ implement (one README sentence) |
+| F-1 | Should this token implement AIP-20? | ⬜ decide — answered: no, but take its note budget (36% of a transfer) |
 | G-1 | `mint` NatSpec claims a validation check that does not run | ⬜ implement |
 | G-2 | `_burn_internal` asserts `"Frozen: Recipient"` on a burn's sender | ✅ fixed |
 | G-3 | `issuer_address` has no setter, but three documents describe changing it | ⬜ decide |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 17 ✅ (9 checked/keep, 8 fixed), 2 ⚠️ corrected, 16 ⬜ open (5 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 17 ✅ (9 checked/keep, 8 fixed), 2 ⚠️ corrected, 16 ⬜ open (4 *implement*, 10 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,11 +65,12 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| D-2, E-1, E-2, F-1, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| D-2, E-1, E-2, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
+| F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
 | H-3 | The public selector | Four options costed in H-3. Only one — making the pause flag delayed so `transfer` enqueues nothing — actually removes the leak, and it trades an immediate pause for it. That is a compliance decision, not an engineering one. |
 
 ---
@@ -418,15 +419,79 @@ The evidence that this is drift rather than intent is the sibling test: `get_ope
 
 ## F. Standard conformance
 
-### F-1. The project implements CMTAT, not AIP-20 — and does not say so
+### F-1. Should this token implement AIP-20?
 
-Checked against `aztec-nr/standards/` and the DeFi Wonderland `aztec-standards` repository as the canonical source. This contract makes **no AIP-20 conformance claim**, and correspondingly has no AIP-20 surface: no `initialize_transfer_commitment` / `complete_from_private` partial-note path, no `PRIVATE_ADDRESS_MAGIC_VALUE`, no `INITIAL_TRANSFER_CALL_MAX_NOTES` / `RECURSIVE_TRANSFER_CALL_MAX_NOTES`, no `asset` / `vault_offset`. There is therefore no conformance gap to report, and the sentinel-conflation bug that the partial-note pattern invites cannot occur here.
+Checked against the bundled `aztec-nr/standards/aip-20.md` and the DeFi Wonderland `aztec-standards` repository it names as the source. **Short answer: no, not as a whole — two of its central features are incompatible with what a CMTAT is for. But one part of it is worth taking on its own merits, and the measurement below says it is worth 36% of a transfer.**
 
-That is a coherent position — the token implements the CMTAT functions directly, as the assessment document explains — but it is only coherent to a reader who already knows it.
+#### What AIP-20 requires that this contract does not have
 
-**Consequence.** An Aztec integrator's default assumption is that a token contract is AIP-20-shaped. Discovering by compile error that `transfer` has a different signature and that the commitment path does not exist costs them the time it takes to read the source.
+| AIP-20 feature | Here |
+|---|---|
+| `public_balances: Map<AztecAddress, PublicMutable<u128>>` and the hybrid private/public transfer paths | Absent. Balances are private only; the sole public quantity is `total_supply` |
+| Partial-note transfers: `initialize_transfer_commitment`, `transfer_private_to_commitment`, `complete_from_private` | Absent |
+| `PRIVATE_ADDRESS_MAGIC_VALUE`, the "recipient not yet determined" placeholder | Absent |
+| `INITIAL_TRANSFER_CALL_MAX_NOTES = 2` / `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8` with `#[only_self]` recursive subtraction | Absent; `BalanceSet::sub` uses a flat `max_notes = MAX_NOTE_HASH_READ_REQUESTS_PER_CALL` (16) |
+| `minter: PublicImmutable<AztecAddress>`, `upgrade_authority: PublicImmutable<AztecAddress>` | Role-based `MINTER_ROLE`, grantable and revocable; no upgrade authority, the contract is not upgradeable |
+| `asset` / `vault_offset` for the AIP-4626 vault pattern | Absent |
 
-**Verdict: implement — one sentence in the README.** Something to the effect of *this contract implements CMTAT directly and is deliberately not AIP-20; there is no partial-note transfer path.* The Conclusion of `doc/cmtat-assessment/README.md` already says there is no native token standard on Aztec comparable to ERC-20 and that the contract implements CMTAT functions directly; the README is where an integrator will look first.
+So there is no partial conformance to repair: the two designs overlap only on `name`/`symbol`/`decimals`, `total_supply` and an `Owned<BalanceSet>` for private balances.
+
+#### Why the answer is no — two conflicts, not two workloads
+
+**1. Public balances defeat the product.** The README's own assumptions are that holder balances are private and only the supply is public. AIP-20's public side would add a second, fully public balance ledger to a token whose reason to exist is that it does not have one.
+
+It is not enough to say "an issuer simply would not use it". Publishing the surface means a wallet advertising AIP-20 support offers users a public-transfer button, and every public path would then need the freeze, blacklist and whitelist checks duplicated onto it — checks that currently live in `_transfer_internal` and run in private. A compliance surface that exists but is only correct if nobody uses half of it is worse than not having it.
+
+**2. Partial notes and recipient screening are mutually exclusive as designed.** This is the deep one, and it is architectural rather than a matter of effort.
+
+The purpose of `initialize_transfer_commitment` is that the recipient is *not known* when the sender locks the funds — that is what `PRIVATE_ADDRESS_MAGIC_VALUE` encodes, and it is what makes private DeFi composability possible, because a private function cannot read the public state (an order book, an auction result) that determines who should be paid.
+
+CMTAT requires the recipient to be screened before the transfer: `operateOnTransfer(from, to)` checks `to` against the blacklist or whitelist, and `_transfer_internal` checks `is_frozen(to)`. **Neither check can run when `to` is the placeholder.** The options are all bad:
+
+- **Screen at completion.** The completer is a public function, so the compliance check would publish the recipient's address on every transfer — surrendering exactly the privacy the token is built for, and only for transfers that used a commitment.
+- **Skip screening on the commitment path.** Then a sanctioned address can be paid through any commitment-based flow, and the restriction module becomes advisory.
+- **Restrict completers to an allowlist of settlement contracts.** Workable in principle, but Aztec has no interface check (see I-1), so it reduces to configuration discipline and pushes the compliance obligation into a second contract the issuer must also assure.
+
+None of these is a small decision. The honest conclusion is that a *transfer-restricted* token and a *composable* token pull in opposite directions, and AIP-20 is designed for the second.
+
+#### What is worth taking anyway, and it is not small
+
+AIP-20's note-count strategy is orthogonal to conformance, and this contract is currently on the wrong side of it.
+
+`BalanceSet::sub` — the library function every transfer and burn calls — hardcodes its note budget to the whole per-call allowance:
+
+```noir
+pub fn sub(self: Self, amount: u128) -> MaybeNoteMessage<UintNote> {
+    let subtracted = self.try_sub(amount, MAX_NOTE_HASH_READ_REQUESTS_PER_CALL);  // 16
+    ...
+}
+```
+
+The library's own comment says the gate count scales roughly linearly with `max_notes`. So **every transfer sizes its circuit for sixteen notes**, whether the sender's balance is one note or sixteen. AIP-20 instead tries two, and recurses through `#[only_self]` into calls of up to eight when two are not enough.
+
+**Measured, not estimated.** Replacing the `sub` in `_transfer_internal` with `try_sub(amount, 2)` plus the change note, recompiling `cmtat_aztec` and re-profiling:
+
+| `_transfer_internal` note budget | `transfer` gates |
+|---|---:|
+| 16 (current, via `BalanceSet::sub`) | 120,824 |
+| 2 (AIP-20's initial budget) | **77,778** |
+
+**43,046 gates, 36% of a transfer**, on the proof the user's own device has to produce. The probe was reverted and the baseline reproduced.
+
+That number is the size of the prize, not the net gain, and the caveat matters: at a budget of 2, a transfer from a holder whose balance is spread across three or more notes fails outright. AIP-20 pays for that with recursion, and each recursive level is a fresh kernel iteration — on the order of 101,000 gates by the framework's own figure. So the real trade is:
+
+- balance settles in ≤ 2 notes → **~78k instead of ~121k**
+- balance needs 3–8 notes → ~78k **plus** a recursive kernel, so worse than today
+- so it is a clear win only if most transfers settle in one or two notes, which for a security token with infrequent, large transfers is plausible but **unmeasured here**
+
+Before adopting it, the thing to measure is the note-count distribution of a realistic holder, not the gate count — that number is already known.
+
+#### Verdict
+
+- **Do not implement AIP-20.** Say so explicitly instead: one line in the README stating that this contract implements CMTAT directly, is deliberately not AIP-20, and has no partial-note path. An Aztec integrator's default assumption is that a token is AIP-20-shaped, and today they discover otherwise from a compile error. *(This part of the finding remains open.)*
+- **Record the reason, not just the fact.** "Not AIP-20" reads as an omission; "transfer restriction and commitment-based composability are mutually exclusive" is a design position, and it is the one the token has taken.
+- **Treat the note budget as a separate, live optimisation** — filed here only because AIP-20 is where the better pattern is documented. It is worth 36% of a transfer in the common case, it requires no standard conformance, and its prerequisite is a note-distribution measurement rather than an architecture decision.
+- **Revisit partial notes only if a compliant on-chain secondary market becomes a goal.** At that point the question is not "should we adopt AIP-20" but "where does recipient screening live when the recipient is unknown", and the answer decides whether the token can be composable at all.
 
 ---
 
