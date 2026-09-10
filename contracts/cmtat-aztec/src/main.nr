@@ -140,8 +140,8 @@ pub contract CMTATAztec {
         self.storage.name.initialize(FieldCompressedString::from_string(name));
         self.storage.symbol.initialize(FieldCompressedString::from_string(symbol));
         self.storage.decimals.initialize(decimals);
-        self.storage.access_control._grant_role(DEFAULT_ADMIN_ROLE, admin);
-        self.storage.access_control._grant_role(VALIDATION_ROLE, admin);
+        self.internal._grant_role_internal(DEFAULT_ADMIN_ROLE, admin);
+        self.internal._grant_role_internal(VALIDATION_ROLE, admin);
 
         self.storage.issuer_address.schedule_value_change(admin);
     }
@@ -163,8 +163,8 @@ pub contract CMTATAztec {
 
     #[external("public")]
     fn grant_role(role: Field, account: AztecAddress) {
-        self.storage.access_control.grant_role(role, account, self.msg_sender());
-        self.emit(NewRole { role, account });
+        self.storage.access_control.only_role_admin(role, self.msg_sender());
+        self.internal._grant_role_internal(role, account);
     }
 
     /**
@@ -645,6 +645,23 @@ pub contract CMTATAztec {
     /** ==========================================================
      * ===================== INTERNAL ============================
      * ======================================================== */
+
+    /**
+     * @dev Writes a role and emits `NewRole`. Every path that grants a role goes through here, so
+     * the event cannot be attached to one path and forgotten on another — which is exactly how the
+     * constructor's grants came to be silent while `grant_role` was observable.
+     *
+     * Authorisation deliberately stays with the caller rather than moving in here: `grant_role`
+     * checks that the sender administers the role, and the constructor cannot, because at
+     * construction time no account holds `DEFAULT_ADMIN_ROLE` yet.
+     *
+     * `#[internal("public")]` is inlined at compile time, so this adds no call and no gas.
+     */
+    #[internal("public")]
+    fn _grant_role_internal(role: Field, account: AztecAddress) {
+        self.storage.access_control._grant_role(role, account);
+        self.emit(NewRole { role, account });
+    }
 
     #[external("public")]
     #[only_self]

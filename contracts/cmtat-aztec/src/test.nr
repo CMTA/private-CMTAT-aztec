@@ -1,4 +1,5 @@
 mod utils;
+mod test_access_control;
 mod transfer_private;
  mod reading_constants;
  mod test_mint;

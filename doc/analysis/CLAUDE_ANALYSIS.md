@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -33,7 +33,7 @@
 | C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ✅ fixed |
 | C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ⬜ decide |
 | C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ✅ fixed |
-| C-4 | Constructor configures the contract with no event at all | ⬜ implement |
+| C-4 | Constructor configures the contract with no event at all | ✅ fixed |
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
 | C-6 | Nine state-changing admin entry points emit nothing | ⬜ decide (README already lists this as future work) |
 | D-1 | The three `main.nr` files are 99–100% identical | ⬜ decide — guard mechanically, extraction is not available |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 16 ✅ (9 checked/keep, 7 fixed), 2 ⚠️ corrected, 17 ⬜ open (6 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 17 ✅ (9 checked/keep, 8 fixed), 2 ⚠️ corrected, 16 ⬜ open (5 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| C-4, D-2, E-1, E-2, F-1, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| D-2, E-1, E-2, F-1, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
@@ -314,7 +314,25 @@ self.storage.issuer_address.schedule_value_change(admin);             // :122
 
 **Consequence.** An indexer built on `NewRole` sees every subsequent grant and misses the founding ones, which is worse than seeing none: the role table it reconstructs is wrong rather than obviously incomplete.
 
-**Verdict: implement.** Emit `NewRole` twice from the constructor. The general shape the framework guidance recommends — one `#[internal]` helper owning validate + write + emit — would also close this structurally, and has the side benefit that the validation currently living in `grant_role` would start guarding the constructor path too.
+**Verdict: implement — done, structurally rather than by adding two emits.**
+
+Every role grant now goes through one `#[internal("public")]` helper:
+
+```noir
+#[internal("public")]
+fn _grant_role_internal(role: Field, account: AztecAddress) {
+    self.storage.access_control._grant_role(role, account);
+    self.emit(NewRole { role, account });
+}
+```
+
+The constructor calls it once per role and `grant_role` calls it after authorising, so the write and the emit cannot be separated — which is precisely how they came apart. `#[internal("public")]` is inlined at compile time, so this costs no call and no gas. Without it the emit would have been written three times per file and nine times across the three variants.
+
+To keep the authorisation in the library where the rest of it lives, `AccessControlModule` gained `only_role_admin(role, sender)` — the check half of its existing `grant_role`, exposed on its own. `grant_role` in the contract is now `only_role_admin` followed by the helper.
+
+⚠️ **Correction to this finding as first written.** It proposed a helper owning "validate + write + emit", and claimed the side benefit that the validation "would start guarding the constructor path too". **That is wrong and would not compile into working behaviour**: at construction time no account holds `DEFAULT_ADMIN_ROLE`, so an admin check inside the helper would make every deployment revert. Authorisation has to stay with the caller — `grant_role` checks, the constructor deliberately cannot. The helper owns write + emit only.
+
+**Test coverage was missing entirely and is now added.** There was no `test_access_control.nr`: `grant_role`'s happy path was exercised incidentally by other tests, and its deny path by nothing at all — so the authorisation swap above had no guard. `grant_role_by_admin_succeeds` and `grant_role_by_non_admin_fails` now cover both. The deny test was verified to fail when `only_role_admin` is removed, so it is a regression test rather than a guess.
 
 ### C-5. No undelivered messages — checked, clean
 

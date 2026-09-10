@@ -120,6 +120,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- `NewRole` is now emitted for the roles the constructor grants, which were previously the only silent grants in the contract's life.
+  - An indexer built on `NewRole` saw every later grant and missed the founding ones, so the role table it reconstructed was wrong rather than obviously incomplete.
+  - Every grant now goes through one inlined `_grant_role_internal` helper that writes and emits together, so the two cannot be separated again. It is `#[internal("public")]`, so it costs no call and no gas, and it replaces what would otherwise be nine copies of the emit across the three variants.
+  - `AccessControlModule` gained `only_role_admin`, the check half of its `grant_role`, so the contract can authorise and then write-and-emit while the authorisation logic stays in the library.
+  - Added `test_access_control.nr`: the deny path of `grant_role` had no test at all, so the change above had nothing guarding it.
 - Realigned the debt module with the current CMTAT Solidity `ICMTATDebt` interface, adding the five attributes it had gained.
   - `DebtBaseStruct`, a flat struct of twelve attributes, is replaced by `DebtInformation { debtIdentifier, debtInstrument }`, mirroring the Solidity structs field for field and in their order.
   - New attributes: `issuerName` and `issuerDescription` on the identifier, and `minimumDenomination`, `currency` and `currencyContract` on the instrument. The last three close equivalency criteria 52 and 54, which the assessment recorded as absent.

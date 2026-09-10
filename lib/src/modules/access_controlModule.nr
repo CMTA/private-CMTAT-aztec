@@ -76,6 +76,17 @@ impl<T> AccessControlModule<T, PublicContext> {
         DEFAULT_ADMIN_ROLE
     }
 
+    /*
+     * @dev Authorise a role grant without performing it.
+     *
+     * `grant_role` below both checks and writes, which is convenient for a caller that has nothing
+     * to add. A contract that must also emit an event needs the two halves separately, so that the
+     * write and the emit can live together in one place and neither can be forgotten.
+     */
+    pub fn only_role_admin(self: Self, role: Role, sender: AztecAddress) {
+        self.only_role(self.getRoleAdmin(role), sender);
+    }
+
     // Grant a role to an account
     pub fn grant_role(self: Self, role: Role, account: AztecAddress, sender: AztecAddress) {
         self.only_role(self.getRoleAdmin(role), sender);
