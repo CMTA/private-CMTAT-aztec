@@ -28,8 +28,8 @@
 | A-4 | No runtime-bounded loops, no unconstrained-then-constrained patterns | ✅ nothing to do |
 | B-1 | `SetFlag` derives `Packable` (N=2) where `UserFlags` hand-packs (N=1) | ⚠️ **corrected** — measured +7 gates, do not change |
 | B-2 | `UserFlags` splits derived `Serialize` from hand-written `Packable` | ✅ keep — this is the documented split |
-| B-3 | `CreditEventsStruct` packs two `bool`s into two Fields | ⬜ decide — fold into the next storage break |
-| B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave |
+| B-3 | `CreditEventsStruct` packs two `bool`s into two Fields where Solidity uses one | ⬜ decide — fold into the next storage break, do not schedule one |
+| B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave — hot and cold flags, sharing would tax the hot read |
 | C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ✅ fixed |
 | C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ⬜ decide |
 | C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ⬜ implement |
@@ -67,7 +67,8 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 |---|---|---|
 | C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
-| B-3, C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
 | H-3 | The public selector | Four options costed in H-3. Only one — making the pause flag delayed so `transfer` enqueues nothing — actually removes the leak, and it trades an immediate pause for it. That is a compliance decision, not an engineering one. |
 
@@ -220,9 +221,33 @@ The change made the private hot path **7 gates more expensive**, not cheaper. Th
 
 `#[derive(Deserialize, Eq, Packable, Serialize)]` on `{ flagDefault: bool, flagRedeemed: bool, rating: FieldCompressedString }` gives `N = 3`; the two flags could share one Field for `N = 2`.
 
-Unlike B-1 this is **public state only** — there is no private read path for credit events — so the cost is one `SLOAD` and one `SSTORE` per access, not gates, and no gate number applies. It is small, and it is a storage-layout change.
+**What CMTAT Solidity does with the same struct.** The interface is identical (`ICMTAT.sol`):
 
-**Verdict: decide.** Not worth a break on its own. If another storage break lands before 0.3 (and the debt realignment already is one), folding this in costs nothing extra; otherwise leave it. Same reasoning applies to `PauseModule`'s two one-`bool` slots (**B-4**), where the two flags are read on different paths and separating them is arguably clearer anyway — **verdict: leave**.
+```solidity
+struct CreditEvents {
+    bool flagDefault;
+    bool flagRedeemed;
+    string rating;
+}
+```
+
+and it occupies **two storage slots**, not three: Solidity's storage layout packs adjacent sub-word fields into one 32-byte slot, so the two `bool`s share a slot (one byte each, thirty wasted) and `string rating` takes its own. CMTAT contains **no packing code whatsoever** — `DebtModule.sol` has no bit manipulation and no packing comment — because the compiler does it. Solidity developers never think about this.
+
+Noir has no equivalent. A derived `Packable` is one Field per field, full stop, and a Field is ~254 bits — the same order as a Solidity slot, so the comparison is fair. **Reaching parity with the Solidity layout means hand-writing `pack`/`unpack`**, which is exactly the asymmetry already visible in the validation module, where `UserFlags` hand-packs two `bool`s into one Field (B-2) and `SetFlag` does not (B-1).
+
+One place where the Noir version is **better** than Solidity, and worth recording so the comparison is not one-sided: `rating` is a `FieldCompressedString`, which is exactly one Field and capped at 31 characters. Solidity's `string` is unbounded, and a rating longer than 31 bytes spills into further slots. Noir is worse on the flags and better on the string.
+
+**Unlike B-1, there is no counter-measurement here — and that matters.** B-1 was rejected because hand-packing `SetFlag` made the *private* transfer path 7 gates more expensive: the bit arithmetic costs more in-circuit than reading one extra field. Credit events have **no private read path at all**. `set_credit_events` and `get_credit_events` are both `#[external("public")]`, and nothing in `_mint_internal`, `_transfer_internal` or `_burn_internal` touches the module. So the trade here is one `SLOAD`/`SSTORE` saved per access against no circuit penalty whatsoever. B-3 is the change B-1 only looked like.
+
+**What the assessment adds: the blast radius is one variant out of three.** The deployment-variants matrix in `doc/cmtat-assessment/README.md` records that credit events (criteria 44–47) exist in `CMTATAztecDebt` only — `CMTATAztec` and `CMTATAztecLight` do not carry the module, so the slot does not exist for them. That mirrors CMTAT Solidity exactly, where `DebtModule` is not part of CMTAT Standard: as the assessment puts it, "an issuer deploying a bond deploys `CMTATAztecDebt`, exactly as a CMTAT Solidity issuer deploys CMTAT Debt rather than CMTAT Standard."
+
+So the wasted slot is paid only by an issuer who deliberately chose the bond variant, on a struct written once at issuance and read occasionally — not on any hot path, and not at all for a plain security token.
+
+**Verdict: decide, and the answer is "fold it into the next storage break, do not schedule one for it".** The change is unambiguously correct — Solidity already gets this layout for free, and unlike B-1 nothing measurable argues against it — but it moves every state variable declared after the credit-events module, and the contract is not upgradeable, so on a deployed token it means a redeployment and a holder migration. The debt realignment in this release is already such a break; folding B-3 into it would have cost nothing. Once 0.3 ships, the saving is one slot on one variant and no longer worth a break of its own.
+
+If it is taken, the round-trip test is mandatory: `assert(CreditEventsStruct::unpack(x.pack()) == x)`. A hand-written pack is code the derive cannot get wrong.
+
+**B-4 — `PauseModule`'s two one-`bool` slots — is the same shape with a weaker case.** Solidity would again pack `paused` and `deactivated` into one slot for free. Here they are two separate `PublicMutable<bool>`, so two slots. But unlike credit events they are read on different paths and at different frequencies — `is_paused` on every mint, transfer and burn; `is_deactivated` only by `unpause_contract` and its getter — so sharing a Field would make the hot read pay for unpacking the cold flag. **Verdict: leave.**
 
 ### B-5. Note reads — not applicable, and worth saying why
 
