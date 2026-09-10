@@ -101,6 +101,22 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - Every `send()` and `simulate()` now names its sender with `from`, so one contract handle serves all accounts instead of one handle per wallet.
   - `TxStatus.SUCCESS` is gone; `TxStatus` now tracks finalization, and execution success is `receipt.hasExecutionSucceeded()`.
   - `deriveSigningKey` is gone; accounts rebuilt from `.env` now derive their signing key with `deriveMasterMessageSigningSecretKey`. Both this and address computation changed, so the addresses recorded in `.env.example` no longer correspond to its SECRET/SALT pairs.
+- `transfer_batch` now emits one `Transfer` event per recipient, as `transfer` already did.
+  - The two paths move tokens identically — at a batch of one they are the same operation — but only one of them left a trail, so anything built on the event silently missed every batched transfer.
+  - Delivered in the same mode as the single path (`onchain_unconstrained()` to the recipient), so the two remain consistent; whether that is the right mode at all is a separate open question recorded in the analysis report.
+  - Costs 1,687 gates and one private log per recipient. That matters because the batch cap is set by the per-call log budget: the full suite was re-run at the cap of 4 to confirm the extra logs still fit.
+- `MAX_ADDR_PER_CALL` raised from 1 to **4**, so `mint_batch`, `transfer_batch` and `burn_batch` act on up to four addresses.
+  - The ceiling was measured rather than derived: at 5 the batched mint and burn finish with a wrong total supply, and at 6 and above `transfer_batch` aborts with `push out of bounds`. Everything passes at 4.
+  - `transfer` is what sets the cap for all three, because it creates two notes and two constrained deliveries per recipient where mint and burn create one.
+  - The previous comment blamed the 8-nested-private-call limit. That was never the constraint: the `_*_internal` helpers are inlined, so a batch makes no nested private calls at any cap.
+  - The issuer address is now read once per call and passed into the helpers, instead of once per address. That saves 5,748 gates in each batch function at the new cap and leaves the single-entry paths unchanged.
+  - Batching does not make the circuit cheaper: a four-recipient transfer is 447,303 gates against 119,145 for a single transfer, and the user's own device produces that proof. What it saves is the fixed per-transaction overhead that four separate transfers would pay four times.
+  - BREAKING CHANGE: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the ABI, so callers passing one-element arrays must now pass four.
+- `burn` and `burn_batch` name their target `account`, not `from`, following the CMTAT Solidity burn module.
+  - CMTAT Solidity uses `account` for `burn` and `mint` and reserves `from`/`to` for transfers, where there really are two parties. A burn has one.
+  - This is what produced the frozen-holder message bug fixed below: `from` implied a counterparty, and the assertion copied from the mint module named the one a burn does not have.
+  - The authwit macro takes the parameter by name, so it is now `#[authorize_once("account", "authwit_nonce")]`.
+  - BREAKING CHANGE: the generated TypeScript signature becomes `burn(account, amount, authwit_nonce)`. Arguments are positional, so existing calls behave identically, but any caller using the generated named types must be updated. `mint` still names its target `to`; aligning it with CMTAT would be a second ABI change and has not been made.
 
 ### Added
 
@@ -153,25 +169,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - The pre-release checklist said `npx tsc --noEmit`, which is not reproducible: the Aztec toolchain ships its own `tsc` under `~/.aztec/current/node_modules/.bin/`, and on a machine where that directory precedes `./node_modules/.bin` on `PATH` the checklist type-checks the project with the toolchain's compiler instead of the pinned one.
   - Observed with toolchain 5.2.0, which bundles TypeScript 6.0.3 against the project's 5.5.x pin: the release check failed on a deprecation warning the project's own compiler does not emit.
   - A `yarn` or `npm` script prepends `./node_modules/.bin` to `PATH`, so the pinned compiler wins regardless of what else is installed. The checklist now calls the script.
-
-### Changed
-
-- `transfer_batch` now emits one `Transfer` event per recipient, as `transfer` already did.
-  - The two paths move tokens identically — at a batch of one they are the same operation — but only one of them left a trail, so anything built on the event silently missed every batched transfer.
-  - Delivered in the same mode as the single path (`onchain_unconstrained()` to the recipient), so the two remain consistent; whether that is the right mode at all is a separate open question recorded in the analysis report.
-  - Costs 1,687 gates and one private log per recipient. That matters because the batch cap is set by the per-call log budget: the full suite was re-run at the cap of 4 to confirm the extra logs still fit.
-- `MAX_ADDR_PER_CALL` raised from 1 to **4**, so `mint_batch`, `transfer_batch` and `burn_batch` act on up to four addresses.
-  - The ceiling was measured rather than derived: at 5 the batched mint and burn finish with a wrong total supply, and at 6 and above `transfer_batch` aborts with `push out of bounds`. Everything passes at 4.
-  - `transfer` is what sets the cap for all three, because it creates two notes and two constrained deliveries per recipient where mint and burn create one.
-  - The previous comment blamed the 8-nested-private-call limit. That was never the constraint: the `_*_internal` helpers are inlined, so a batch makes no nested private calls at any cap.
-  - The issuer address is now read once per call and passed into the helpers, instead of once per address. That saves 5,748 gates in each batch function at the new cap and leaves the single-entry paths unchanged.
-  - Batching does not make the circuit cheaper: a four-recipient transfer is 447,303 gates against 119,145 for a single transfer, and the user's own device produces that proof. What it saves is the fixed per-transaction overhead that four separate transfers would pay four times.
-  - BREAKING CHANGE: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the ABI, so callers passing one-element arrays must now pass four.
-- `burn` and `burn_batch` name their target `account`, not `from`, following the CMTAT Solidity burn module.
-  - CMTAT Solidity uses `account` for `burn` and `mint` and reserves `from`/`to` for transfers, where there really are two parties. A burn has one.
-  - This is what produced the frozen-holder message bug fixed below: `from` implied a counterparty, and the assertion copied from the mint module named the one a burn does not have.
-  - The authwit macro takes the parameter by name, so it is now `#[authorize_once("account", "authwit_nonce")]`.
-  - BREAKING CHANGE: the generated TypeScript signature becomes `burn(account, amount, authwit_nonce)`. Arguments are positional, so existing calls behave identically, but any caller using the generated named types must be updated. `mint` still names its target `to`; aligning it with CMTAT would be a second ABI change and has not been made.
+- A `Terms` event on `set_terms`, which previously wrote the terms with no observable trail while its sibling `set_token_id` emitted one.
+  - Follows the CMTAT Solidity `event Terms(CMTATTerms newTerm)`, which publishes the whole stored terms: the document name, its URI, the two halves of the content hash, and the `lastModified` the contract stamped.
+  - That is deliberately unlike the debt events added in this release, which carry only the caller because their Solidity counterparts are payload-free.
+  - `set_terms` now reads the block timestamp into a local and passes it to both the write and the event, so the two cannot disagree.
 
 ### Fixed
 

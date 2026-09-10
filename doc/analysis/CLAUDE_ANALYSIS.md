@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -32,7 +32,7 @@
 | B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave — hot and cold flags, sharing would tax the hot read |
 | C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ✅ fixed |
 | C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ⬜ decide |
-| C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ⬜ implement |
+| C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ✅ fixed |
 | C-4 | Constructor configures the contract with no event at all | ⬜ implement |
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
 | C-6 | Nine state-changing admin entry points emit nothing | ⬜ decide (README already lists this as future work) |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 14 ✅ (9 checked/keep, 5 fixed), 2 ⚠️ corrected, 19 ⬜ open (8 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 15 ✅ (9 checked/keep, 6 fixed), 2 ⚠️ corrected, 18 ⬜ open (7 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
@@ -294,7 +294,13 @@ Three things are worth separating:
 
 The two setters sit in the same module, are guarded by the same role, and were added in the same release. One is observable, the other is not. CMTAT Solidity emits `Terms(CMTATTerms)` from `setTerms`, so the reference implementation has the event this one is missing.
 
-**Verdict: implement.** A `Terms` event mirroring `TokenId` is a few lines, and the inconsistency between two sibling functions is the evidence that this is drift rather than a decision.
+**Verdict: implement — done.** `set_terms` now emits a `Terms` event in all three variants.
+
+Modelled on the Solidity, which was worth reading rather than guessing at: `ExtraInformationModule._setTerms` ends with `emit Terms($._terms)` — it publishes **the whole stored terms**, not merely the caller. So this event carries the flattened `CMTATTerms`: the document name, its URI, the 256-bit hash as its two 128-bit halves, and the `lastModified` the contract stamped. That differs deliberately from the debt events added earlier in this release, which carry only the caller because *their* Solidity counterparts are payload-free by design (`event DebtLogEvent()`, to keep the contract small).
+
+One small refactor came with it: `set_terms` previously passed `self.context.timestamp()` straight into the module call. It now reads the timestamp into a local and passes the same value to both the write and the event, so the event cannot report a `lastModified` different from the one stored.
+
+**No test asserts the event, and that is a tooling limit rather than an omission.** `TestEnvironment` at 5.2.0 offers `discover_event` for *private* `EventMessage` values; `set_terms` is a public function and `self.emit` there produces a public log, for which the harness exposes no getter. The pre-existing `TokenId`, `NewRole` and `Deactivated` events are unasserted for the same reason. The existing `set_terms` tests still cover the state write, and `Terms` appears in the generated TypeScript ABI alongside `TokenId`, which is what an integrator consumes.
 
 ### C-4. The constructor configures the contract and emits nothing — `main.nr:119–122`
 

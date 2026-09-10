@@ -99,6 +99,19 @@ pub contract CMTATAztecLight {
         tokenId: FieldCompressedString,
     }
 
+    // Mirrors the CMTAT Solidity `event Terms(CMTATTerms newTerm)`, which carries the whole stored
+    // terms rather than just the caller: `_setTerms` emits `Terms($._terms)` after writing. The
+    // fields are the flattened `CMTATTerms` — the document name, its URI, the 256-bit content hash
+    // split into two 128-bit halves, and the `lastModified` the contract stamped.
+    #[event]
+    struct Terms {
+        name: FieldCompressedString,
+        uri: FieldCompressedString,
+        documentHashHigh: u128,
+        documentHashLow: u128,
+        lastModified: u64,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -253,12 +266,21 @@ pub contract CMTATAztecLight {
      */
     #[external("public")]
     fn set_terms(terms_: DocumentInfo) {
+        // Read the timestamp once so the event reports exactly the `lastModified` that was stored.
+        let last_modified = self.context.timestamp();
         self.storage.extra_information_module.setTerms(
             terms_,
-            self.context.timestamp(),
+            last_modified,
             self.msg_sender(),
             self.storage.access_control,
         );
+        self.emit(Terms {
+            name: terms_.name,
+            uri: terms_.uri,
+            documentHashHigh: terms_.documentHashHigh,
+            documentHashLow: terms_.documentHashLow,
+            lastModified: last_modified,
+        });
     }
 
     #[external("public")]
