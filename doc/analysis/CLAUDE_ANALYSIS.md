@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, G-2 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -30,7 +30,7 @@
 | B-2 | `UserFlags` splits derived `Serialize` from hand-written `Packable` | ✅ keep — this is the documented split |
 | B-3 | `CreditEventsStruct` packs two `bool`s into two Fields | ⬜ decide — fold into the next storage break |
 | B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave |
-| C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ⬜ implement |
+| C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ✅ fixed |
 | C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ⬜ decide |
 | C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ⬜ implement |
 | C-4 | Constructor configures the contract with no event at all | ⬜ implement |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 13 ✅ (9 checked/keep, 4 fixed), 2 ⚠️ corrected, 20 ⬜ open (9 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 14 ✅ (9 checked/keep, 5 fixed), 2 ⚠️ corrected, 19 ⬜ open (8 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| C-1, C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| C-3, C-4, D-2, E-1, E-2, F-1, G-1, G-4, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3, C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
@@ -240,9 +240,13 @@ The `get_notes`-vs-`pop_notes` question, `NoteGetterOptions` limits, and post-re
 
 **Consequence.** Two entry points that move tokens identically leave different trails. Anything built on the event — an issuer's reconciliation, a block explorer, a compliance feed — silently misses every batched transfer. At `MAX_ADDR_PER_CALL = 1` the two functions are the *same operation*, so this is not a batching edge case: it is one of two equivalent paths having no record.
 
-**Measured cost of the event:** 1,679 gates (`transfer` 120,824 − `transfer_batch` 119,145). Adding it to `transfer_batch` costs that per recipient.
+**Measured cost of the event:** 1,679 gates (`transfer` 120,824 − `transfer_batch` 119,145).
 
-**Verdict: implement**, and the direction should be decided together with C-2 — if the event moves to `offchain()` delivery it becomes cheaper and the argument for emitting it in both places gets stronger.
+**Verdict: implement — done.** `transfer_batch` now emits one `Transfer` per recipient, inside the loop, in the same mode as `transfer`. The delivery mode was deliberately **not** changed here: that is C-2 / H-4 and is still open, and matching the single path is what C-1 is for. If the mode later moves to `offchain()`, both call sites change together.
+
+Measured after the change: `transfer_batch` went 447,303 → **454,050** at `MAX_ADDR_PER_CALL = 4`, so 6,747 for four events — 1,687 each, consistent with the 1,679 the single path costs.
+
+**The budget check mattered here and was not skipped.** Each event delivered `onchain_unconstrained()` is an extra private log, and the batch cap of 4 was itself set by the per-call note-hash and log budgets (A-2). Four more logs could plausibly have pushed `transfer_batch` past `push out of bounds`. It does not: the full suite passes at cap 4 with the event. The README's measurement table now records that the rows above 4 were taken before this event existed and are therefore conservative, since an extra log per recipient can only tighten the budget.
 
 ### C-2. The `Transfer` event pays for data availability and buys no guarantee — `main.nr:478`
 

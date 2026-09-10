@@ -156,6 +156,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- `transfer_batch` now emits one `Transfer` event per recipient, as `transfer` already did.
+  - The two paths move tokens identically — at a batch of one they are the same operation — but only one of them left a trail, so anything built on the event silently missed every batched transfer.
+  - Delivered in the same mode as the single path (`onchain_unconstrained()` to the recipient), so the two remain consistent; whether that is the right mode at all is a separate open question recorded in the analysis report.
+  - Costs 1,687 gates and one private log per recipient. That matters because the batch cap is set by the per-call log budget: the full suite was re-run at the cap of 4 to confirm the extra logs still fit.
 - `MAX_ADDR_PER_CALL` raised from 1 to **4**, so `mint_batch`, `transfer_batch` and `burn_batch` act on up to four addresses.
   - The ceiling was measured rather than derived: at 5 the batched mint and burn finish with a wrong total supply, and at 6 and above `transfer_batch` aborts with `push out of bounds`. Everything passes at 4.
   - `transfer` is what sets the cap for all three, because it creates two notes and two constrained deliveries per recipient where mint and burn create one.

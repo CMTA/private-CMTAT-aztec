@@ -595,8 +595,11 @@ pub contract CMTATAztecDebt {
     }
 
     /*
-    * Batched transfers from a single sender. See MAX_ADDR_PER_CALL for why the batch is limited to one
-    * recipient today.
+    * Batched transfers from a single sender. See MAX_ADDR_PER_CALL for the measured batch limit.
+    *
+    * Emits one Transfer event per recipient, in the same mode as `transfer`, so that the batched and
+    * the single path leave the same trail. Anything built on the event — an issuer reconciliation, an
+    * explorer, a compliance feed — would otherwise miss every batched transfer.
     */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
@@ -614,6 +617,10 @@ pub contract CMTATAztecDebt {
 
         for i in 0..MAX_ADDR_PER_CALL {
             self.internal._transfer_internal(from, accounts[i], amount[i], issuer);
+            self.emit(Transfer { from, to: accounts[i], amount: amount[i] }).deliver_to(
+                accounts[i],
+                MessageDelivery::onchain_unconstrained(),
+            );
         }
         self.enqueue_self._transfer();
     }

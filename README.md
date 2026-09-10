@@ -230,12 +230,17 @@ That number is measured, not derived from the protocol constants. Every value wa
 |---:|---:|---:|---:|---|
 | 1 | 30,776 | 81,736 | 119,145 | all tests pass |
 | 2 | 60,169 | 160,189 | 230,444 | all tests pass |
-| **4** | **107,871** | **306,820** | **447,303** | **all tests pass** |
+| **4** | **107,871** | **306,820** | **454,050** | **all tests pass** |
 | 5 | — | — | — | transfer passes; batched mint and burn end with a wrong total supply |
 | 6 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
 | 8 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
 
-Gate counts are from `aztec profile gates` on `CMTATAztec`; the N=4 row is the current code, with the issuer read hoisted out of the loop.
+Gate counts are from `aztec profile gates` on `CMTATAztec`, and the N=4 row is the current code: issuer read hoisted out of the loop, and one `Transfer` event per recipient.
+
+Two caveats on that table.
+
+- The 5, 6 and 8 rows were measured **before** `transfer_batch` emitted a `Transfer` event per recipient. Each event costs about 1,687 gates and one more private log, so it can only tighten the budget at those values, never loosen it. 4 has been re-verified with the event in place; the rows above 4 are therefore conservative rather than exact.
+- The 5 row is an unexplained result, not a diagnosed one: transfer succeeds there but batched mint and burn finish with a wrong total supply and no protocol error. That is why the cap is 4 and not 5 — an unexplained failure is not a basis for a limit.
 
 Three things are worth drawing out of that table.
 
