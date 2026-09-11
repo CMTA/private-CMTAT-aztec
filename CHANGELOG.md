@@ -230,6 +230,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `doc/standards/upgrading-aztec-standards.md`, instructions for bringing a fork of `aztec-standards` from `v5.0.0-rc.2` to this repository's `v5.2.0` so the two can be built, tested and composed on one toolchain.
+  - Eleven `Nargo.toml` repoints and no source changes. Four aztec-nr crates move to the standalone `AztecProtocol/aztec-nr` repository; the `serde` protocol-circuits crate stays in `aztec-packages` with only its tag bumped, because that tree did not move — a blanket URL replace breaks it.
+  - Includes the script that performs the repoint, verified to reproduce the measured result, and the workspace-wide compile and test commands with their expected outputs (eleven artifacts, 79 token tests).
+  - Records the second trap: compiling one package and testing it crashes the TXE on the missing `GenericProxy` artifact and cascades `client error (Connect)` into every later test.
+  - Explains how the fork is consumed from here — as contract interfaces by path dependency, never as an extensible base — and that both repositories must pin the same `aztec-nr` tag.
 - Added `doc/standards/cmtat-as-aip20-auth-contract.md`, assessing whether the module library could be packaged as an ARC-403 authorization contract so that a stock AIP-20 token gains CMTAT compliance without modification.
   - It can: a probe composing the access-control, pause, freeze, validation and extra-information modules into a contract with the `authorize_private` / `authorize_public` interface compiles against the library unchanged, and its private hook measures 20,715 gates.
   - Because the hook is told which token function is running, a policy can refuse every commitment path and every public-balance path outright — closing two of the three conflicts with AIP-20 by refusal rather than by design.
