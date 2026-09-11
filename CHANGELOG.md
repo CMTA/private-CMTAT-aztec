@@ -230,6 +230,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- `doc/standards/building-on-aip20.md` now answers whether this token's entry points could be aligned with AIP-20's without adopting its architecture.
+  - They can, by renaming: Aztec selectors are derived from the function name and parameter types, not parameter names — verified by computing selectors from both compiled artifacts — so renaming `transfer` to `transfer_private_to_private` with `authwit_nonce` unchanged yields AIP-20's exact selector. `balance_of_private` and `total_supply` already match.
+  - `burn` must not be aliased to `burn_private`: AIP-20's is holder-authorised, CMTAT's requires `BURNER_ROLE`, and an identical selector with different authorisation is a trap for any caller.
+  - Alignment is not conformance, and Aztec has no interface detection, so a partial profile is invisible until a missing function is called. The document recommends five renames plus an explicit README statement, or nothing.
 - `doc/standards/building-on-aip20.md` gained a sixth option: forking `aztec-standards` and moving it to `v5.2.0`. It was tried rather than estimated.
   - Eleven `Nargo.toml` edits and no source changes: the four aztec-nr crates repointed to the standalone repository at `v5.2.0`, and one protocol-circuits crate (`serde`) left in `aztec-packages` with its tag bumped, because that tree did not move. The whole 11-crate workspace compiles and all 79 of the token's tests pass.
   - The version mismatch is therefore downgraded from a blocker to a chore in the document's blocker table, and the recommendation's reasoning changes from "hard to port" to "every design conflict survives the port".

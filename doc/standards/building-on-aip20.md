@@ -16,6 +16,7 @@ An assessment of whether this project could be rebuilt on the [`aztec-standards`
   - [Option D — vendor the contract and modify it](#option-d--vendor-the-contract-and-modify-it)
   - [Option E — copy the patterns, not the code](#option-e--copy-the-patterns-not-the-code)
   - [Option F — fork the library and move it to v5.2.0](#option-f--fork-the-library-and-move-it-to-v520)
+- [Interface alignment — an AIP-20 private profile](#interface-alignment--an-aip-20-private-profile)
 - [Practical blockers independent of the design](#practical-blockers-independent-of-the-design)
 - [Recommendation](#recommendation)
 - [What to do with the submodule](#what-to-do-with-the-submodule)
@@ -65,6 +66,7 @@ An external contract nominated at deployment is called on every transfer and bur
 - The ARC-403 hook can express **pause, deactivation, amount limits, and sender-side freeze/blacklist/whitelist**. It cannot express **recipient screening**, because the hook is not given the recipient — and recipient screening is not optional in CMTAT.
 - Every other route is a fork, a wrapper that re-implements the token, or copying patterns without the code.
 - **The fork itself is cheap** — moving the library to `v5.2.0` took eleven manifest edits and no source changes, and all 79 of its tests pass. What is not cheap is what comes after the fork, and that is unchanged.
+- **Interface alignment is available without any of the above**: selectors depend on function names and parameter *types* only, so renaming five entry points makes this token answer AIP-20's private-path selectors exactly (two already match). `burn` must stay unaliased — its authorisation differs. See [Interface alignment](#interface-alignment--an-aip-20-private-profile).
 
 ## The six things "on top of" could mean
 
@@ -216,6 +218,59 @@ The transfer gap is large, and it reconciles almost exactly against components a
 **The maintenance cost, quantified.** The upstream is slow-moving: 4 commits in the 90 days before the pinned commit, all four touching `token_contract`, and three of them version bumps (`upgrade to 4.3.0`, `upgrade v5.0.0`, `upgrade to 5.0.0 rc.2`). ARC-403 itself landed on 2026-07-06, which is why the Aztec documentation does not mention it. A fork would mostly be *ahead* of upstream on Aztec versions and would have little to merge — the "fast-moving target" concern in Option D is weaker than stated there.
 
 **So where does that leave it?** Option F makes Option D cheap to *start*. It does not make it cheap to *finish*: the work is not the port, it is adding recipient screening to every one of twelve transfer, mint and burn paths and deciding what to do about public balances and commitments — after which the result is a CMTAT with AIP-20 function names that no AIP-20 wallet can safely treat as AIP-20. The fork is feasible; it is not obviously desirable.
+
+## Interface alignment — an AIP-20 private profile
+
+A narrower question than the options above: without adopting AIP-20's architecture, could this token's **entry points** be aligned with AIP-20's, so that tooling written for the standard's private paths works against it unchanged?
+
+**Yes, and it is a rename.** On Aztec a caller reaches a function by its **selector**, which is derived from the function name and the parameter *types* — not the parameter names. That was checked rather than assumed, by computing selectors from both compiled artifacts with `FunctionSelector.fromNameAndParameters`:
+
+| Function | AIP-20 | This token | Same selector? |
+|---|---|---|---|
+| `balance_of_private(owner)` | `0x4375727c` | `0x4375727c` | **already** |
+| `total_supply()` | `0x8dd382ec` | `0x8dd382ec` | **already** |
+| `transfer_private_to_private(from, to, amount, _nonce)` | `0xedc09d49` | `transfer(…)` → `0x49b80d25` | after rename: **`0xedc09d49`** — with `authwit_nonce` left as is |
+| `mint_to_private(to, amount)` | `0xf8f84119` | `mint(…)` → `0x724402ae` | after rename: yes |
+| `name()` / `symbol()` / `decimals()` | `0x5c5c9c42` / … | `public_get_name()` → `0xc8bbd7b4` / … | after rename: yes |
+| `burn_private(from, amount, _nonce)` | `0xc282ed79` | `burn(account, …)` → `0x16a23d86` | after rename: yes — **but see below** |
+
+The third row is the useful one: renaming `transfer` to `transfer_private_to_private` and changing nothing else — same types, `authwit_nonce` kept — produces AIP-20's exact selector. Parameter names are invisible to the selector, so the descriptive name this project chose costs nothing.
+
+### What each entry point maps to
+
+| This token | Alignment | Note |
+|---|---|---|
+| `transfer` | **rename** → `transfer_private_to_private` | Same shape; ours may also revert for compliance reasons, which AIP-20's may too, via its hook |
+| `mint` | **rename** → `mint_to_private` | AIP-20 checks a single immutable minter, ours checks `MINTER_ROLE`; identical from the caller's side |
+| `public_get_name` / `_symbol` / `_decimals` | **rename** → `name` / `symbol` / `decimals` | Pure rename. The `private_get_*` variants stay as this project's extras |
+| `balance_of_private`, `total_supply` | **already aligned** | Nothing to do |
+| `burn` | **do not alias** to `burn_private` | Different authorisation — see the trap below |
+| `transfer_batch`, `mint_batch`, `burn_batch`, `cancel_authwit` | keep | No AIP-20 counterpart; harmless extras |
+| every `*_to_public`, `*_to_commitment`, `balance_of_public`, `initialize_transfer_commitment`, `get_auth_contract` | **absent, deliberately** | Conflicts 1 and 2 in the [comparison](./cmtat-vs-aip20.md) |
+| `constructor` | stays different | AIP-20's two constructors take an `auth_contract`; deployment tooling differs regardless |
+
+The `Transfer` event already has the same name and the same fields (`from`, `to`, `amount`) on both sides.
+
+### The burn trap
+
+`burn` is the one function that *could* be renamed to match and *must not* be, because an identical selector with different semantics is worse than a different name.
+
+- AIP-20 `burn_private(from, amount, _nonce)` is **holder-authorised**: `#[authorize_once("from", "_nonce")]` and nothing else. Any holder burns their own tokens.
+- CMTAT `burn(account, amount, authwit_nonce)` is **privileged**: the caller must hold `BURNER_ROLE` *and* the holder must consent. A plain holder calling it gets `AccessControlUnauthorizedAccount`. This is by design — in CMTAT, burning is redemption, an issuer act.
+
+A wallet that sees selector `0xc282ed79` would call it as a self-burn and fail with a role error it has no way to anticipate. Keeping the CMTAT name makes the difference discoverable instead of surprising. *(CMTAT Solidity's `BURNER_SELF_ROLE` lives in the cross-chain module, not the core, so there is no core self-burn to map to either.)*
+
+### What alignment buys, and what it does not
+
+**Buys.** Any tool or contract that uses only AIP-20's private paths — `transfer_private_to_private`, `mint_to_private`, `balance_of_private`, `total_supply`, `name`/`symbol`/`decimals` — works unchanged, because it addresses the token by selector. That includes *other contracts*: a Noir contract holding a generated `Token::at(address)` interface for those functions would call this token successfully. The generated TypeScript call shapes become identical too, since arguments are positional.
+
+**Does not buy.** Aztec has no interface detection, so a partial profile is invisible until a missing function is called: a tool that also uses `transfer_public_to_public` or the commitment paths fails at that call, not at discovery. This is exactly why the README must state the non-conformance explicitly rather than let the matching names imply it. And the constructor still differs, so deployment tooling is unaffected either way.
+
+**Costs.** It is an ABI break — five renames across three `main.nr` files, the generated TypeScript, the e2e tests, the interaction scripts, and every document that names the functions, including the equivalency assessment's implementation-details cells. One-time, mechanical, and no storage or note-layout change.
+
+### Verdict
+
+**Worth doing, as a bounded change, if being reachable by AIP-20 private-profile tooling is wanted** — five renames (`transfer`, `mint`, `public_get_name`, `public_get_symbol`, `public_get_decimals`), `burn` kept as is, and a README sentence stating that the token exposes the AIP-20 private profile only and why. It is not conformance and should not be described as such; it is the largest slice of compatibility available without touching any of the conflicts, and its entire cost is a rename.
 
 ## Practical blockers independent of the design
 
