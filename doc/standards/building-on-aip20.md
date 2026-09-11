@@ -161,7 +161,7 @@ What it costs:
 
 - A hard fork with no upstream path. `aztec-standards` is pre-release and moving; every upstream fix becomes a manual merge into a file that has diverged.
 - The compliance surface must be added to **every** path — five private transfer variants, two public, three mints, two burns — where this project has three. That is a larger attack surface to get right, and each path needs its own tests.
-- The two conflicts from the comparison document remain: public balances would have to be either screened or removed, and the commitment paths still cannot screen a recipient who is not yet known.
+- The two conflicts from the comparison document remain in reduced form: public balances would have to be either screened or removed, and the commitment paths can screen the recipient only at initialization, so they need an expiry to bound the gap before completion (see the corrected Conflict 2).
 
 ### Option E — copy the patterns, not the code
 
@@ -170,7 +170,7 @@ What it costs:
 The valuable, portable ideas are:
 
 - **The note budget with recursion** (`INITIAL_TRANSFER_CALL_MAX_NOTES = 2`, `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8`). Measured worth: 43,046 gates per transfer, with the caveat that the recursion has to be built to make it safe.
-- **A named sentinel for "recipient not yet determined"** rather than overloading the zero address.
+- **A named sentinel for "this party is private" in public events** rather than overloading the zero address.
 - **The hook shape itself** — now that ARC-403 exists, a CMTAT-on-Aztec that wants to be hook-compatible could adopt the same signature *plus* the recipient, and propose the addition upstream.
 
 None of these needs a dependency. All are implementable against the aztec-nr libraries this project already uses.

@@ -443,7 +443,7 @@ Checked against the bundled `aztec-nr/standards/aip-20.md` and the DeFi Wonderla
 |---|---|
 | `public_balances: Map<AztecAddress, PublicMutable<u128>>` and the hybrid private/public transfer paths | Absent. Balances are private only; the sole public quantity is `total_supply` |
 | Partial-note transfers: `initialize_transfer_commitment`, `transfer_private_to_commitment`, `complete_from_private` | Absent |
-| `PRIVATE_ADDRESS_MAGIC_VALUE`, the "recipient not yet determined" placeholder | Absent |
+| `PRIVATE_ADDRESS_MAGIC_VALUE`, the "this party is private" marker used in public events | Absent |
 | `INITIAL_TRANSFER_CALL_MAX_NOTES = 2` / `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8` with `#[only_self]` recursive subtraction | Absent; `BalanceSet::sub` uses a flat `max_notes = MAX_NOTE_HASH_READ_REQUESTS_PER_CALL` (16) |
 | `minter: PublicImmutable<AztecAddress>`, `upgrade_authority: PublicImmutable<AztecAddress>` | Role-based `MINTER_ROLE`, grantable and revocable; no upgrade authority, the contract is not upgradeable |
 | `asset` / `vault_offset` for the AIP-4626 vault pattern | Absent |

@@ -46,7 +46,7 @@ The purpose is to explain *why* those two things do not fit together, in enough 
 
 The overlap is small and shallow: name, symbol, decimals, a total supply, and private balances held as notes. Everything that makes each standard *worth having* is absent from the other. AIP-20 contributes partial notes, a public/private balance split and a note-consumption strategy; CMTAT contributes transfer restriction, freezing, pausing, role-based issuance, and the metadata a real-world instrument needs.
 
-Two of the differences are not gaps to be closed by work — they are direct conflicts, set out in [The two irreducible conflicts](#the-two-irreducible-conflicts).
+Two of the differences are not gaps to be closed by work — they are conflicts, set out in [The two irreducible conflicts](#the-two-irreducible-conflicts). The second turned out, on reading the source, to be a timing problem with an addition that fixes it rather than an impossibility; the heading is kept so the correction is visible.
 
 ## The two standards solve different problems
 
@@ -76,7 +76,7 @@ The three-way split matters. CMTAT assumes a transparent ledger and builds issue
 | Basic transfer | `transfer`, `transferFrom` (ERC-20) | Private↔private, private↔public, public↔public paths |
 | Delegated spend | ERC-20 allowance, standing until changed | Authwit-style validation per call |
 | Deferred/undetermined recipient | — | **`initialize_transfer_commitment`** → `transfer_private_to_commitment` → `complete_from_private` |
-| "Recipient unknown" sentinel | — | `PRIVATE_ADDRESS_MAGIC_VALUE`, explicitly distinct from the zero address |
+| "This party is private" marker in public events | — | `PRIVATE_ADDRESS_MAGIC_VALUE`, explicitly distinct from the zero address |
 | Note consumption strategy | n/a (account model) | `INITIAL_TRANSFER_CALL_MAX_NOTES = 2`, then `#[only_self]` recursion at `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8` |
 | Forced transfer | `forcedTransfer` — mandatory-adjacent for regulatory recovery | — |
 
@@ -163,19 +163,27 @@ A compliance surface that is only correct if half of it goes unused is worse tha
 
 ### Conflict 2 — partial notes and recipient screening
 
-This is the deeper one.
+⚠️ **Corrected after reading the source.** An earlier revision of this section said the recipient is "not yet determined" when funds are locked, and concluded that screening it was impossible. That is what the Aztec documentation's prose says, and it is wrong as a statement about the contract. The code is:
 
-`initialize_transfer_commitment(to, completer)` exists **because the recipient is not yet determined**. The documentation is explicit: private functions execute on the user's device before the transaction reaches the network, so they cannot read public state such as a DEX order book or an auction result. The sender locks funds into a commitment; a completer — typically a settlement contract — fills in the recipient later. `PRIVATE_ADDRESS_MAGIC_VALUE` exists precisely to encode "recipient not yet determined" as distinct from the zero address.
+```noir
+fn initialize_transfer_commitment(to: AztecAddress, completer: AztecAddress) -> Field {
+    let commitment = self.internal._initialize_transfer_commitment(to, completer);
+    ...
+}
+// which does:  UintNote::partial(to, self.context, to, completer)
+```
 
-CMTAT requires the recipient to be screened *before* the transfer. In this implementation that is `operateOnTransfer(from, to)` checking the blacklist or whitelist, and `is_frozen(to)`.
+**The contract knows the recipient at initialization** and binds the partial note to it. What it does not know at initialization is the *sender* and the *amount*; those arrive later in `transfer_private_to_commitment(from, commitment, amount)`. `PRIVATE_ADDRESS_MAGIC_VALUE` is not a "recipient unknown" sentinel at all — it appears only in the token's **public events**, standing in for whichever party is private so that a public log does not name them.
 
-**Neither check can run when `to` is a placeholder.** The three ways out are all unsatisfactory:
+So the conflict is narrower than first stated, and it is a *timing* conflict rather than an impossibility:
 
-1. **Screen at completion.** The completer is a public function, so the screening publishes the recipient's address — surrendering exactly the confidentiality the token exists for, on precisely the transfers that used the composable path.
-2. **Skip screening on the commitment path.** A restricted address can then be paid through any commitment-based flow, and the restriction module becomes advisory rather than enforced.
-3. **Allowlist the completers.** Defensible in principle — but Aztec has no ERC-165 equivalent, so the token cannot verify that a completer is what it claims to be. The obligation becomes configuration discipline plus assurance of a second contract.
+- **Recipient screening can run at initialization.** `initialize_transfer_commitment` is the token's own function; it can refuse to create a commitment for a frozen or unlisted `to`. Every commitment that exists is then one whose recipient passed screening when it was made.
+- **Sender screening runs at completion**, in `transfer_private_to_commitment`, exactly as on the direct path.
+- **What cannot happen is re-screening the recipient at completion**, because at that point the contract holds only the commitment. If `to` is frozen or delisted *between* initialization and completion, the transfer still completes.
 
-The general statement is worth making plainly, because it is not specific to Aztec: **a transfer-restricted token and a composable token pull in opposite directions.** Restriction requires knowing the counterparty at authorisation time. Composability requires *not* knowing it. Any standard that wants both must say explicitly where the screening happens and what it costs.
+That residual gap is the real conflict, and it has a shape: this implementation already accepts a window between a freeze being scheduled and its taking effect (`CHANGE_ROLES_DELAY_SECONDS`, 360 seconds, documented under *Enforcement* in the assessment). A commitment opens a window of the same kind — but **unbounded**, because nothing in AIP-20 expires a commitment. A commitment initialized in January and completed in June carries January's screening. Closing that needs an expiry on the commitment, or a policy that only a completer the issuer controls may complete — both are additions, not contradictions.
+
+The general statement survives in a weaker form: **restriction wants the counterparty at authorisation time; composability wants to defer the counterparty's *involvement*, not its identity.** AIP-20's design turns out to be compatible with screening as long as the screening is done where the identity is known and the gap between that moment and settlement is bounded. The standard does not bound it today; it could.
 
 ## Where they agree
 
@@ -205,13 +213,13 @@ There is no `to`. A hook can refuse a transfer based on who is sending, how much
 
 **Why that matters beyond CMTAT.** Checking both parties is not a Swiss peculiarity. ERC-3643, ERC-1404 and CMTAT all screen sender *and* recipient, because the population of addresses permitted to *hold* a regulated instrument is the thing a whitelist exists to define. With sender-only screening, a frozen account can still be paid into, and a whitelist does not constrain who ends up holding the token.
 
-**The suggestion.** Add the recipient to the hook signature, using the placeholder address where it is genuinely not yet known:
+**The suggestion.** Add the recipient to the hook signature, using the placeholder address on the one path where the contract holds only a commitment:
 
 ```noir
 fn authorize_private(from: AztecAddress, to: AztecAddress, amount: u128, selector: Field)
 ```
 
-On the commitment paths `to` would be `PRIVATE_ADDRESS_MAGIC_VALUE`, which is already the standard's own idiom for "not yet determined" — so a restrictive hook can simply refuse those paths, while a permissive one ignores the argument. That single change is the difference between a compliant token being able to *use* AIP-20 and having to fork it.
+On `transfer_private_to_commitment` the contract holds only the commitment, so `to` would be passed as `PRIVATE_ADDRESS_MAGIC_VALUE` — reusing the standard's own "private party" marker — and a restrictive hook can refuse that path or rely on the screening done at `initialize_transfer_commitment`, which does know `to` and should call the hook too. That single change is the difference between a compliant token being able to *use* AIP-20 and having to fork it.
 
 **Two smaller companions.** Hook `mint_to_*` as well — issuance to a screened population is exactly when screening matters — and make `auth_contract` mutable under an admin rather than `PublicImmutable`, since a compliance policy that can never be corrected without redeploying the token and migrating every holder is not one an issuer can adopt.
 
@@ -277,13 +285,13 @@ Every transfer therefore sizes its circuit for sixteen notes whether the sender 
 
 **The suggestion for CMTAT.** Any CMTAT implementation on a UTXO-style ledger faces this, and the guidance should say so: *the number of unspent outputs a transfer consumes is a cost paid by the sender, and an implementation MUST document its bound and its behaviour when the bound is exceeded.* An implementation that silently fails a transfer for a holder with a fragmented balance has a usability defect the criteria currently do not ask about.
 
-### C-2. Name the "recipient not yet determined" case
+### C-2. Name the "this party is private" case in public events
 
-**What AIP-20 does.** `PRIVATE_ADDRESS_MAGIC_VALUE` is a dedicated sentinel meaning the destination is not yet known, explicitly distinct from the zero address, and the documentation notes it also lets off-chain indexers recognise partial-note transfers without decrypting anything.
+**What AIP-20 does.** `PRIVATE_ADDRESS_MAGIC_VALUE` is a dedicated sentinel that appears in the token's public `Transfer` events wherever one party holds a private balance — `transfer_public_to_private` logs `{ from, to: MAGIC, amount }`, a private mint logs `{ from: zero, to: MAGIC, amount }`. It is explicitly distinct from the zero address, and the documentation notes it lets an indexer recognise a private leg without decrypting anything.
 
-**Why CMTAT should care.** CMTAT Solidity inherits ERC-20's overloading of `address(0)` — it means "no such account", "mint source" and "burn destination" depending on context. That is tolerable in Solidity because the contexts never overlap, but it is a known source of confusion, and on any ledger with deferred settlement the overload becomes a real defect.
+**Why CMTAT should care.** CMTAT Solidity inherits ERC-20's overloading of `address(0)` — "mint source", "burn destination" and "no such account" depending on context. That is tolerable while every party is public; on a ledger with private balances, a public log needs a way to say "there is a counterparty and it is private" that is not the same as "there is no counterparty".
 
-**The suggestion.** Distinct named sentinels for distinct meanings, and a statement that an implementation MUST NOT conflate "unspecified" with "zero address".
+**The suggestion.** Distinct named sentinels for distinct meanings in any public log, and a statement that an implementation MUST NOT reuse the zero address to mean "private party".
 
 ### C-3. Treat delivery-versus-payment as a first-class requirement
 

@@ -76,7 +76,7 @@ Everything below follows from three facts about the interface.
 
 ### Refusing paths by selector — the trick that does most of the work
 
-The comparison document names two conflicts between CMTAT and AIP-20: public balances, and commitment transfers whose recipient is unknown. A sidecar cannot remove those paths from the token. **It can make them unusable**, because the hook is told which path is running:
+The comparison document names two conflicts between CMTAT and AIP-20: public balances, and commitment transfers — where, as its corrected Conflict 2 now records, the recipient is known at initialization but cannot be re-screened at completion. A sidecar cannot remove those paths from the token. **It can make them unusable**, because the hook is told which path is running:
 
 ```noir
 fn _policy(from: AztecAddress, _amount: u128, selector: Field) {
