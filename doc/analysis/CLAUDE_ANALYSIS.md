@@ -51,7 +51,7 @@
 | H-1 | `burn` publishes the caller's address and the amount | ✅ fixed — documented, as decided |
 | H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — now protected by `PRIVACY:` comments on all three public halves |
 | H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — 4 options costed; only one removes the leak |
-| H-4 | The `Transfer` event: nobody consumes it and the issuer never gets it | ⬜ decide — run the one-line experiment first |
+| H-4 | The `Transfer` event: its only unique datum is the sender, to the recipient, and it is delivered unverifiably | ⬜ decide — run the one-line experiment first |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
 | J-1 | `UserFlagsTrait` / `FreezableFlagTrait` are not `pub` | ⬜ implement — one word each |
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
@@ -68,7 +68,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 | D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
-| C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
+| C-2, H-4 | The `Transfer` event | H-4 now establishes that the event's only unique information is the sender's identity to the recipient — everything else is restated from the notes — and that the current mode delivers even that unverifiably. Start with the one-line `onchain_constrained()`-to-issuer experiment: if the issuer can receive it, the event becomes a verifiable receipt and an on-chain audit record; if not, choose A or B. C is dominated either way. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
 | H-3 | The public selector | Four options costed in H-3. Only one — making the pause flag delayed so `transfer` enqueues nothing — actually removes the leak, and it trades an immediate pause for it. That is a compliance decision, not an engineering one. |
 
@@ -288,7 +288,7 @@ Three things are worth separating:
 - **The recipient set.** Only `to`. The sender gets no record of their own transfer, and neither does the issuer.
 - **The issuer omission is a rule violation.** `CLAUDE.md` states: *"Any note written for a user must also be delivered to the current `issuer_address` — auditability is a hard requirement of the design."* Both note messages in `_transfer_internal` honour that. The event does not. An event is not a note, so this is not a contradiction of the letter — but the event carries `from`, `to` and `amount` in one place, which is precisely what an auditor wants, and it is the one message the issuer does not receive.
 
-**Verdict: decide — the options are costed in [H-4](#h-4-the-transfer-event-what-to-do-with-it--expanded-from-c-2), which also proposes a one-line experiment that may make the strongest option available.** The short version: `offchain()` to `to`, `from` and the issuer is the cheapest coherent answer, but it is worth first testing whether an `onchain_constrained()` event to the issuer works — the PXE limitation that forced the *note* copies offchain is about note discovery and may not apply to events. Whichever way it goes, record the choice next to the emit, as the issuer-copy decision already is at `main.nr:57`.
+**Verdict: decide — the options are costed in [H-4](#h-4-the-transfer-event-what-it-is-for-what-it-tells-whom-and-whether-anything-else-already-tells-them), which first establishes what the event uniquely provides — only the sender's identity, to the recipient, and unverifiably in the current mode — and then proposes a one-line experiment that may make the strongest option available.** The short version: `offchain()` to `to`, `from` and the issuer is the cheapest coherent answer, but it is worth first testing whether an `onchain_constrained()` event to the issuer works — the PXE limitation that forced the *note* copies offchain is about note discovery and may not apply to events. Whichever way it goes, record the choice next to the emit, as the issuer-copy decision already is at `main.nr:57`.
 
 ### C-3. `set_terms` emits nothing while `set_token_id` emits `TokenId` — `main.nr:288` vs `:309`
 
@@ -716,39 +716,77 @@ The entire public half of a transfer exists to read one boolean. It has to be pu
 
 **Verdict: decide — take 1 now, and treat 3 as a real design question for a later release.** Option 3 is the only one that removes the leak rather than relocating it, and it is a token-policy decision (delayed pause) rather than a code change, so it belongs to whoever owns the compliance posture. Options 2 and 4 are recorded as rejected with reasons.
 
-### H-4. The `Transfer` event: what to do with it — expanded from C-2
+### H-4. The `Transfer` event: what it is for, what it tells whom, and whether anything else already tells them
 
-Currently:
+The options (C-2) only make sense once three prior questions are answered: what is the event's *purpose* here, exactly what *information* does it carry to each party, and can that information be *obtained another way*. This section does that first, then costs the options.
+
+#### What the event is
 
 ```noir
-self.emit(Transfer { from, to, amount }).deliver_to(
-    to,
-    MessageDelivery::onchain_unconstrained(),
-);
+self.emit(Transfer { from, to, amount }).deliver_to(to, MessageDelivery::onchain_unconstrained());
 ```
 
-The content is encrypted, so this does not publish `from`/`to`/`amount` in the clear. What it does is pay for a durable onchain artifact that **nobody in this repository consumes** — no TypeScript reads the event, and the recipient already receives their balance through an `onchain_constrained()` note two lines earlier.
+Emitted by `transfer` and, since C-1, by `transfer_batch` once per recipient. Delivered to **`to` only**, encrypted, posted on chain, **unconstrained** — which the library defines as "on-chain delivery without constrained encryption/tagging": the circuit computes `{from, to, amount}` correctly, but nothing proves that the ciphertext the sender's PXE actually posts encrypts those values. The recipient decrypts whatever the sender chose to encrypt.
 
-**The party with a real need is the issuer, and it is the one party that does not receive it.** This is worth spelling out because it is not obvious: the issuer's note copies carry *owners and amounts as separate notes*. Reconstructing "`from` sent `amount` to `to`" means correlating a change note and a recipient note within the same transaction and inferring the direction. The `Transfer` event states it directly, in one message. Meanwhile `CLAUDE.md` requires that "any note written for a user must also be delivered to the current `issuer_address`" — the event is the one message where that rule is not applied, and it is the most useful one for audit.
+#### Its purpose here is not its purpose in ERC-20
 
-**The options:**
+In CMTAT Solidity, `Transfer(from, to, value)` is a **public** log: the primary feed for indexers, explorers, accounting systems and the issuer's own reconciliation. It is how anyone who is not a party learns that a transfer happened and between whom.
 
-| | Mode and recipients | DA cost | Proving cost | What it buys |
-|---|---|---|---|---|
-| **A** | Drop the event | none | −1,679 gates | Simplest. The issuer must correlate note copies to recover direction. |
-| **B** | `offchain()` to `to`, `from` and the issuer | none | ~1,679, unchanged | A direct audit record for all three parties, at zero DA cost, consistent with how the issuer's note copies are already delivered. No delivery guarantee. |
-| **C** | `onchain_unconstrained()` to `to` (current) | 1 log | 1,679 | A DA record nobody depends on, with no guarantee it is correct. |
-| **D** | `onchain_constrained()` to the issuer (and `to`) | 1 log each | more than 1,679 | A guaranteed, onchain-available audit record. |
+Here it cannot be that. It is encrypted to one party, so no indexer reads it, no explorer shows it, and the issuer does not receive it. Its only possible purpose is as a **receipt to the recipient** — a message saying "you were sent `amount` by `from`". Whether that receipt is worth having depends entirely on whether the recipient learns anything from it that it does not already learn from the note it also receives.
 
-**B is the cheapest coherent answer** and is what the report recommends if nothing consumes the event: it fixes the audit gap, costs no DA, and matches the existing issuer policy exactly.
+#### What each party learns, and from where
 
-**But D deserves testing before B is chosen, and this is the useful finding in this section.** The issuer's *note* copies were forced offchain by a specific PXE limitation, documented in the CHANGELOG: PXE cannot process an onchain note message addressed to someone who is not the note's owner, because note discovery computes the note's **nullifier**, which needs the owner's nullifier key. **An event is not a note.** It has no nullifier and no discovery step of that kind, so the reason the note copies had to go offchain may simply not apply to events — in which case the issuer could receive a guaranteed, onchain-available `Transfer` record even though it cannot receive guaranteed note copies.
+Every transfer already delivers two notes: the sender's change note (`onchain_constrained`, to `from`) and the recipient's new note (`onchain_constrained`, to `to`), each with an offchain copy to the issuer. A `UintNote` is:
 
-That would materially improve the auditability story: today the issuer's entire audit trail is offchain and a sender who drops a message leaves no onchain trace, which the CHANGELOG records as a known weakness. An onchain-constrained `Transfer` event to the issuer would put the most important part of that trail back on chain.
+```noir
+pub struct UintNote {
+    pub value: u128,
+}
+```
 
-**This is a hypothesis, not a measurement — I did not test it.** The test is small: change the delivery to `onchain_constrained()` with the issuer as recipient, run the Noir suite, and check whether the issuer's PXE processes it or fails discovery the way the note copies did. If it works, D; if it fails, B.
+— a value and, through the delivery, an owner. **It has no sender field.**
 
-**Verdict: decide, in this order.** (i) Run the D experiment — it is one line and one test run, and it answers whether the offchain compromise is narrower than assumed. (ii) If D fails, take B. (iii) Either way, emit from `transfer_batch` as well (C-1), so the two paths leave the same trail. Option C, the current state, is the one choice that should not survive: it pays for data availability and buys no guarantee.
+| Information | Party | Available without the event? | From where |
+|---|---|---|---|
+| `amount` | recipient | **yes** | `value` of the note it receives |
+| `amount` | sender | yes | it chose it; its change note confirms the debit |
+| `amount` | issuer | **yes** | `value` of its copy of the recipient's note |
+| `to` | recipient | yes | it is the note's owner |
+| `to` | issuer | **yes** | owner of the recipient-note copy |
+| `from` | sender | yes | it is the sender |
+| `from` | issuer | **yes** | owner of the change-note copy, in the same transaction |
+| `from` ↔ `to` pairing | issuer | yes, **by correlation** — the two copies must be grouped by transaction; the event would state the pair directly |
+| **`from`** | **recipient** | **no** | the note carries no sender; the event is the only in-band source |
+| that a transfer occurred | anyone | yes | the enqueued `_transfer()` call |
+
+*(Whether the delivery layer's tagging lets a recipient's PXE infer a sender is a PXE implementation detail outside this contract's control, and for a contract-emitted note the tag is derived from the contract, not the holder. The contract should not rely on it either way.)*
+
+So the event carries exactly **one** datum that nothing else provides: **the sender's identity, to the recipient.** Everything else it says is a restatement of the notes.
+
+#### And that one datum is unverifiable in the current mode
+
+Because delivery is `onchain_unconstrained`, the `from` the recipient decrypts is not proven to be the `from` the circuit checked. A sender can transfer 100 tokens to Bob and hand Bob a receipt saying they came from Carol. The one thing the event uniquely offers, it offers without a guarantee. The recipient's *note* is constrained; the receipt naming the sender is not. That is the wrong way round for a receipt.
+
+This reframes the question. It is not "should we pay DA for this event" but "**do recipients need a trustworthy statement of who paid them, and does the issuer want the pairing stated rather than inferred?**"
+
+#### The options, re-costed against that
+
+| | Mode and recipients | Sender identity to recipient | Pairing to issuer | DA | Proving |
+|---|---|---|---|---|---|
+| **A** | Drop the event | not available | inferred from two copies | none | −1,679 gates |
+| **B** | `offchain()` to `to`, `from`, issuer | delivered, **not verifiable** | stated, not verifiable, no availability guarantee | none | ~1,679 |
+| **C** | `onchain_unconstrained()` to `to` *(current)* | delivered, **not verifiable** | not delivered | 1 log | 1,679 |
+| **D** | `onchain_constrained()` to `to` and the issuer | delivered, **verifiable** | stated, verifiable, on chain | 1 log each | more than 1,679 |
+
+**C is dominated.** It pays data availability for a receipt whose only unique claim is unverifiable and which the issuer does not receive. Whatever else is decided, C should not survive.
+
+**A and B are the "the notes are enough" answers.** A says the recipient does not need to know the sender in-band — plausible for a security token, where counterparties are known off-chain and the issuer reconciles from copies. B keeps a best-effort receipt for all three parties at zero DA cost, matching how the issuer's note copies already travel, and accepting the same no-guarantee caveat.
+
+**D is the "the event has a job" answer**, and it is the only one that makes the event's unique datum trustworthy. It also does something the notes cannot: it puts the issuer's `from`↔`to` pairing **on chain, constrained**, instead of leaving it to offchain correlation. That matters because of the finding that makes D worth testing before choosing B: the issuer's *note* copies were forced offchain by a PXE limitation about **note discovery** — computing a note's nullifier needs the owner's key. **An event is not a note.** It has no nullifier and no such discovery step, so the limitation may simply not apply — in which case the issuer could receive a guaranteed, on-chain, constrained record of every transfer even though it cannot receive guaranteed note copies. That would put the most important part of the audit trail — who paid whom, how much — back on chain with data availability, which the CHANGELOG currently records as absent.
+
+**This is a hypothesis, not a measurement.** The test is one line and one test run: change the delivery to `onchain_constrained()` with the issuer as a recipient and see whether the issuer's PXE processes it or fails discovery the way the note copies did.
+
+**Verdict: decide, in this order.** (i) Run the D experiment. (ii) If the issuer can receive it: D — the event becomes a verifiable receipt for the recipient and an on-chain audit record for the issuer, which is a real capability and not a cost. (iii) If not: choose between A and B on whether recipients need an in-band sender at all; B if yes, A if no. (iv) In every case, stop paying DA for an unverifiable receipt — C goes.
 
 ### H-5. Patterns checked and absent
 
