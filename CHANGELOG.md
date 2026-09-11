@@ -230,6 +230,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `doc/standards/cmtat-as-aip20-auth-contract.md`, assessing whether the module library could be packaged as an ARC-403 authorization contract so that a stock AIP-20 token gains CMTAT compliance without modification.
+  - It can: a probe composing the access-control, pause, freeze, validation and extra-information modules into a contract with the `authorize_private` / `authorize_public` interface compiles against the library unchanged, and its private hook measures 20,715 gates.
+  - Because the hook is told which token function is running, a policy can refuse every commitment path and every public-balance path outright — closing two of the three conflicts with AIP-20 by refusal rather than by design.
+  - What it cannot do follows from two arguments the hook does not pass: the recipient and the initiator. Recipient screening, issuer-only burn and role-gated mint are inexpressible, and the issuer receives no note copies. Five of the nineteen mandatory equivalency criteria come out `partial`.
+  - Per transfer it costs roughly 185,000 gates against 120,824 for the integrated token, most of it the cross-contract kernel iteration. The verdict is a legitimate second product for issuers who need the standard artifact itself, not a replacement for the token.
 - `doc/standards/building-on-aip20.md` now answers whether this token's entry points could be aligned with AIP-20's without adopting its architecture.
   - They can, by renaming: Aztec selectors are derived from the function name and parameter types, not parameter names — verified by computing selectors from both compiled artifacts — so renaming `transfer` to `transfer_private_to_private` with `authwit_nonce` unchanged yields AIP-20's exact selector. `balance_of_private` and `total_supply` already match.
   - `burn` must not be aliased to `burn_private`: AIP-20's is holder-authorised, CMTAT's requires `BURNER_ROLE`, and an identical selector with different authorisation is a trap for any caller.

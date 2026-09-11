@@ -91,6 +91,8 @@ There is no `type = "lib"` crate anywhere in the workspace, so there is not even
 
 **Verdict: the only genuinely interesting option, and it fails on one specific thing.**
 
+> The mirror image of this option — building the *hook contract* out of `cmtat_aztec_lib` so a stock AIP-20 token gains CMTAT compliance — is worked through, compiled and measured in [`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md). It reaches the same limit from the other side, and adds a second missing argument: the hook is not told who initiated the operation either.
+
 The design would be: deploy a stock AIP-20 token, deploy a CMTAT compliance contract, and nominate the latter as the token's `auth_contract`. The compliance contract holds the roles, the pause flag, the freeze flags and the lists, and reverts in `authorize_private` / `authorize_public` when a transfer must not proceed.
 
 **What the hook is given:** `(from: AztecAddress, amount: u128, selector: Field)`.
