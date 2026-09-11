@@ -230,6 +230,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- Added `doc/standards/building-on-aip20.md`, assessing whether the project could be rebuilt on the `aztec-standards` AIP-20 token rather than implementing CMTAT directly. It cannot, for three reasons found by reading the library rather than its documentation.
+  - Every crate in `aztec-standards` is `type = "contract"`, and Noir has no inheritance, so there is nothing to depend on and extend — its own vault "extension" is a separate contract that calls the token.
+  - AIP-20 does provide a transfer-authorization hook, but it receives only the sender, the amount and the selector. It cannot screen the recipient, while a CMTAT freeze blocks receiving and a whitelist requires both parties listed. Minting is not hooked at all.
+  - The library pins a different aztec-nr tag from a different repository than this project, and describes itself as a pre-release.
+  - The document also corrects `cmtat-vs-aip20.md`, which stated AIP-20 had no compliance extension point at all, and replaces its first suggestion with a narrower one: pass the recipient to the hook.
 - Added `doc/standards/cmtat-vs-aip20.md`, a detailed comparison of CMTAT with Aztec's AIP-20 fungible-token standard.
   - Explains why this contract is deliberately not AIP-20: public balances would add a transparent second ledger to a token built to avoid one, and partial-note transfers cannot coexist with recipient screening, because the recipient is unknown by design when the funds are locked.
   - Carries suggestions in both directions — extension points AIP-20 would need before a compliant token could conform to it, and patterns CMTAT should adopt for ledgers that are not account-model and transparent.

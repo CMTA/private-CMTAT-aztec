@@ -431,7 +431,9 @@ That was verified by removing `#[view]` from `terms` and rebuilding. So switchin
 
 ### F-1. Should this token implement AIP-20?
 
-> The full standard-to-standard comparison behind this finding — every axis, both conflicts, and suggestions in each direction — is in [`doc/standards/cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md). This section states the decision for *this* contract.
+> The full standard-to-standard comparison behind this finding is in [`doc/standards/cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md), and the engineering question — could this project be *rebuilt on* the `aztec-standards` library — is answered in [`doc/standards/building-on-aip20.md`](../standards/building-on-aip20.md). This section states the decision for *this* contract.
+>
+> ⚠️ One correction from reading that library's source: AIP-20 **does** have a transfer-authorization hook (ARC-403), which this finding's first revision did not know about. It does not change the verdict — the hook is not passed the recipient, so it cannot express CMTAT's screening — but it narrows the gap from "no extension point" to "one missing argument".
 
 Checked against the bundled `aztec-nr/standards/aip-20.md` and the DeFi Wonderland `aztec-standards` repository it names as the source. **Short answer: no, not as a whole — two of its central features are incompatible with what a CMTAT is for. But one part of it is worth taking on its own merits, and the measurement below says it is worth 36% of a transfer.**
 

@@ -7,3 +7,6 @@
 [submodule "submodules/CMTAT"]
 	path = submodules/CMTAT
 	url = https://github.com/CMTA/CMTAT
+[submodule "lib/aztec-standards"]
+	path = lib/aztec-standards
+	url = https://github.com/defi-wonderland/aztec-standards/

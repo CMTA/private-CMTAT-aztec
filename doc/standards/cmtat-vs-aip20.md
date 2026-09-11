@@ -36,7 +36,9 @@ The purpose is to explain *why* those two things do not fit together, in enough 
 | AIP-721, AIP-4626 | same | consulted for context on the shared partial-note pattern |
 | private-CMTAT-aztec | this repository, `0.3` development branch | the worked example |
 
-> **A caveat on the AIP-20 side.** The canonical AIP-20 implementation is the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) repository maintained by DeFi Wonderland, and the Aztec documentation says explicitly that it differs from the reference contracts shipped in `aztec-packages`. This document is written against the **published Aztec documentation** for AIP-20, not against a checkout of that repository. Storage layout, the partial-note flow, the note-count constants and the recursion pattern are quoted from it directly. Where the full function list matters, treat the repository as authoritative — a complete entry-point inventory is *not* reproduced here, because it could not be verified from the documentation alone.
+> **A caveat on the AIP-20 side.** The canonical AIP-20 implementation is the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) repository maintained by DeFi Wonderland, and the Aztec documentation says explicitly that it differs from the reference contracts shipped in `aztec-packages`. This document is written against the **published Aztec documentation** for AIP-20, not against a checkout of that repository. Storage layout, the partial-note flow, the note-count constants and the recursion pattern are quoted from it directly. Where the full function list matters, treat the repository as authoritative.
+>
+> **Updated after reading the source.** The library has since been checked out at `lib/aztec-standards` (commit `a3859e5`) and read directly. That reading **corrected one claim in this document** — AIP-20 does have a transfer-authorization hook, ARC-403, which an earlier revision said it lacked. The correction is applied below and explained in [`building-on-aip20.md`](./building-on-aip20.md).
 
 ## Summary
 
@@ -103,8 +105,13 @@ This is the most easily fixable difference and the one with the clearest answer:
 | Transfer restriction | `ValidationModule` + external `RuleEngine`: blacklist, whitelist, sanctions oracle, max balance, max supply, conditional transfer, per-minter quota | — |
 | Non-reverting restriction query | ERC-1404 `detectTransferRestriction` | — |
 | Allowlist as a first-class deployment | `CMTATStandaloneAllowlist` | — |
+| **Extension point for all of the above** | `ValidationModule` + pluggable `RuleEngine`, settable after deployment | **ARC-403 authorization hook** — `auth_contract`, called on every transfer and burn, `PublicImmutable` so fixed at deployment |
 
-**AIP-20 has no compliance surface at all**, and no extension point at which one could be added in a standard way. This is the single largest divergence, and the basis of the first suggestion below.
+**AIP-20 ships no compliance features**, but — unlike what an earlier revision of this document said — it does provide an extension point for them: the ARC-403 hook calls an external contract on every transfer and burn, and that contract may revert.
+
+The hook's limit is its signature: `authorize_private(from, amount, selector)`. **It is not given the recipient.** A hook can therefore refuse a transfer based on the sender, the amount or the operation, but cannot screen who is being paid — and CMTAT's freeze blocks receiving as well as sending, while its whitelist requires both parties to be listed. Mint is not hooked at all.
+
+So the divergence is narrower than "no compliance surface" and sharper than it first appears: the mechanism exists, and one missing argument is what keeps a CMTAT from using it. See [`building-on-aip20.md`](./building-on-aip20.md) for the full analysis.
 
 ### Metadata
 
@@ -184,13 +191,29 @@ Worth recording, because the disagreements are easier to see:
 
 Framed as extension points rather than features. AIP-20 should not become CMTAT; it should stop making a compliant token impossible to write in a standard way.
 
-### A-1. Define a transfer-restriction extension point
+### A-1. Pass the recipient to the ARC-403 authorization hook
 
-**The gap.** AIP-20 has no hook at which a transfer can be refused. Every regulated token on Aztec will need one, and each will invent its own — which defeats the interoperability the standard exists for.
+⚠️ **This suggestion replaces an earlier one.** A previous revision asked AIP-20 to *define* a transfer-restriction extension point. It already has one — the ARC-403 hook — and the earlier text was written from the documentation, which does not mention it. The real gap is narrower and much cheaper to close.
 
-**The suggestion.** Specify an optional *restricted-transfer profile*: a documented point in each transfer path at which an implementation may assert, and a documented obligation that the assertion runs on **every** path including the commitment flow. Because Noir has no inheritance, this cannot be an abstract method; it should be specified as a composition pattern — a module struct implementing a named trait, held in the token's storage — which is how this repository composes its validation module.
+**The gap.** The hook signature is:
 
-**Why AIP-20 should care.** Without it, "AIP-20 compliant" tells a wallet nothing about whether a transfer can fail for policy reasons, which is exactly the kind of surprise the standard is meant to remove.
+```noir
+fn authorize_private(from: AztecAddress, amount: u128, selector: Field)
+```
+
+There is no `to`. A hook can refuse a transfer based on who is sending, how much, and which operation — but not based on **who is receiving**.
+
+**Why that matters beyond CMTAT.** Checking both parties is not a Swiss peculiarity. ERC-3643, ERC-1404 and CMTAT all screen sender *and* recipient, because the population of addresses permitted to *hold* a regulated instrument is the thing a whitelist exists to define. With sender-only screening, a frozen account can still be paid into, and a whitelist does not constrain who ends up holding the token.
+
+**The suggestion.** Add the recipient to the hook signature, using the placeholder address where it is genuinely not yet known:
+
+```noir
+fn authorize_private(from: AztecAddress, to: AztecAddress, amount: u128, selector: Field)
+```
+
+On the commitment paths `to` would be `PRIVATE_ADDRESS_MAGIC_VALUE`, which is already the standard's own idiom for "not yet determined" — so a restrictive hook can simply refuse those paths, while a permissive one ignores the argument. That single change is the difference between a compliant token being able to *use* AIP-20 and having to fork it.
+
+**Two smaller companions.** Hook `mint_to_*` as well — issuance to a screened population is exactly when screening matters — and make `auth_contract` mutable under an admin rather than `PublicImmutable`, since a compliance policy that can never be corrected without redeploying the token and migrating every holder is not one an issuer can adopt.
 
 ### A-2. Settle where screening happens on the partial-note path
 
