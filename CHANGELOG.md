@@ -230,6 +230,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- `doc/standards/building-on-aip20.md` gained a sixth option: forking `aztec-standards` and moving it to `v5.2.0`. It was tried rather than estimated.
+  - Eleven `Nargo.toml` edits and no source changes: the four aztec-nr crates repointed to the standalone repository at `v5.2.0`, and one protocol-circuits crate (`serde`) left in `aztec-packages` with its tag bumped, because that tree did not move. The whole 11-crate workspace compiles and all 79 of the token's tests pass.
+  - The version mismatch is therefore downgraded from a blocker to a chore in the document's blocker table, and the recommendation's reasoning changes from "hard to port" to "every design conflict survives the port".
+  - Profiling both tokens on the same toolchain, AIP-20's private transfer costs 63,310 gates against this project's 120,824. The gap reconciles to within ~2,400 gates against components already measured here — validation module, `Transfer` event and the note budget — so the CMTAT features cost what they were measured to cost, and only the note budget is a free saving.
 - Added `doc/standards/building-on-aip20.md`, assessing whether the project could be rebuilt on the `aztec-standards` AIP-20 token rather than implementing CMTAT directly. It cannot, for three reasons found by reading the library rather than its documentation.
   - Every crate in `aztec-standards` is `type = "contract"`, and Noir has no inheritance, so there is nothing to depend on and extend — its own vault "extension" is a separate contract that calls the token.
   - AIP-20 does provide a transfer-authorization hook, but it receives only the sender, the amount and the selector. It cannot screen the recipient, while a CMTAT freeze blocks receiving and a whitelist requires both parties listed. Minting is not hooked at all.

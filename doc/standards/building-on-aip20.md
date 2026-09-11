@@ -9,12 +9,13 @@ An assessment of whether this project could be rebuilt on the [`aztec-standards`
 - [What was checked](#what-was-checked)
 - [Correction to the earlier analysis](#correction-to-the-earlier-analysis)
 - [Short answer](#short-answer)
-- [The five things "on top of" could mean](#the-five-things-on-top-of-could-mean)
+- [The six things "on top of" could mean](#the-six-things-on-top-of-could-mean)
   - [Option A — depend on the crate and extend it](#option-a--depend-on-the-crate-and-extend-it)
   - [Option B — use the ARC-403 authorization hook](#option-b--use-the-arc-403-authorization-hook)
   - [Option C — wrap the token in a compliance contract](#option-c--wrap-the-token-in-a-compliance-contract)
   - [Option D — vendor the contract and modify it](#option-d--vendor-the-contract-and-modify-it)
   - [Option E — copy the patterns, not the code](#option-e--copy-the-patterns-not-the-code)
+  - [Option F — fork the library and move it to v5.2.0](#option-f--fork-the-library-and-move-it-to-v520)
 - [Practical blockers independent of the design](#practical-blockers-independent-of-the-design)
 - [Recommendation](#recommendation)
 - [What to do with the submodule](#what-to-do-with-the-submodule)
@@ -63,8 +64,9 @@ An external contract nominated at deployment is called on every transfer and bur
 - Building on the library as a *dependency* is impossible: every crate is `type = "contract"`, and Noir has neither inheritance nor a way to extend a contract crate. This is a property of the language, not an oversight in the library.
 - The ARC-403 hook can express **pause, deactivation, amount limits, and sender-side freeze/blacklist/whitelist**. It cannot express **recipient screening**, because the hook is not given the recipient — and recipient screening is not optional in CMTAT.
 - Every other route is a fork, a wrapper that re-implements the token, or copying patterns without the code.
+- **The fork itself is cheap** — moving the library to `v5.2.0` took eleven manifest edits and no source changes, and all 79 of its tests pass. What is not cheap is what comes after the fork, and that is unchanged.
 
-## The five things "on top of" could mean
+## The six things "on top of" could mean
 
 ### Option A — depend on the crate and extend it
 
@@ -169,13 +171,59 @@ The valuable, portable ideas are:
 
 None of these needs a dependency. All are implementable against the aztec-nr libraries this project already uses.
 
+### Option F — fork the library and move it to v5.2.0
+
+**Verdict: mechanically trivial — measured, not estimated — which relocates the argument rather than settling it.**
+
+The hypothesis: fork `aztec-standards`, bring it from `v5.0.0-rc.2` to the `v5.2.0` this project already uses, and build from there. Rather than estimate the migration effort, it was done in a scratch copy of the checkout.
+
+**What the migration consisted of.** Eleven `Nargo.toml` edits and **no source changes at all**:
+
+- the four aztec-nr crates (`aztec`, `uint_note`, `balance_set`, `compressed_string`) repointed from `aztec-packages/noir-projects/aztec-nr/<crate>` at `v5.0.0-rc.2` to the standalone `AztecProtocol/aztec-nr` repository at `v5.2.0` — the same source this project uses;
+- one protocol-circuits crate (`serde`, used by `escrow_contract`) left in `aztec-packages` with its tag bumped to `v5.2.0`, because that tree does not exist in the standalone repository.
+
+That second point is the only trap: the library mixes crates that moved to the standalone repository with one that did not, so the remap is not a pure find-and-replace. Getting it wrong produces `Cannot read file .../noir-protocol-circuits/crates/serde/Nargo.toml`, which is what the first attempt hit.
+
+**Result.**
+
+| Step | Outcome |
+|---|---|
+| `aztec-nargo compile --package token_contract` | 0 errors |
+| `aztec-nargo compile --workspace` (all 11 crates) | 0 errors |
+| `aztec test --package token_contract` | **79 / 79 pass** |
+
+The API gap between `v5.0.0-rc.2` and `v5.2.0` is, for this library, nil. That is not surprising in hindsight — the rc.2 → 5.2.0 hop is a patch series inside one major, where this project's own 0.63.1 → 5.2.0 migration crossed the macro rewrite — but it needed measuring, because the [blocker table](#practical-blockers-independent-of-the-design) below originally listed the version mismatch as a wall. It is a one-afternoon task, and the table has been corrected.
+
+*(A first test run showed 78 failures; that was a setup error, not the fork — only `token_contract` had been compiled, and the "on behalf of" tests deploy `GenericProxy`, whose missing artifact crashed the TXE server and cascaded `client error (Connect)` into every later test. Compiling the workspace fixed it. Recorded because it is the same `ENOENT` class this project hit during its own migration.)*
+
+**What the fork buys, measured.** With the artifacts built at `v5.2.0`, the two tokens can be profiled on the same toolchain:
+
+| Operation | AIP-20 token (`v5.2.0` fork) | private-CMTAT-aztec |
+|---|---:|---:|
+| Private → private transfer | **63,310** | 120,824 |
+| Private burn | 38,221 | 81,736 |
+| Mint to private | 28,654 | 30,776 |
+| One recursion step (fragmented balance) | 30,136 + a kernel iteration | — |
+
+The transfer gap is large, and it reconciles almost exactly against components already measured in this repository: **120,824 − 10,408** (validation module, base vs Light) **− 1,679** (`Transfer` event) **− 43,046** (16-note vs 2-note budget) **= 65,691**, against AIP-20's 63,310. The residual ~2,400 gates is the two freeze reads, the issuer read and the two issuer note copies, less the hook's `PublicImmutable` check. In other words: the CMTAT features cost what they were measured to cost, and **the note budget is the only part of the gap that is a free lunch** — which is why Option E already recommends taking it.
+
+**What the fork does not change.** Every design conclusion above stands:
+
+- It is still a `type = "contract"` crate. A fork could *add* a `type = "lib"` crate by extracting the token's internal helpers — but that is new engineering the upstream has not done, and it is exactly the module-library structure this project already has.
+- The ARC-403 hook is still not passed the recipient. Adding `to` is a small change in a fork — and the moment it is made, the token is no longer AIP-20, which was the point of starting from it.
+- Public balances and commitment paths still conflict with screening (Conflicts 1 and 2 in the [comparison](./cmtat-vs-aip20.md)).
+
+**The maintenance cost, quantified.** The upstream is slow-moving: 4 commits in the 90 days before the pinned commit, all four touching `token_contract`, and three of them version bumps (`upgrade to 4.3.0`, `upgrade v5.0.0`, `upgrade to 5.0.0 rc.2`). ARC-403 itself landed on 2026-07-06, which is why the Aztec documentation does not mention it. A fork would mostly be *ahead* of upstream on Aztec versions and would have little to merge — the "fast-moving target" concern in Option D is weaker than stated there.
+
+**So where does that leave it?** Option F makes Option D cheap to *start*. It does not make it cheap to *finish*: the work is not the port, it is adding recipient screening to every one of twelve transfer, mint and burn paths and deciding what to do about public balances and commitments — after which the result is a CMTAT with AIP-20 function names that no AIP-20 wallet can safely treat as AIP-20. The fork is feasible; it is not obviously desirable.
+
 ## Practical blockers independent of the design
 
 Even if one of the options above were chosen, these apply:
 
 | Blocker | Detail |
 |---|---|
-| **Version mismatch** | `aztec-standards` pins `v5.0.0-rc.2` from `aztec-packages/noir-projects/aztec-nr`; this project pins `v5.2.0` from the standalone `AztecProtocol/aztec-nr` repository. Different tags *and* different source repositories. Two `aztec` crates from different origins in one dependency graph produce the "similar names, but are actually distinct types" error this project already hit once during the 5.2.0 migration. |
+| **Version mismatch** — *downgraded from blocker to chore* | `aztec-standards` pins `v5.0.0-rc.2` from `aztec-packages`; this project pins `v5.2.0` from the standalone `aztec-nr` repository. An earlier revision of this document called this a wall. It was then tried ([Option F](#option-f--fork-the-library-and-move-it-to-v520)): eleven manifest edits, no source changes, 79/79 tests pass. The only trap is that one crate (`serde`) lives in a tree that did not move to the standalone repository. |
 | **Pre-release library** | The checkout describes itself as `prerelease-0200230-14-ga3859e5`. Its interfaces are not stable, and the Aztec documentation already warns that it differs from the reference contracts in `aztec-packages`. |
 | **`auth_contract` is `PublicImmutable`** | The compliance contract is fixed at deployment and cannot be replaced. A bug in it, or a change of compliance policy that needs new state, means redeploying the token and migrating every holder. CMTAT's Solidity RuleEngine is settable for exactly this reason. |
 | **The token depends on a test crate** | `token_contract/Nargo.toml` lists `authorization_contract = { path = "src/test/test_authorization_contract" }` — the production crate depends on a crate under `src/test/` for the hook interface. Workable, but it signals the hook interface has not yet been factored out for third-party use. |
@@ -183,7 +231,7 @@ Even if one of the options above were chosen, these apply:
 
 ## Recommendation
 
-**Do not rebuild on `aztec-standards`.** Keep the current architecture — CMTAT modules over aztec-nr, three deployment variants — and take from AIP-20 the two things that are portable:
+**Do not rebuild on `aztec-standards` — and the reason is no longer "it would be hard to port".** Option F showed the port is trivial. The reason is that after the port every design problem is still there, and solving them produces a fork that is no longer the standard. Keep the current architecture — CMTAT modules over aztec-nr, three deployment variants — and take from AIP-20 the two things that are portable:
 
 1. **Adopt the note-budget-plus-recursion pattern.** This is the measured win and it is independent of everything else. Prerequisite is a note-count distribution measurement, not an architecture decision.
 2. **Consider aligning a future compliance hook with ARC-403's shape**, so that a CMTAT compliance contract could serve both this token and a stock AIP-20 token if the hook ever gains a recipient argument.
