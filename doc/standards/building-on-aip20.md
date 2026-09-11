@@ -100,7 +100,7 @@ The design would be: deploy a stock AIP-20 token, deploy a CMTAT compliance cont
 
 **Where it is called:** nine sites — all five private transfer paths, both public transfer paths, `burn_private` and `burn_public`.
 
-**Where it is not called:** `mint_to_private`, `mint_to_public` and `mint_to_commitment`. Minting is not hooked at all. *(As it happens this project has the same gap, recorded as `G-1` in the code-quality review — but there it is a comment that overstates the code, not a structural limit.)*
+**Where it is not called:** `mint_to_private`, `mint_to_public` and `mint_to_commitment`. Minting is not hooked at all. *(This project screens the recipient of a mint and the account of a burn against the lists, as CMTAT Solidity does; the code-quality review's `G-1` was closed by making the code do what its comment claimed. The hook cannot reach either, so a sidecar cannot.)*
 
 #### What CMTAT controls the hook can and cannot express
 
@@ -286,20 +286,20 @@ The reference is not what this repository does. CMTAT Solidity's validation (`Va
 | While **paused** | CMTAT Solidity | This repository | AIP-20 + a CMTAT hook |
 |---|---|---|---|
 | Transfer | ✘ blocked | ✘ blocked | ✘ blocked — every transfer path is hooked |
-| Mint | ✔ allowed | ✘ blocked | ✔ allowed — mint is not hooked |
-| Burn | ✔ allowed | ✘ blocked | **policy's choice** — burn is hooked, and the hook receives the selector, so it can let burns through a pause |
+| Mint | ✔ allowed | ✔ allowed | ✔ allowed — mint is not hooked |
+| Burn | ✔ allowed | ✔ allowed | **policy's choice** — burn is hooked, and the hook receives the selector, so it can let burns through a pause |
 
 | While **deactivated** | CMTAT Solidity | This repository | AIP-20 + a CMTAT hook |
 |---|---|---|---|
 | Transfer | ✘ | ✘ | ✘ |
-| Mint | ✘ — explicit check | ✘ — through the pause | **✔ — cannot be blocked**, mint is not hooked |
-| Burn | ✘ — explicit check | ✘ — through the pause | ✘ — the hook refuses |
+| Mint | ✘ — explicit check | ✘ — explicit check | **✔ — cannot be blocked**, mint is not hooked |
+| Burn | ✘ — explicit check | ✘ — explicit check | ✘ — the hook refuses |
 
 Two observations fall out of that.
 
-**On pause, the hook can be *more* faithful to CMTAT than this repository is.** This repository blocks mint and burn while paused, a documented deviation from the reference (the assessment's Conclusion records it). A hook-based pause reproduces the reference exactly: transfers refused, mint untouched because it is never hooked, burn let through by matching its selector. Nothing about the hook forces the deviation this repository chose.
+**On pause, the hook can be exactly as faithful to CMTAT as this repository now is.** This repository used to block mint and burn while paused, a documented deviation; it has since been aligned with the reference — `_transfer` asserts not-paused, `_mint` and `_burn` assert not-deactivated. A hook-based pause reproduces the same thing: transfers refused, mint untouched because it is never hooked, burn let through by matching its selector.
 
-**On deactivation, the hook falls short in one place, and it is the mint gap again.** A deactivated AIP-20 token can still be minted into, because `mint_to_private`, `mint_to_public` and `mint_to_commitment` never reach the hook. CMTAT Solidity blocks that explicitly; this repository blocks it through the pause that deactivation requires. Behind the hook it is an operational rule — the minter is the issuer's own key, so the issuer stops minting — but it is not enforced, and criterion 17 (*Deactivate contract*) should be answered with that caveat rather than a clean `y`.
+**On deactivation, the hook falls short in one place, and it is the mint gap again.** A deactivated AIP-20 token can still be minted into, because `mint_to_private`, `mint_to_public` and `mint_to_commitment` never reach the hook. CMTAT Solidity blocks that explicitly, and so does this repository, with the same explicit not-deactivated check in `_mint`. Behind the hook it is an operational rule — the minter is the issuer's own key, so the issuer stops minting — but it is not enforced, and criterion 17 (*Deactivate contract*) should be answered with that caveat rather than a clean `y`.
 
 ### Immediate or delayed — the same choice this repository already made
 

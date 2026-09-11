@@ -194,10 +194,10 @@ A balance is the sum of a holder's `UintNote`s. `BalanceSet::add` and `BalanceSe
 
 | ID | Requirement | CMTAT Solidity corresponding feature | Access Control (CMTAT Solidity) | Notes | Present in implementation being approved (`y/partial/n`) | Access Control (implementation being approved) | Implementation details |
 |---|---|---|---|---|---|---|---|
-| 14 | Pause tokens | `pause` | Role-restricted (pauser/admin authorized) | Pause must prevent all transfers until `unpause` is called. | `y` | `PAUSE_ROLE` | `pause_contract()`. Effective immediately, because the flag is a `PublicMutable<bool>` checked in the enqueued public half of mint, transfer and burn. A revert there reverts the whole transaction. |
+| 14 | Pause tokens | `pause` | Role-restricted (pauser/admin authorized) | Pause must prevent all transfers until `unpause` is called. | `y` | `PAUSE_ROLE` | `pause_contract()`. Effective immediately, because the flag is a `PublicMutable<bool>` checked in the enqueued public half of transfer. As in CMTAT Solidity, a pause does not stop mint or burn; deactivation does. A revert there reverts the whole transaction. |
 | 15 | Unpause tokens | `unpause` | Role-restricted (pauser/admin authorized) |  | `y` | `PAUSE_ROLE` | `unpause_contract()`. Reverts if the contract is not paused. |
 | 16 | Know pause status | `paused()` | Public (`view`) | Any person MUST be able to determine whether the token is paused; a pause that cannot be read leaves a holder unable to tell why a transfer was refused. | `y` | Public (`view`) | `public_get_pause()` returns `1` or `0`. |
-| 17 | Deactivate contract | `deactivateContract` | Role-restricted (admin authorized) | Must permanently disable the token (except in upgradeability patterns where deactivation behavior is explicitly defined). | `y` | `DEFAULT_ADMIN_ROLE` | `deactivate_contract()`. Follows the CMTAT Solidity model: the contract must already be paused, deactivation is refused if it is already deactivated, and `unpause_contract` refuses to run once the flag is set — which is what makes it permanent. Emits a `Deactivated` public event carrying the caller. Because every value-moving operation asserts not-paused in its enqueued public half, a deactivated token can no longer mint, transfer or burn. |
+| 17 | Deactivate contract | `deactivateContract` | Role-restricted (admin authorized) | Must permanently disable the token (except in upgradeability patterns where deactivation behavior is explicitly defined). | `y` | `DEFAULT_ADMIN_ROLE` | `deactivate_contract()`. Follows the CMTAT Solidity model: the contract must already be paused, deactivation is refused if it is already deactivated, and `unpause_contract` refuses to run once the flag is set — which is what makes it permanent. Emits a `Deactivated` public event carrying the caller. Transfer stops because a deactivated token is paused forever; mint and burn, which survive a pause as in CMTAT Solidity, assert not-deactivated explicitly in their enqueued public half — the same explicit check CMTAT's `_canMintBurnByModule` makes. |
 | 18 | Know deactivate status | `deactivated()` | Public (`view`) | Any person MUST be able to determine whether the token has been deactivated. In CMTAT Solidity the function is declared by the draft `IERC8343` interface. | `y` | Public (`view`) | `public_get_deactivated()` returns `1` or `0`, readable by anyone exactly as `public_get_pause()` is. |
 
 ##### Note
@@ -426,7 +426,7 @@ Of the CMTAT Solidity rule catalogue, this implementation offers only list membe
 | Aggregated whitelists | `RuleWhitelistWrapper` | `n` | — |
 | Receiver whitelist | `RuleReceiverWhitelist` | `n` | Both parties are always checked; the receiver cannot be screened alone. |
 | Spender whitelist | `RuleSpenderWhitelist` | `n` | The authwit delegate is not screened. |
-| Blacklist | `RuleBlacklist` | `partial` | `UserFlags.is_blacklisted` blocks a listed sender or receiver on transfer. It is **not** applied to mint or burn, unlike `RuleBlacklist`. |
+| Blacklist | `RuleBlacklist` | `y` | `UserFlags.is_blacklisted` blocks a listed sender or receiver on transfer, a listed recipient on mint and a listed account on burn — the same three targets as `RuleBlacklist`. |
 | Sanctions list | `RuleSanctionsList` | `n` | No sanction-list mode. `RuleSanctionsList` reads an on-chain oracle (Chainalysis on Ethereum); Aztec has no equivalent to read from, so a listed address must be blocked through the blacklist instead. |
 | Whitelist and frozen list (ERC-2980) | `RuleERC2980` | `n` | Freeze and lists are separate mechanisms here. |
 | Identity registry | `RuleIdentityRegistry` | `n` | — |
@@ -443,9 +443,9 @@ Of the CMTAT Solidity rule catalogue, this implementation offers only list membe
 
 The whole restriction surface is one module inside the token, so the questions the template asks about *where* the logic lives and *in what order* it runs have short answers: it lives in `validationModule.nr`, and exactly one mode runs per transfer.
 
-Two behaviours affect an integrator directly. First, a rejection is a **revert with a message**, not a status code — there is no `detectTransferRestriction` equivalent, so a wallet must simulate the call and read the failure rather than querying first. Second, mint and burn are **not** screened by the lists at all: `operateOnTransfer` is called only from `_transfer_internal`. A blacklisted address can therefore still be minted to and burned from, which differs from CMTAT Solidity's `RuleBlacklist`, and matters if the lists are relied on for sanctions screening at issuance.
+Two behaviours affect an integrator directly. First, a rejection is a **revert with a message**, not a status code — there is no `detectTransferRestriction` equivalent, so a wallet must simulate the call and read the failure rather than querying first. Second, mint and burn **are** screened by the lists, on their target: `operateOnMint(to)` runs in `_mint_internal` and `operateOnBurn(account)` in `_burn_internal`, mirroring CMTAT Solidity's `_canMintByModuleAndRevert(to)` and `_canBurnByModuleAndRevert(from)`. A blacklisted address can neither be issued to nor redeemed from, which is what the lists are relied on for at issuance.
 
-The mint case is also a **documentation mismatch**: the NatSpec on `mint` in `src/main.nr` states that "the recipient must respect the allowlist constraints of the validation module", but `_mint_internal` checks only the freeze flag. The comment on `transfer` makes the same claim and is accurate there. Whichever way this is resolved — screening mint, or correcting the comment — the two should be brought into agreement.
+Earlier revisions of this assessment recorded a documentation mismatch here — the NatSpec on `mint` claimed a list check the code did not perform. It was resolved by making the code do what the comment said.
 
 On external data sources the template asks about: there are none. Every list is local contract state, so there is no oracle or registry that could be unset, and therefore no fail-open path. That is also why there is no sanctions-list mode: `RuleSanctionsList` exists on Ethereum because a Chainalysis oracle can be queried, and Aztec offers nothing to query.
 
@@ -526,9 +526,9 @@ The repository records the design that would restore the capability: implementin
 
 ##### Note
 
-Two rows differ from CMTAT Solidity and both follow from where the check sits.
+One row differs from CMTAT Solidity, and one that used to differ no longer does.
 
-**Mint and burn are blocked while paused**, where CMTAT Solidity allows them. This follows from where the check sits rather than from a policy choice: the pause assertion lives in the enqueued public half (`_mint`, `_transfer`, `_burn`), which is the same code path for every value-moving operation. CMTAT Solidity can exempt mint and burn because its pause check is carried by each entry point's authorization hook individually. An issuer that needs to mint into a paused token cannot do so here without unpausing first.
+**Mint and burn continue through a pause, and stop at deactivation** — the CMTAT Solidity behaviour, matched deliberately. CMTAT's `_canMintBurnByModule` checks deactivation and the freeze flag, never `paused()`; only standard transfers consult the pause. Here `_transfer` asserts not-paused while `_mint` and `_burn` assert not-deactivated, so an issuer can issue into and redeem from a paused token, as in the reference. Earlier revisions of this implementation blocked all three during a pause; that was a consequence of where the check sat, not a policy, and it has been aligned.
 
 **A frozen holding cannot be cancelled at all.** `_burn_internal` asserts the address is not frozen, and there is no forced path to bypass it. CMTAT Solidity reaches this case with `forcedBurn`; this implementation has no equivalent, so freezing an address and then needing to remove its tokens from circulation leaves only the total-supply write-off described above.
 
@@ -621,7 +621,7 @@ Three consequences MUST be recorded:
 
 **Transfer control flow.** A transfer runs in two halves. The private half checks that neither party is frozen, applies the validation module's list check, spends the sender's notes and creates the recipient's, delivering each note message to its owner and a copy to the issuer. The enqueued public half asserts the contract is not paused. Freeze and list flags are `DelayedPublicMutable`, so they are readable from the private half without leaking the caller — at the cost of a delay before any change to them takes effect. Delegated transfers use an authentication witness validated by the `#[authorize_once]` macro, which also nullifies the nonce to prevent replay.
 
-**Issuance and cancellation.** `mint` is restricted to `MINTER_ROLE` and takes no authwit. `burn` requires `BURNER_ROLE` **and**, whenever the caller is not the holder, an authwit from the holder — so every cancellation is jointly authorised. Both are blocked while the contract is paused, which differs from CMTAT Solidity, and both are blocked on a frozen address. There is no forced transfer and no forced burn.
+**Issuance and cancellation.** `mint` is restricted to `MINTER_ROLE` and takes no authwit. `burn` requires `BURNER_ROLE` **and**, whenever the caller is not the holder, an authwit from the holder — so every cancellation is jointly authorised. Both continue through a pause and stop at deactivation, as in CMTAT Solidity; both are blocked on a frozen address and both are screened by the enabled list on their target. There is no forced transfer and no forced burn.
 
 **Data and metadata storage.** Credit events and debt attributes are stored on-chain as packed structs in public state, written by role-restricted setters that replace everything they cover. String fields are `FieldCompressedString` and are limited to 31 characters. There is no document module in the ERC-1643 sense, but the extra-information module holds `terms` (name, URI and document hash) and `tokenId`.
 
@@ -631,7 +631,6 @@ Three consequences MUST be recorded:
 - The issuer receives a copy of every note, which is how auditability is preserved — but that copy is delivered off-chain, so its availability depends on the issuer capturing it.
 - Forced transfer, forced burn and partial freeze are absent because the issuer cannot nullify another holder's notes. This is the single largest functional gap and it is not closable within this design.
 - Freeze and list changes take effect only after a delay, a consequence of how private functions read mutable public state on Aztec.
-- Mint and burn are blocked while paused, where CMTAT Solidity allows them.
 - Snapshot and dividend modules are absent; a snapshot is not reconstructable on-chain.
 - Delegation is a single-use authentication witness rather than a standing allowance.
 

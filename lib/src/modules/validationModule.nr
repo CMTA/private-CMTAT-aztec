@@ -116,6 +116,47 @@ where
     T: Eq + ToField + FromField + UserFlagsTrait + Packable,
 {
 
+    /**
+     * @dev Screens the target of a mint - the recipient - against whichever list mode is enabled,
+     * mirroring CMTAT Solidity's `_canMintByModuleAndRevert(to)`. A pause does not stop a mint;
+     * the lists and the freeze flag do.
+     */
+    pub fn operateOnMint(self: Self, to: AztecAddress) {
+        let operations = self.operationsFlag.get_current_value();
+
+        if (operations.operate_blacklist) {
+            assert(
+                !self.map.at(to).get_current_value().get_is_blacklisted(),
+                TEXT_ADDRESS_TO_IS_BLACKLISTED,
+            );
+        } else if (operations.operate_whitelist) {
+            assert(
+                self.map.at(to).get_current_value().get_is_whitelisted(),
+                TEXT_ADDRESS_TO_NOT_WHITELISTED,
+            );
+        }
+    }
+
+    /**
+     * @dev Screens the target of a burn - the account being debited - mirroring CMTAT Solidity's
+     * `_canBurnByModuleAndRevert(from)`. Same rules as a mint, reported as the sender.
+     */
+    pub fn operateOnBurn(self: Self, from: AztecAddress) {
+        let operations = self.operationsFlag.get_current_value();
+
+        if (operations.operate_blacklist) {
+            assert(
+                !self.map.at(from).get_current_value().get_is_blacklisted(),
+                TEXT_ADDRESS_FROM_IS_BLACKLISTED,
+            );
+        } else if (operations.operate_whitelist) {
+            assert(
+                self.map.at(from).get_current_value().get_is_whitelisted(),
+                TEXT_ADDRESS_FROM_NOT_WHITELISTED,
+            );
+        }
+    }
+
     pub fn operateOnTransfer(self: Self, from: AztecAddress, to: AztecAddress) {
         let operations = self.operationsFlag.get_current_value();
 

@@ -456,9 +456,8 @@ pub contract CMTATAztecLight {
     * revealing the "real" supply of the token, ex: by minting 100% of tokens to himself, he can hide the supply held by users
     *
     * Requirements:
-    * - The contract must not be paused.
+    * - The contract must not be deactivated. A pause does not stop a mint, as in CMTAT Solidity.
     * - The recipient must not be frozen.
-    * - The recipient must respect the allowlist constraints of the validation module.
     * - The caller must have the minter role.
     */
     #[external("private")]
@@ -605,8 +604,8 @@ pub contract CMTATAztecLight {
     * An authwit from the `account` address is required to burn tokens on their behalf.
     *
     * Requirements:
-    * - The contract must not be paused.
-    * - The sender must not be frozen.
+    * - The contract must not be deactivated. A pause does not stop a burn, as in CMTAT Solidity.
+    * - The account must not be frozen.
     * - The caller must have the burner role.
     */
     #[authorize_once("account", "authwit_nonce")]
@@ -669,7 +668,8 @@ pub contract CMTATAztecLight {
     #[only_self]
     fn _mint(caller: AztecAddress, amount: u128) {
         self.storage.access_control.only_role(MINTER_ROLE, caller);
-        assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
+        // As in CMTAT Solidity, a pause does not stop issuance; only deactivation does.
+        assert(!self.storage.pause_module.is_deactivated(), "Error: token contract is deactivated");
         let supply = self.storage.total_supply.read().add(amount);
         self.storage.total_supply.write(supply);
     }
@@ -684,7 +684,8 @@ pub contract CMTATAztecLight {
     #[only_self]
     fn _burn(caller: AztecAddress, amount: u128) {
         self.storage.access_control.only_role(BURNER_ROLE, caller);
-        assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
+        // As in CMTAT Solidity, a pause does not stop redemption; only deactivation does.
+        assert(!self.storage.pause_module.is_deactivated(), "Error: token contract is deactivated");
         let new_supply = self.storage.total_supply.read().sub(amount);
         self.storage.total_supply.write(new_supply);
     }

@@ -34,6 +34,7 @@ end
 Priv -> PS : read issuer_address
 Priv -> PS : read is_frozen(account)
 note right of Priv : fails with "Frozen: Sender" —\n`account` is the address being debited
+Priv -> PS : operateOnBurn(account)\nblacklist or whitelist, whichever is enabled
 
 Priv -> PXE : sub(amount) on `account`
 PXE --> Priv : nullify the spent notes, create a change note
@@ -48,7 +49,7 @@ note over Pub
   not which holder was debited. `account` never crosses over.
 end note
 Pub -> PS : only_role(BURNER_ROLE, caller)
-Pub -> PS : assert not paused
+Pub -> PS : assert not deactivated\n(a pause does not stop a burn, as in CMTAT)
 Pub -> PS : total_supply -= amount
 
 @enduml

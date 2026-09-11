@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -42,7 +42,7 @@
 | E-2 | Getters returning without `pub`, unlike every sibling | ✅ fixed — four, not three |
 | E-3 | `#[only_self]`, `#[initializer]`, `#[noinitcheck]` discipline | ✅ checked — clean |
 | F-1 | Should this token implement AIP-20? | ⬜ decide — answered: no, but take its note budget (36% of a transfer) |
-| G-1 | `mint` NatSpec claims a validation check that does not run | ⬜ implement |
+| G-1 | `mint` NatSpec claims a validation check that does not run | ✅ fixed — by making the code match the comment |
 | G-2 | `_burn_internal` asserts `"Frozen: Recipient"` on a burn's sender | ✅ fixed |
 | G-3 | `issuer_address` has no setter, but three documents describe changing it | ⬜ decide |
 | G-4 | `EXTRA_INFORMATION_ROLE = 11` missing from role lists | ✅ fixed — three places, not two |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 20 ✅ (9 checked/keep, 11 fixed), 2 ⚠️ corrected, 13 ⬜ open (2 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 21 ✅ (9 checked/keep, 12 fixed), 2 ⚠️ corrected, 12 ⬜ open (1 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -65,7 +65,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| D-2, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
@@ -527,7 +527,19 @@ Before adopting it, the thing to measure is the note-count distribution of a rea
 
 This behaviour is already recorded, correctly, in `doc/cmtat-assessment/README.md` — *"mint and burn are not screened by the lists at all … A blacklisted address can therefore still be minted to and burned from"*. So the code is understood and the assessment is right; the defect is the source comment, which tells the opposite story to whoever reads the contract without the assessment beside it.
 
-**Verdict: implement.** Two ways to resolve it and they are not equivalent: either screen mint (a behaviour change with compliance consequences, matching CMTAT Solidity's `RuleBlacklist`, and needing its own test) or correct the comment. The assessment treats the current behaviour as the design, so **correct the comment** and cross-reference the assessment's note — but the choice belongs to whoever owns the compliance posture, not to this review.
+**Verdict: implement — resolved the other way, by decision of the compliance owner: the code now does what the comment said.** And the decision went further than the comment, to full alignment with CMTAT Solidity's mint/burn rules.
+
+The reference was read rather than recalled. `ValidationModule._canMintBurnByModule(target)` refuses on *deactivation* or a *frozen* target and never consults `paused()`; `ValidationModuleAllowlist._canMintByModuleAndRevert(to)` and `_canBurnByModuleAndRevert(from)` add the list check on the target. So three things changed, in all variants that carry the module:
+
+1. `_mint_internal` screens `to` and `_burn_internal` screens `account` against the enabled list, through two new module methods `operateOnMint` / `operateOnBurn` that reuse the existing sender/recipient messages.
+2. `_mint` and `_burn` assert `!is_deactivated()` where they asserted `!is_paused()`. `_transfer` is unchanged. A pause therefore stops transfers only, as in the reference; the assessment's "Mint and burn are blocked while paused, where CMTAT Solidity allows them" is no longer a difference.
+3. The NatSpec on both is now true.
+
+**Measured:** `mint` 30,776 → 36,976 (+6,200) and `burn` 81,736 → 87,935 (+6,199) — the operations flag and one address flag, the first read of each slot. `mint_batch` and `burn_batch` grew ~24,700 each: the operations flag is re-read per iteration inside the module method, the same loop-invariant shape A-2 hoisted for the issuer read. `transfer` and the Light variant are untouched.
+
+**Tests, written first.** Seven tests were written or changed before the code and run against it: three new list tests (`mint_to_blacklisted_fails`, `mint_to_non_whitelisted_fails`, `burn_from_blacklisted_fails`), `mint_when_paused_fails` inverted to `mint_when_paused_succeeds` with a balance assertion, a new `burn_when_paused_succeeds`, and `mint_when_deactivated_fails` / new `burn_when_deactivated_fails` expecting the new message. All seven failed on the old behaviour — exactly those seven, and nothing else — and all pass after. 85 tests across the workspace.
+
+The assessment's Restriction row for *Blacklist* moves from `partial` to `y`, and the two mint/burn diagrams in the README were re-rendered.
 
 ### G-2. `_burn_internal` reports the wrong party — `main.nr:540`
 

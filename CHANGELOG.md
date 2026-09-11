@@ -83,6 +83,11 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- Mint and burn now follow CMTAT Solidity's lifecycle and screening rules: they continue through a pause, stop at deactivation, and their target is screened against the enabled list.
+  - CMTAT's `_canMintBurnByModule` checks deactivation and the freeze flag, never `paused()`, and its allowlist variant screens the recipient of a mint and the account of a burn. Previously this token blocked mint and burn during a pause and did not apply the lists to either — the first a documented deviation, the second a gap the `mint` NatSpec had claimed was closed.
+  - `_mint` and `_burn` now assert `!is_deactivated()` in their enqueued public half; `_transfer` still asserts `!is_paused()`. The validation module gained `operateOnMint(to)` and `operateOnBurn(account)`, called from `_mint_internal` and `_burn_internal`.
+  - Measured cost: +6,200 gates on `mint` (30,776 → 36,976) and +6,199 on `burn` (81,736 → 87,935) for the two list reads. `transfer` and the Light variant, which has no validation module, are unchanged.
+  - BREAKING CHANGE (behaviour): an issuer can now mint into and redeem from a paused token, and a blacklisted or non-whitelisted address can no longer be minted to or burned from. Seven tests changed or were added to pin both directions; each was confirmed to fail against the previous behaviour.
 - `terms`, `get_credit_events`, `get_debt` and `only_role` are now `#[view]`, and those three getters plus `total_supply` return `-> pub`, matching every other read-only entry point.
   - `#[view]` is an enforced guarantee rather than a hint, and its absence mattered most on the getters other contracts call: without it a caller composing against them could not rely on their being side-effect-free.
   - The evidence that this was drift rather than intent is that `get_operations` — the same shape of function, in the same file — already had it.
@@ -149,7 +154,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 - `deactivate_contract` and `public_get_deactivated`, implementing the CMTAT permanent-deactivation feature (equivalency criteria 17 and 18).
   - Modelled on CMTAT Solidity's `PauseModule`: the caller needs the admin role, the contract must already be paused, and a second call is refused.
   - `unpause_contract` now refuses to run once the flag is set, which is what makes the deactivation permanent — the flag itself is never cleared.
-  - No deactivation check was added to mint, transfer or burn: each already asserts not-paused in its enqueued public half, and a deactivated contract is paused for good. CMTAT Solidity needs an explicit check on mint and burn only because its mint and burn are permitted while paused.
+  - `_transfer` stops on a deactivated contract through its not-paused assertion, since deactivation requires a pause and blocks unpause forever. `_mint` and `_burn` carry an explicit not-deactivated assertion instead, because — as in CMTAT Solidity — they are permitted while merely paused. (Earlier in this release all three asserted not-paused; see the *Changed* entry on mint and burn semantics.)
   - Emits a new `Deactivated` public event carrying the caller.
   - BREAKING CHANGE: `PauseModule` now occupies two storage slots instead of one, so every state variable declared after it moves. A deployed token cannot be migrated in place.
 - Split into three deployment variants over a shared module library, as a Nargo workspace.

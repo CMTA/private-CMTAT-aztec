@@ -23,9 +23,10 @@ end note
 
 Priv -> PS : read issuer_address
 Priv -> PS : read is_frozen(to)
+Priv -> PS : operateOnMint(to)\nblacklist or whitelist, whichever is enabled
 note over Priv, PS
-  Only the freeze flag is checked. The blacklist and whitelist
-  are NOT applied to mint: operateOnTransfer runs on transfer only.
+  The recipient is screened exactly as CMTAT Solidity's
+  _canMintByModuleAndRevert(to) does: frozen, then the enabled list.
 end note
 
 Priv -> To : new note for `to`, onchain_constrained
@@ -39,7 +40,7 @@ note over Pub
   total_supply is public and moves by exactly that much.
 end note
 Pub -> PS : only_role(MINTER_ROLE, caller)
-Pub -> PS : assert not paused
+Pub -> PS : assert not deactivated\n(a pause does not stop a mint, as in CMTAT)
 Pub -> PS : total_supply += amount
 
 @enduml

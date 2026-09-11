@@ -1,6 +1,6 @@
 use crate::test::utils;
 use cmtat_aztec_lib::modules::access_controlModule::{
-    ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, VALIDATION_ROLE,
+    ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, BURNER_ROLE, MINTER_ROLE, VALIDATION_ROLE,
 };
 use cmtat_aztec_lib::modules::validationModule::{CHANGE_ROLES_DELAY_SECONDS, SetFlag, UserFlags};
 use crate::CMTATAztec as Token;
@@ -195,4 +195,68 @@ unconstrained fn can_remove_from_list_when_role() {
         issuer,
         Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
     );
+}
+
+/// Enables one list mode and lists `target` with the given flags, waiting out both delays.
+unconstrained fn enable_and_list(
+    env: aztec::test::helpers::test_environment::TestEnvironment,
+    token: aztec::protocol::address::AztecAddress,
+    issuer: aztec::protocol::address::AztecAddress,
+    operations: SetFlag,
+    target: aztec::protocol::address::AztecAddress,
+    flags: UserFlags,
+) {
+    env.call_public(issuer, Token::at(token).grant_role(VALIDATION_ROLE, issuer));
+    env.call_public(issuer, Token::at(token).grant_role(ADDRESS_LIST_ADD_ROLE, issuer));
+    env.call_public(issuer, Token::at(token).set_operations(operations));
+    env.call_public(issuer, Token::at(token).add_to_list(target, flags));
+    utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
+}
+
+// As in CMTAT Solidity (`ValidationModuleAllowlist._canMintBurnByModule`), the list applies to the
+// target of a mint and of a burn - the recipient and the debited account respectively - not only to
+// the two parties of a transfer.
+
+#[test(should_fail_with = "The recipient is in the blacklist")]
+unconstrained fn mint_to_blacklisted_fails() {
+    let (env, token, issuer, user) = utils::setup(/* with_account_contracts */ false);
+    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
+    enable_and_list(
+        env, token, issuer,
+        SetFlag { operate_blacklist: true, operate_whitelist: false },
+        user,
+        UserFlags { is_blacklisted: true, is_whitelisted: false },
+    );
+
+    env.call_private(issuer, Token::at(token).mint(user, 100 as u128));
+}
+
+#[test(should_fail_with = "The recipient is not in the whitelist")]
+unconstrained fn mint_to_non_whitelisted_fails() {
+    let (env, token, issuer, user) = utils::setup(/* with_account_contracts */ false);
+    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
+    // Whitelist mode on; only the issuer is listed, so `user` may not receive.
+    enable_and_list(
+        env, token, issuer,
+        SetFlag { operate_blacklist: false, operate_whitelist: true },
+        issuer,
+        UserFlags { is_blacklisted: false, is_whitelisted: true },
+    );
+
+    env.call_private(issuer, Token::at(token).mint(user, 100 as u128));
+}
+
+#[test(should_fail_with = "The sender is in the blacklist")]
+unconstrained fn burn_from_blacklisted_fails() {
+    let (env, token, issuer, _, _) = utils::setup_and_mint(/* with_account_contracts */ false);
+    env.call_public(issuer, Token::at(token).grant_role(BURNER_ROLE, issuer));
+    // The issuer already holds tokens; blacklisting it must stop its own redemption too.
+    enable_and_list(
+        env, token, issuer,
+        SetFlag { operate_blacklist: true, operate_whitelist: false },
+        issuer,
+        UserFlags { is_blacklisted: true, is_whitelisted: false },
+    );
+
+    env.call_private(issuer, Token::at(token).burn(issuer, 100 as u128, 0));
 }

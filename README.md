@@ -168,8 +168,9 @@ _Diagram source: `doc/img/mint-flow.puml`._
 **Failure cases**:
 
 - **Enforcement module**: If the `recipient` address is frozen, the mint will fail.
+- **Validation module**: If a list mode is enabled, the `recipient` is screened against it — a blacklisted recipient, or one missing from the whitelist, fails the mint. Same as CMTAT Solidity's `_canMintByModuleAndRevert(to)`.
 - **Authorisation module**: If the caller doesn’t have the minter role, the mint will fail.
-- **Pause module**: If the contract is paused, the mint will fail.
+- **Pause module**: A pause does **not** stop a mint, as in CMTAT Solidity; deactivation does.
 
 **Limitations**:
 
@@ -209,9 +210,10 @@ _Diagram source: `doc/img/burn-flow.puml`._
 
 **Failure cases**:
 
-- **Enforcement module**: If `from` address is frozen, the burn will fail.
+- **Enforcement module**: If the `account` being debited is frozen, the burn will fail.
+- **Validation module**: If a list mode is enabled, the `account` is screened against it, as CMTAT Solidity's `_canBurnByModuleAndRevert(from)` does.
 - **Authorisation module**: If the caller doesn’t have the burner role, the burn will fail.
-- **Pause module**: If the contract is paused, the burn will fail.
+- **Pause module**: A pause does **not** stop a burn, as in CMTAT Solidity; deactivation does.
 - **Authwit**: If `from` doesn't issue an `AuthWit` the burn will fail
 
  > **Note**: The `AuthWit` issue is a key difference from Solidity smart contract logic, and users should be aware.  
@@ -310,7 +312,7 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 
 - The pause module is a `PublicMutable`.
 - The functions to set and unset the pausable flag are protected under Access Control.
-- The pause check is done in public state for mint/transfer/burn operations.
+- The pause check is done in public state, in the enqueued half of `transfer`. As in CMTAT Solidity, `mint` and `burn` are not stopped by a pause; their enqueued halves check deactivation instead, so a deactivated token (which is paused forever) can do none of the three.
 
 #### Enforcement module - Shared Context
 
@@ -618,7 +620,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Admin** | Holder of `DEFAULT_ADMIN_ROLE` (role `1`), the only role that can grant and revoke the others. Granted at deployment. Note that `getRoleAdmin` returns `DEFAULT_ADMIN_ROLE` for *every* role, including itself, so an admin can appoint another admin — the *Assumptions* section below states the admin cannot be changed, but the code does not enforce that. |
 | **Role** | A numeric permission checked in public state: `DEFAULT_ADMIN_ROLE` 1, `PAUSE_ROLE` 2, `ENFORCEMENT_ROLE` 3, `VALIDATION_ROLE` 4, `ADDRESS_LIST_ADD_ROLE` 5, `ADDRESS_LIST_REMOVE_ROLE` 6, `MINTER_ROLE` 7, `BURNER_ROLE` 8, `DEBT_ROLE` 9, `DEBT_CREDIT_EVENT_ROLE` 10, `EXTRA_INFORMATION_ROLE` 11. |
 | **Authorisation module** | The role table (`access_control`) plus `only_role`, the check every other module calls. |
-| **Pause module** | A public on/off switch. While paused, mint, transfer and burn all revert, because each enqueues a public call that asserts the contract is not paused. |
+| **Pause module** | A public on/off switch. While paused, transfers revert, because `transfer` enqueues a public call that asserts the contract is not paused. Mint and burn continue through a pause, as in CMTAT Solidity, and stop only at deactivation. |
 | **Enforcement module** | Per-address freezing. A frozen address can neither send nor receive. Because the flag is a `DelayedPublicMutable`, a freeze takes effect only after the delay. |
 | **Validation module** | Transfer restriction by address list. Holds each address's flags and the switch saying which lists are enforced. |
 | **Blacklist / whitelist** | The two list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2). Blacklist blocks listed addresses, whitelist allows only listed ones. Exactly one mode is enforced per transfer. |
