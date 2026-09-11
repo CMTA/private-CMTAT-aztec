@@ -17,6 +17,7 @@ An assessment of whether this project could be rebuilt on the [`aztec-standards`
   - [Option E — copy the patterns, not the code](#option-e--copy-the-patterns-not-the-code)
   - [Option F — fork the library and move it to v5.2.0](#option-f--fork-the-library-and-move-it-to-v520)
 - [Interface alignment — an AIP-20 private profile](#interface-alignment--an-aip-20-private-profile)
+- [Pause and deactivation on top of AIP-20](#pause-and-deactivation-on-top-of-aip-20)
 - [Practical blockers independent of the design](#practical-blockers-independent-of-the-design)
 - [Recommendation](#recommendation)
 - [What to do with the submodule](#what-to-do-with-the-submodule)
@@ -274,6 +275,49 @@ A wallet that sees selector `0xc282ed79` would call it as a self-burn and fail w
 
 **Worth doing, as a bounded change, if being reachable by AIP-20 private-profile tooling is wanted** — five renames (`transfer`, `mint`, `public_get_name`, `public_get_symbol`, `public_get_decimals`), `burn` kept as is, and a README sentence stating that the token exposes the AIP-20 private profile only and why. It is not conformance and should not be described as such; it is the largest slice of compatibility available without touching any of the conflicts, and its entire cost is a rename.
 
+## Pause and deactivation on top of AIP-20
+
+The blocker table below used to list "no pause anywhere" as if it were a wall. It is not: AIP-20 ships no pause, but the ARC-403 hook is exactly where one goes, and **both pause and permanent deactivation are expressible through it** — with one asymmetry on minting that is worth stating precisely, because it cuts in an unexpected direction.
+
+### What "paused" blocks — three implementations, three answers
+
+The reference is not what this repository does. CMTAT Solidity's validation (`ValidationModule._canMintBurnByModule`) refuses a mint or burn when the contract is **deactivated** or the target is frozen — it does **not** consult `paused()`. Only standard transfers check the pause flag. So in the reference, pause is a transfer restriction and issuance and redemption continue through it; deactivation is what stops everything.
+
+| While **paused** | CMTAT Solidity | This repository | AIP-20 + a CMTAT hook |
+|---|---|---|---|
+| Transfer | ✘ blocked | ✘ blocked | ✘ blocked — every transfer path is hooked |
+| Mint | ✔ allowed | ✘ blocked | ✔ allowed — mint is not hooked |
+| Burn | ✔ allowed | ✘ blocked | **policy's choice** — burn is hooked, and the hook receives the selector, so it can let burns through a pause |
+
+| While **deactivated** | CMTAT Solidity | This repository | AIP-20 + a CMTAT hook |
+|---|---|---|---|
+| Transfer | ✘ | ✘ | ✘ |
+| Mint | ✘ — explicit check | ✘ — through the pause | **✔ — cannot be blocked**, mint is not hooked |
+| Burn | ✘ — explicit check | ✘ — through the pause | ✘ — the hook refuses |
+
+Two observations fall out of that.
+
+**On pause, the hook can be *more* faithful to CMTAT than this repository is.** This repository blocks mint and burn while paused, a documented deviation from the reference (the assessment's Conclusion records it). A hook-based pause reproduces the reference exactly: transfers refused, mint untouched because it is never hooked, burn let through by matching its selector. Nothing about the hook forces the deviation this repository chose.
+
+**On deactivation, the hook falls short in one place, and it is the mint gap again.** A deactivated AIP-20 token can still be minted into, because `mint_to_private`, `mint_to_public` and `mint_to_commitment` never reach the hook. CMTAT Solidity blocks that explicitly; this repository blocks it through the pause that deactivation requires. Behind the hook it is an operational rule — the minter is the issuer's own key, so the issuer stops minting — but it is not enforced, and criterion 17 (*Deactivate contract*) should be answered with that caveat rather than a clean `y`.
+
+### Immediate or delayed — the same choice this repository already made
+
+`authorize_private` runs in private context, and a private function cannot read a `PublicMutable`. A pause flag inside the hook therefore has two possible shapes:
+
+- **`DelayedPublicMutable<bool>`** — readable from private, so the hook decides without enqueuing anything and the token's transfer acquires no public footprint at all. The cost is that a pause takes the delay to bite. This is what the [authorization-contract probe](./cmtat-as-aip20-auth-contract.md) does.
+- **`PublicMutable<bool>` plus an enqueued public check** — `authorize_private` enqueues a call to the hook's own `#[only_self]` checker. The pause is immediate. The price is a public call on every transfer that reveals the hook was consulted — the same footprint this repository's `_transfer()` already has, for the same reason.
+
+Either is legitimate; CMTAT expects immediacy, so a policy that wants to match the reference takes the second. `authorize_public` can read the flag directly, but a CMTAT policy refuses every public path anyway.
+
+### Permanence, status, and where they live
+
+- **Deactivation is permanent for the same reason it is here.** The hook holds the flag, and `cmtat_aztec_lib`'s `PauseModule` already implements *deactivate requires an existing pause, then blocks unpause forever*. The token's `auth_contract` pointer being `PublicImmutable` means the hook cannot be swapped out to undo it — immutability works in the policy's favour on this one point.
+- **Status is readable, but from the hook.** Criteria 16 and 18 (*know pause status*, *know deactivate status*) are answered by getters on the authorization contract. A tool that only knows the token finds them through `get_auth_contract()`, and the assessment must say so.
+- **Cost.** A `DelayedPublicMutable` read in private is on the order of the 1,920 gates one measured at in the code-quality review; the enqueued alternative costs the public call instead. Both are inside the 20,715 gates the probe's whole `authorize_private` measured at.
+
+**Verdict.** Pause and deactivation are not a reason to avoid the hook; they are among the things it does best. The one caveat to disclose is that deactivation cannot stop minting, which is the same mint gap that runs through every other section of this document.
+
 ## Practical blockers independent of the design
 
 Even if one of the options above were chosen, these apply:
@@ -284,7 +328,7 @@ Even if one of the options above were chosen, these apply:
 | **Pre-release library** | The checkout describes itself as `prerelease-0200230-14-ga3859e5`. Its interfaces are not stable, and the Aztec documentation already warns that it differs from the reference contracts in `aztec-packages`. |
 | **`auth_contract` is `PublicImmutable`** | The compliance contract is fixed at deployment and cannot be replaced. A bug in it, or a change of compliance policy that needs new state, means redeploying the token and migrating every holder. CMTAT's Solidity RuleEngine is settable for exactly this reason. |
 | **The token depends on a test crate** | `token_contract/Nargo.toml` lists `authorization_contract = { path = "src/test/test_authorization_contract" }` — the production crate depends on a crate under `src/test/` for the hook interface. Workable, but it signals the hook interface has not yet been factored out for third-party use. |
-| **No pause anywhere** | Confirmed by inspection: zero occurrences of pause, freeze, blacklist or allowlist in the token contract. Everything of that kind must live behind the hook. |
+| **No pause, freeze or lists built in** — *not a blocker* | Confirmed by inspection: zero occurrences of pause, freeze, blacklist or allowlist in the token contract. All of it lives behind the hook — and pause and deactivation in particular are fully expressible there, with one caveat on minting. See [Pause and deactivation on top of AIP-20](#pause-and-deactivation-on-top-of-aip-20). |
 
 ## Recommendation
 

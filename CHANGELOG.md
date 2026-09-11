@@ -230,6 +230,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- `doc/standards/building-on-aip20.md` gained a section on pause and deactivation through the ARC-403 hook, and its blocker table no longer lists "no pause anywhere" as a blocker.
+  - Both are expressible through the hook. On pause the hook can be more faithful to CMTAT Solidity than this repository is: the reference lets mint and burn continue through a pause (`_canMintBurnByModule` checks deactivation and freeze, not `paused()`), which a hook reproduces exactly, while this token blocks all three.
+  - On deactivation the hook falls short in one place: minting cannot be stopped, because the mint paths are not hooked. Criterion 17 would carry that caveat.
+  - Records the immediate-versus-delayed choice for a pause flag read from private context, which is the same choice this repository already faces.
 - Added `doc/standards/aip20-features-for-cmtat.md`, assessing which AIP-20 features could be adopted while staying CMTAT-equivalent. Each is scored against the 61 equivalency criteria, against the assessment's nine-row privacy table — the section that makes this a *private* CMTAT — and for two products: CMTAT-private, the three existing variants, and CMTAT-private-AIP20, a fourth variant integrating AIP-20.
   - Product map: CMTAT-private gains only the note budget with recursion and the rule-engine hook; the AIP20 variant adds commitment transfers, the five renames and named constructors. Public balances belong to neither, since both products are named for the property it removes.
   - Recommended order: the note budget with recursive subtraction (a measured 43,046-gate saving per transfer, prerequisite a note-count distribution and a re-measured batch cap); commitment transfers screened at initialization, bundled with the five AIP-20 entry-point renames; a settable rule-engine hook that passes the recipient and the caller, which is CMTAT's own `RuleEngine` in ARC-403's calling convention.
