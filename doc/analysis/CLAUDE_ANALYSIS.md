@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-3, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -44,7 +44,7 @@
 | F-1 | Should this token implement AIP-20? | ⬜ decide — answered: no, but take its note budget (36% of a transfer) |
 | G-1 | `mint` NatSpec claims a validation check that does not run | ✅ fixed — by making the code match the comment |
 | G-2 | `_burn_internal` asserts `"Frozen: Recipient"` on a burn's sender | ✅ fixed |
-| G-3 | `issuer_address` has no setter, but three documents describe changing it | ⬜ decide |
+| G-3 | `issuer_address` has no setter, but three documents describe changing it | ✅ fixed — setter added |
 | G-4 | `EXTRA_INFORMATION_ROLE = 11` missing from role lists | ✅ fixed — three places, not two |
 | G-5 | Doc-comment length; no `.md` pointers in contract source | ✅ checked — clean |
 | G-6 | `yarn compile` produces artifacts `yarn codegen` cannot consume | ✅ fixed |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 21 ✅ (9 checked/keep, 12 fixed), 2 ⚠️ corrected, 12 ⬜ open (1 *implement*, 9 *decide*, 2 *leave*).
+**Counts:** 35 rows — 22 ✅ (9 checked/keep, 13 fixed), 2 ⚠️ corrected, 11 ⬜ open (1 *implement*, 8 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -67,7 +67,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 |---|---|---|
 | D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
-| G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
@@ -580,7 +580,13 @@ The TODO is accurate. `issuer_address` is written exactly once, by `schedule_val
 
 **Consequence.** The issuer address is the audit endpoint for every note this contract ever creates. That it is immutable after deployment — so a compromised or rotated issuer key means redeploying and migrating every holder — is a material operational constraint that no document states and one document contradicts.
 
-**Verdict: decide, and document either way.** Adding a role-guarded setter is small (the storage variable already supports scheduling) and would make the three documents true. Leaving it immutable is defensible for an audit endpoint, but then the CHANGELOG line must be corrected and the constraint stated in the README's limitations.
+**Verdict: decide — resolved in two steps.** First the documentation was corrected to the setter-less reality. Then the setter was added, which is the resolution that stands:
+
+`set_issuer(new_issuer)`, `DEFAULT_ADMIN_ROLE`, refuses the zero address, schedules on the existing `DelayedPublicMutable`, emits `IssuerChanged { issuer, operator, effective_at }`. The `TODO` above `public_get_issuer` is gone.
+
+**What a rotation does and does not do** is the part worth recording, because it is easy to over-promise. It redirects *future* audit copies after the delay. It does not recall copies already delivered — nothing can un-deliver an encrypted message — so a compromised issuer keeps the history it already holds, and rotation limits damage forward rather than undoing it. And the new issuer's PXE must be live and registered from `effective_at`, or copies sent in the gap reach the holders but not the issuer side. The README states all three.
+
+**Tests** cover the delay on both read paths (`public_get_issuer` and `private_get_issuer` return the old value before the delay and the new one after), that transfers keep working during and after the change, and the two refusals. What they cannot cover is *where the offchain copy went*: the TXE exposes no view of offchain deliveries, so the redirect is verified by the read paths the deliveries use, not by observing a delivery. 89 tests across the workspace.
 
 ### G-4. `EXTRA_INFORMATION_ROLE = 11` is missing from two role lists
 

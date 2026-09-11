@@ -101,7 +101,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - The macro also adds replay protection, which the previous hand-written check left to the caller.
 - `SharedMutable` became `DelayedPublicMutable`, and its delay is a **duration in seconds** rather than a number of blocks.
   - `CHANGE_ROLES_DELAY_BLOCKS = 2` is now `CHANGE_ROLES_DELAY_SECONDS = 360` in the contract and in the enforcement and validation modules.
-  - This affects operators: freezing an account and blacklisting an address now take six minutes rather than two blocks, and a freshly deployed contract cannot mint, transfer or burn until the delay has elapsed, because all three read the issuer address the constructor scheduled.
+  - This affects operators: freezing an account, blacklisting an address and rotating the issuer now take six minutes rather than two blocks, and a freshly deployed contract cannot mint, transfer or burn until the delay has elapsed, because all three read the issuer address the constructor scheduled.
 - Private balances moved from a hand-written `BalanceSet` over `Map<AztecAddress, ...>` to `Owned<BalanceSet>` from the `balance_set` aztec-nr library, accessed as `private_balances.at(address)`.
 - Module structs implement `StateVariable<N, Context>` (which now owns both `new` and `get_storage_slot`) instead of the old `Storage<N>` trait, and take `PublicContext` by value rather than `&mut PublicContext`.
 - `burn_batch` now debits a single `from` account rather than one holder per array entry.
@@ -130,6 +130,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- `set_issuer(new_issuer)`, so the address that receives the audit copy of every note can be rotated without redeploying the token.
+  - Guarded by `DEFAULT_ADMIN_ROLE`; refuses the zero address; schedules the change on the existing `DelayedPublicMutable`, so it becomes current after `CHANGE_ROLES_DELAY_SECONDS` and every mint, transfer and burn keeps addressing the previous issuer until then. Emits `IssuerChanged` with `effective_at`.
+  - Rotation redirects future copies only. A note copy already delivered to the previous issuer cannot be recalled, so a compromised issuer key keeps the history it already holds; and the new issuer's PXE must be live from `effective_at`, or copies sent in the gap are lost to the issuer side while still reaching the holders. Both consequences are recorded in the README.
+  - Closes the long-standing `TODO` above `public_get_issuer`. Tests cover the delay on both read paths, that transfers keep working before and after the change, and the two refusals.
 - Public events on every remaining state-changing entry point: `Paused`, `Unpaused`, `RoleRevoked` (from both `revoke_role` and `renounce_role`), `AddressFrozen` (from both `freeze` and `unfreeze`, with an `is_frozen` flag), `AddressListed` (from both `add_to_list` and `remove_from_list`) and `OperationsSet`.
   - Names follow the reference where one exists: the pause and role events are the OpenZeppelin ones CMTAT Solidity inherits, `AddressFrozen` is CMTAT's own. With these, every operation that changes contract state leaves a trail; previously `grant_role` emitted and `revoke_role` did not, `deactivate_contract` emitted and `pause_contract` did not.
   - The three events for delayed flags carry `effective_at`, the timestamp from which the scheduled value is current — exactly what the state variable records, so an indexer need not know the contract's delay to know when a freeze or a listing takes effect.
@@ -279,10 +283,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 - Added `EXTRA_INFORMATION_ROLE` (11) to the role enumerations that still stopped at `DEBT_CREDIT_EVENT_ROLE` (10).
   - Three places were stale: the README glossary, the assessment's grant-role criterion, and the assessment's access-control note. The role itself has existed since the terms and token-id module was added.
   - The list is maintained by hand in four places — the code plus three documents — with nothing tying them together, so the next role added will drift the same way unless a check is added.
-- Corrected the README's claim that the issuer address can be rotated. It cannot: the constructor schedules `issuer_address` once and no entry point rewrites it, in any of the three variants.
-  - Three places said or implied otherwise — the storage description, the issuer-auditability comparison against CMTAT-Confidential, and the delay glossary entry.
-  - The constraint now appears under *Limitations* as well, because it is the audit endpoint for every note the contract will ever create: a compromised issuer key means redeploying and migrating holders, and that migration needs every holder's cooperation since balances are notes in their own PXE.
-  - Also fixed two broken in-page links in the same section that pointed at headings which no longer exist.
+- The README's account of `issuer_address` was corrected twice in this release. It first claimed the address could be rotated when no setter existed; the claim was removed and the constraint recorded under *Limitations*. A setter was then added (see *Added*), and the documentation now describes what rotation does and does not achieve: future copies are redirected, delivered copies are not recalled.
 - Added six PlantUML diagrams to the README, with sources under `doc/img/`.
   - Two structural: the three contract packages over the shared module library, and what the contract keeps public against what lives as notes in each holder's PXE.
   - Three flows: private mint, private transfer, and burn with and without an authwit. Each shows where the private half ends and the enqueued public half begins, and calls out exactly which values become public.

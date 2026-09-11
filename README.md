@@ -150,9 +150,9 @@ _Diagram source: `doc/img/state-split.puml`._
 
 ### Storage
 
-- **Issuer_address**: `DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS>` - The address of the issuer, which serves as a base reference to encrypt users' notes. It is a `DelayedPublicMutable` so that a *private* function can read it without a public call that would leak the caller — not so that it can be changed.
-  - **It is fixed for the life of the contract.** The constructor schedules it once and **no entry point can change it afterwards**; there is no `set_issuer`. Rotating a compromised issuer key means deploying a new contract and migrating holders, and because balances are notes in each holder's PXE, the issuer cannot perform that migration unilaterally.
-  - This is a deliberate constraint to weigh before deployment, not an oversight in the documentation — see [Limitations](#limitations). Adding a role-guarded setter is tracked as `G-3` in [`doc/analysis/CLAUDE_ANALYSIS.md`](doc/analysis/CLAUDE_ANALYSIS.md).
+- **Issuer_address**: `DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS>` - The address of the issuer, which receives a copy of every note and so can audit holder balances. It is a `DelayedPublicMutable` for two reasons: so that a *private* function can read it without a public call that would leak the caller, and so that it can be changed.
+  - **It can be rotated by the admin**, with `set_issuer(new_issuer)` under `DEFAULT_ADMIN_ROLE`. The change is scheduled and becomes current after `CHANGE_ROLES_DELAY_SECONDS`; until then every mint, transfer and burn still addresses the previous issuer. The `IssuerChanged` event carries `effective_at`.
+  - **Rotation transfers future visibility only.** Copies already delivered to the previous issuer cannot be recalled — a delivered note is delivered — so the previous issuer keeps what it has. The new issuer needs a PXE able to decrypt and store copies from the moment the change takes effect, or the audit trail has a hole for that period.
 - **Balances**: `Owned<BalanceSet>` - Token balance of every user inside their PXE, accessed as `private_balances.at(address)`. The balance of a user is the sum of the amounts of all their private `UintNote`. `BalanceSet` now comes from the `balance_set` aztec-nr library rather than being defined in this repository.
 
 ### Mint private specifications
@@ -485,7 +485,7 @@ Forced transfer is the sharpest divide, and the strongest argument for the FHE v
 | Mechanism | Every note is delivered twice — once to the owner, once to the issuer (`deliver_to`) | ACL grants to registered observers, re-granted automatically on every balance update |
 | Granularity | Per note, so the issuer reconstructs the full history | The current balance handle, plus optional total-supply observers |
 | Onchain guarantee | **None today** — the issuer's copy is delivered offchain, see [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes) | Onchain ACL, and a grant once made is irrevocable |
-| Revocation | **None.** `issuer_address` is fixed at deployment and has no setter, so the issuer's audit access cannot be withdrawn without redeploying and migrating holders; copies already delivered remain regardless | Removing an observer stops future grants; past grants are irrevocable |
+| Revocation | `set_issuer`, after the delay, stops future copies going to the old issuer; copies already delivered remain, since a delivered note cannot be recalled | Removing an observer stops future grants; past grants are irrevocable |
 
 ### Maturity
 
@@ -515,10 +515,10 @@ Note that the two disagree about total supply in opposite directions: this imple
     - If the account is frozen indefinitely, decrease the circulating supply. As a central issuer, I know the number of tokens the user has, so I can decrease supply accordingly. 
 > Note: account freeze could reveal how much tokens a user had. 
 
-- **The issuer address cannot be changed**: [SEE](#storage)
-  - The constructor schedules `issuer_address` once and nothing can rewrite it; there is no setter in any of the three variants.
-  - **Consequence**: it is the audit endpoint for every note the contract will ever create, so a compromised or rotated issuer key cannot be replaced in place.
-  - **Workaround**: deploy a new contract and migrate. That migration is not a storage copy — balances live as notes in each holder's PXE — so it needs every holder's cooperation.
+- **Rotating the issuer does not recall past copies**: [SEE](#storage)
+  - `set_issuer` redirects *future* audit copies after the delay. Every note copy already delivered to the previous issuer stays with it — there is no mechanism, on any ledger, to un-deliver an encrypted message.
+  - **Consequence**: a compromised issuer key keeps the audit history it already holds. Rotation limits the damage going forward; it does not undo it.
+  - **Consequence**: the new issuer's PXE must be live and registered from `effective_at` onwards, or copies sent during the gap are lost to the issuer side — they still reach the holders.
 
 - **DelayedPublicMutable delay**: [SEE](#validation-module---shared-context)
   - Note that, depending on the underlying ledger, a freeze may not be instantaneous: on a public blockchain the freeze transaction is visible in the mempool until it is included, and the target can pay to be ordered ahead of it, which a private relay such as Flashbots Protect avoids. Here the window is instead deterministic and protocol-enforced. See `doc/cmtat-assessment/cmtat_suggestion.md`.
@@ -629,7 +629,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
 | **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
 | **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `4`) because the protocol limits how many note hashes and private logs one call may produce. The cap is measured, not derived — see [Batching limits](#batching-limits). |
-| **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to a freeze flag, a list entry or the operations switch becomes current. Nothing that reads those values sees the new one before it elapses. It also gates the issuer address set by the constructor, which is why no mint, transfer or burn works until the delay has passed after deployment — but the issuer address is never scheduled again after that. |
+| **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to a freeze flag, a list entry or the operations switch becomes current. Nothing that reads those values sees the new one before it elapses. It also gates the issuer address — set by the constructor, which is why no mint, transfer or burn works until the delay has passed after deployment, and rescheduled by `set_issuer`. |
 
 ## Intellectual property
 

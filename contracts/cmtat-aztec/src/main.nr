@@ -145,6 +145,13 @@ pub contract CMTATAztec {
     }
 
     #[event]
+    struct IssuerChanged {
+        issuer: AztecAddress,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
+    #[event]
     struct AddressFrozen {
         account: AztecAddress,
         is_frozen: bool,
@@ -499,7 +506,33 @@ pub contract CMTATAztec {
         self.storage.total_supply.read()
     }
 
-    //TODO: we should be able to change the address of the issuer and put some ACL on it
+    /**
+     * @roles: onlyAdmin
+     * @notice: Schedules a change of the issuer - the address that receives a copy of every note and
+     * so can audit holder balances. Takes effect after CHANGE_ROLES_DELAY_SECONDS, like every other
+     * DelayedPublicMutable here; until then mint, transfer and burn keep addressing the old issuer.
+     * @dev: Copies already delivered to the previous issuer are not recalled - a delivered note cannot
+     * be. Rotating the issuer therefore transfers *future* audit visibility only; the previous issuer
+     * keeps what it has. Choose the new address with that in mind: it needs a PXE that can decrypt
+     * and store the copies from the moment the change takes effect.
+     *
+     * Requirements:
+     * - The caller must have the admin role.
+     * - The new issuer must not be the zero address.
+     */
+    #[external("public")]
+    fn set_issuer(new_issuer: AztecAddress) {
+        assert(!new_issuer.is_zero(), "invalid issuer");
+        let operator = self.msg_sender();
+        self.storage.access_control.only_role(DEFAULT_ADMIN_ROLE, operator);
+        self.storage.issuer_address.schedule_value_change(new_issuer);
+        self.emit(IssuerChanged {
+            issuer: new_issuer,
+            operator,
+            effective_at: self.context.timestamp() + CHANGE_ROLES_DELAY_SECONDS,
+        });
+    }
+
     #[external("public")]
     #[view]
     fn public_get_issuer() -> pub AztecAddress {
