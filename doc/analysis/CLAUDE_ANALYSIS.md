@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-3, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-3, G-4, G-6 and H-1 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -48,8 +48,8 @@
 | G-4 | `EXTRA_INFORMATION_ROLE = 11` missing from role lists | ✅ fixed — three places, not two |
 | G-5 | Doc-comment length; no `.md` pointers in contract source | ✅ checked — clean |
 | G-6 | `yarn compile` produces artifacts `yarn codegen` cannot consume | ✅ fixed |
-| H-1 | `burn` publishes the caller's address and the amount | ⬜ decide — document, do not redesign |
-| H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — and protect from "simplification" |
+| H-1 | `burn` publishes the caller's address and the amount | ✅ fixed — documented, as decided |
+| H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — now protected by `PRIVACY:` comments on all three public halves |
 | H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — 4 options costed; only one removes the leak |
 | H-4 | The `Transfer` event: nobody consumes it and the issuer never gets it | ⬜ decide — run the one-line experiment first |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 22 ✅ (9 checked/keep, 13 fixed), 2 ⚠️ corrected, 11 ⬜ open (1 *implement*, 8 *decide*, 2 *leave*).
+**Counts:** 35 rows — 23 ✅ (9 checked/keep, 14 fixed), 2 ⚠️ corrected, 10 ⬜ open (1 *implement*, 7 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -67,7 +67,6 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 |---|---|---|
 | D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
-| H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
@@ -658,7 +657,13 @@ Every argument to a public function is public, so both `caller` and `amount` are
 
 **What remains.** An observer learns that a specific role-holder minted or burned a specific quantity at a specific time. Where the issuer is the sole minter and burner — the expected deployment — that is a public issuance-and-redemption ledger keyed to the issuer, which is arguably what a security token wants. It becomes a real leak only if burner authority is ever delegated to holders, at which point the burner *is* the holder and the burn becomes fully public.
 
-**Verdict: decide — document, do not redesign.** The README's privacy table should state that mint and burn publish the acting role-holder and the amount, and that delegating `BURNER_ROLE` to holders would make their burns public. There is no cheap fix: the role check needs the caller, and moving it into the private half would require reading the role table privately, which is the exact problem `DelayedPublicMutable` exists to solve and would cost a delay on every burn.
+**Verdict: decide — resolved as: document, do not redesign. Done, in three places.**
+
+- **README**, a new *What each operation publishes* table under *Security and confidentiality properties*: per operation, the public callee, what is published and what is kept private — followed by the three qualifications above and a boxed warning that `BURNER_ROLE` (and `MINTER_ROLE`) must stay issuer roles, because the privacy of a burn rests entirely on the burner and the holder being different parties. The selector leak (H-3) is stated in the same place, with why it has no cheap fix.
+- **Assessment privacy table**, two new rows — *Minter and minted amount* and *Burner and burned amount*, both `public` in the implementation as in CMTAT Solidity — so the section that makes this a *private* CMTAT no longer implies that everything about a mint or a burn is private.
+- **Code**, a `PRIVACY:` comment on each of `_mint`, `_transfer` and `_burn` stating what crosses the boundary and what must not be added. This also discharges H-2's "protect from simplification": the comment on `_transfer` says it MUST take no arguments and why.
+
+No behaviour changed, so no test changed; the guard here is that the property is now written where a refactor would have to read it.
 
 ### H-2. `mint` hides its recipient and `_transfer` takes no arguments — keep, and protect
 

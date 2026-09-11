@@ -243,6 +243,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- The README now states exactly what each private operation publishes, in a table under *Security and confidentiality properties*: a mint publishes the minter and the amount, a burn the burner and the amount, a transfer nothing but the fact that one occurred.
+  - Both amounts were already inferable from the public `total_supply` delta, and the published address always holds a public role, so the marginal disclosure is which role-holder acted and when; the recipient of a mint and the debited account of a burn are not published.
+  - The caveat that matters is boxed: `BURNER_ROLE` and `MINTER_ROLE` must remain issuer roles. A holder granted `BURNER_ROLE` who redeems its own tokens publishes itself, turning a private operation public without any code changing.
+  - The equivalency assessment's privacy table gained matching rows for minter and burner, and each public half in the contract carries a `PRIVACY:` comment stating what crosses the boundary and what must not be added — `_transfer` in particular must keep taking no arguments.
 - `doc/standards/building-on-aip20.md` gained a section on pause and deactivation through the ARC-403 hook, and its blocker table no longer lists "no pause anywhere" as a blocker.
   - Both are expressible through the hook. On pause the hook can be more faithful to CMTAT Solidity than this repository is: the reference lets mint and burn continue through a pause (`_canMintBurnByModule` checks deactivation and freeze, not `paused()`), which a hook reproduces exactly, while this token blocks all three.
   - On deactivation the hook falls short in one place: minting cannot be stopped, because the mint paths are not hooked. Criterion 17 would carry that caveat.

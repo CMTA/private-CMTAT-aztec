@@ -254,6 +254,26 @@ Raising the cap further means repeating the measurement, not re-reading the prot
 
 ### Security and confidentiality properties
 
+#### What each operation publishes
+
+Every private operation enqueues one public call, and **every argument of a public call is public**. What crosses that boundary is therefore the whole of what an outside observer learns; the three operations were designed so that as little as possible does:
+
+| Operation | Public callee | Published in the clear | Kept private |
+|---|---|---|---|
+| `mint(to, amount)` | `_mint(caller, amount)` | the **minter's** address, the **amount** | the recipient `to` |
+| `transfer(from, to, amount, …)` | `_transfer()` — **no arguments** | that a transfer of this token occurred | sender, recipient, amount |
+| `burn(account, amount, …)` | `_burn(caller, amount)` | the **burner's** address, the **amount** | the debited `account` |
+
+Three things follow, and they are worth stating precisely because the obvious reading of the table overstates the leak.
+
+- **The amounts were public anyway.** `total_supply` is a `PublicMutable<u128>` that moves by exactly the minted or burned amount in the same transaction, so passing `amount` to the public half reveals nothing the supply change does not. This is a consequence of the design decision to keep the supply public, recorded under *Assumptions*.
+- **The published address always holds a role.** `_mint` and `_burn` publish `msg_sender()` because they must check `MINTER_ROLE` / `BURNER_ROLE` on it, and the role table is public state anyone can enumerate. So the marginal disclosure is *which* role-holder acted and *when* — not a new identity. Where the issuer is the sole minter and burner, which is the expected deployment, this amounts to a public issuance-and-redemption ledger keyed to the issuer, which is arguably what a security token wants.
+- **The holder is not published.** `to` in a mint and `account` in a burn stay in the private half. A burn executed by the issuer under a holder's authwit publishes the issuer, not the holder.
+
+> **The caveat that matters: do not grant `BURNER_ROLE` to holders.** The privacy of a burn rests entirely on the burner and the holder being different parties. The moment a holder holds `BURNER_ROLE` and redeems its own tokens, the published burner *is* the holder, and that burn — address and amount — is fully public. The same applies to `MINTER_ROLE` and self-minting. These roles are issuer roles by design; delegating them to holders turns a private operation into a public one without any code changing.
+
+The public callee's **selector** also distinguishes the three operations from each other — an observer can tell a mint from a burn from a transfer. For transfer that reveals only "a transfer happened"; for mint and burn it composes with the two rows above. There is no cheap fix: hiding the selector would mean one shared public function taking the operation kind as an argument, which publishes the same fact one level down, and would newly publish the caller on transfers.
+
 - **Private mint call to public function**:
   - **Reveals minter address**: Since it is a parameter in the public function call. It is the issuer, whose address is already known, but still, private to public function calls pose a problem as they also reveal that the contract was called.
   - **Randomizing `msg.sender`**: An out-of-protocol option is to deploy a diversified account contract and route transactions through this contract. Application developers might also do something similar to randomize the `msg.sender` of their app contract's address.

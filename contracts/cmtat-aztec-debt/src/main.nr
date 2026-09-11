@@ -886,6 +886,9 @@ pub contract CMTATAztecDebt {
     }
 
     #[external("public")]
+    // PRIVACY: `caller` and `amount` are published - every public argument is. The amount is
+    // inferable from the total_supply delta anyway, and `caller` always holds MINTER_ROLE, which is
+    // public state. Do NOT add `to`: the recipient is the one thing a mint keeps private.
     #[only_self]
     fn _mint(caller: AztecAddress, amount: u128) {
         self.storage.access_control.only_role(MINTER_ROLE, caller);
@@ -896,12 +899,19 @@ pub contract CMTATAztecDebt {
     }
 
     #[external("public")]
+    // PRIVACY: this function MUST take no arguments. It exists only to read the pause flag, which is
+    // PublicMutable and so unreadable from private execution. Anything passed here is published;
+    // `from`, `to` and `amount` never cross, and that is the single most important property of a
+    // transfer in this contract.
     #[only_self]
     fn _transfer() {
         assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
     }
 
     #[external("public")]
+    // PRIVACY: `caller` and `amount` are published, as for `_mint`. The debited `account` is not -
+    // but only because the burner and the holder are different parties. A holder granted
+    // BURNER_ROLE who redeems its own tokens publishes itself. Keep BURNER_ROLE an issuer role.
     #[only_self]
     fn _burn(caller: AztecAddress, amount: u128) {
         self.storage.access_control.only_role(BURNER_ROLE, caller);
