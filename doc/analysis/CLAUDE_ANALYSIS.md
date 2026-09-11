@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, E-1, E-2, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-2, G-4 and G-6 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -35,7 +35,7 @@
 | C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ✅ fixed |
 | C-4 | Constructor configures the contract with no event at all | ✅ fixed |
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
-| C-6 | Nine state-changing admin entry points emit nothing | ⬜ decide (README already lists this as future work) |
+| C-6 | Nine state-changing admin entry points emit nothing | ✅ fixed |
 | D-1 | The three `main.nr` files are 99–100% identical | ⬜ decide — guard mechanically, extraction is not available |
 | D-2 | `test/utils.nr` duplicated 75/78 lines across three crates | ⬜ implement (partially) |
 | E-1 | `#[view]` missing on four read-only entry points | ✅ fixed |
@@ -57,7 +57,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 19 ✅ (9 checked/keep, 10 fixed), 2 ⚠️ corrected, 14 ⬜ open (2 *implement*, 10 *decide*, 2 *leave*).
+**Counts:** 35 rows — 20 ✅ (9 checked/keep, 11 fixed), 2 ⚠️ corrected, 13 ⬜ open (2 *implement*, 9 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -67,7 +67,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 |---|---|---|
 | D-2, G-1, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
-| C-6, G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
+| G-3, H-1 | The *decide* set | Each is a design choice with a defensible answer either way; the report states the trade-off rather than picking. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | C-2, H-4 | The `Transfer` event | Options costed in H-4. Start with the one-line `onchain_constrained()`-to-issuer experiment: it decides between the two good options and may recover onchain data availability for the part of the audit trail that matters most. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
@@ -347,7 +347,13 @@ To keep the authorisation in the library where the rest of it lives, `AccessCont
 
 The README already records event coverage as future work, so this is not news. It is listed here to make the shape visible: the emitting set is not a coherent subset — `grant_role` emits and `revoke_role` does not; `deactivate_contract` emits and `pause_contract` does not. Any observer reconstructing contract state from events gets a partial and asymmetric picture.
 
-**Verdict: decide.** If the whole set is out of scope for 0.3, the cheapest honest step is pairing: whatever emits should have its inverse emit too (`revoke_role` with `grant_role`, `unpause` with `pause`). Half a pair is worse than neither.
+**Verdict: decide — resolved as: all nine, done.** Every state-changing entry point now emits, in all three variants.
+
+Names follow the reference where one exists: `Paused` / `Unpaused` and `RoleRevoked` are the OpenZeppelin events CMTAT Solidity inherits (`NewRole`, kept as is, corresponds to `RoleGranted`); `AddressFrozen` is CMTAT's own, emitted by both `freeze` and `unfreeze` with an `is_frozen` flag as CMTAT does. `AddressListed` (both `add_to_list` and `remove_from_list`, through one `#[internal("public")]` helper so the shape lives in one place) and `OperationsSet` have no exact CMTAT counterpart because CMTAT's list events are allowlist-specific.
+
+**One addition beyond the reference.** The three events for `DelayedPublicMutable` flags carry `effective_at: u64` — the timestamp from which the scheduled value is current. It is computed as `context.timestamp() + delay`, which was checked against `DelayedPublicMutable::schedule_and_get_value_change` (`timestamp_of_change = current_timestamp + current_delay`) and is exact because neither module ever reschedules its delay. An indexer therefore does not need to know the contract's delay to know when a freeze bites, which is the operational question the freeze-window discussion in the assessment turns on.
+
+No test asserts these, for the reason recorded under C-3: the harness exposes no public-log getter at 5.2.0. All eleven base-variant events appear in the generated TypeScript ABI, and the full suite passes.
 
 ---
 

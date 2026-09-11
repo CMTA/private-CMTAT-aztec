@@ -25,7 +25,7 @@ pub contract CMTATAztecLight {
 
     use cmtat_aztec_lib::modules::{
         access_controlModule::{AccessControlModule, BURNER_ROLE, DEFAULT_ADMIN_ROLE, MINTER_ROLE},
-        enforcementModule::{Freezable, FreezableFlag},
+        enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
         extraInformationModule::{DocumentInfo, ExtraInformation},
         pauseModule::PauseModule,
     };
@@ -112,6 +112,41 @@ pub contract CMTATAztecLight {
         lastModified: u64,
     }
 
+
+    // --- C-6: administrative operations now leave a trail ---------------------------------------
+    // Names follow the reference where one exists: `Paused` / `Unpaused` and `RoleRevoked` are the
+    // OpenZeppelin events CMTAT Solidity inherits (`NewRole` above corresponds to `RoleGranted`);
+    // `AddressFrozen` is CMTAT's own. The freeze and list flags are DelayedPublicMutable, so those
+    // events also carry `effective_at`: the timestamp from which the scheduled value is current.
+    // It is computed as block timestamp + the module's delay, which is exactly what
+    // DelayedPublicMutable::schedule_value_change records; it stays exact because neither module ever
+    // reschedules its delay.
+
+    #[event]
+    struct Paused {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct Unpaused {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct RoleRevoked {
+        role: Field,
+        account: AztecAddress,
+        sender: AztecAddress,
+    }
+
+    #[event]
+    struct AddressFrozen {
+        account: AztecAddress,
+        is_frozen: bool,
+        enforcer: AztecAddress,
+        effective_at: u64,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -169,12 +204,16 @@ pub contract CMTATAztecLight {
      */
     #[external("public")]
     fn revoke_role(role: Field, account: AztecAddress) {
-        self.storage.access_control.revoke_role(role, account, self.msg_sender());
+        let sender = self.msg_sender();
+        self.storage.access_control.revoke_role(role, account, sender);
+        self.emit(RoleRevoked { role, account, sender });
     }
 
     #[external("public")]
     fn renounce_role(role: Field, callerConfirmation: AztecAddress) {
-        self.storage.access_control.renounce_role(role, self.msg_sender(), callerConfirmation);
+        let sender = self.msg_sender();
+        self.storage.access_control.renounce_role(role, sender, callerConfirmation);
+        self.emit(RoleRevoked { role, account: sender, sender });
     }
 
     /** ==========================================================
@@ -195,12 +234,14 @@ pub contract CMTATAztecLight {
     fn pause_contract() {
         let admin = self.msg_sender();
         self.storage.pause_module.pause(admin, self.storage.access_control);
+        self.emit(Paused { account: admin });
     }
 
     #[external("public")]
     fn unpause_contract() {
         let admin = self.msg_sender();
         self.storage.pause_module.unpause(admin, self.storage.access_control);
+        self.emit(Unpaused { account: admin });
     }
 
     #[external("public")]
@@ -237,22 +278,26 @@ pub contract CMTATAztecLight {
 
     #[external("public")]
     fn freeze(user: AztecAddress, value: FreezableFlag) {
-        self.storage.enforcement_module.freeze(
-            self.msg_sender(),
-            user,
-            value,
-            self.storage.access_control,
-        );
+        let enforcer = self.msg_sender();
+        self.storage.enforcement_module.freeze(enforcer, user, value, self.storage.access_control);
+        self.emit(AddressFrozen {
+            account: user,
+            is_frozen: value.is_freezed,
+            enforcer,
+            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
+        });
     }
 
     #[external("public")]
     fn unfreeze(user: AztecAddress, value: FreezableFlag) {
-        self.storage.enforcement_module.unfreeze(
-            self.msg_sender(),
-            user,
-            value,
-            self.storage.access_control,
-        );
+        let enforcer = self.msg_sender();
+        self.storage.enforcement_module.unfreeze(enforcer, user, value, self.storage.access_control);
+        self.emit(AddressFrozen {
+            account: user,
+            is_frozen: value.is_freezed,
+            enforcer,
+            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
+        });
     }
 
     /** ==========================================================

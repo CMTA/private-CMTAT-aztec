@@ -411,7 +411,9 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
   - Users may, in the future, be able to arbitrarly share to third-parties a shareable key for audit purposes.
 
 - **Event management**:
-  - Events are not yet enabled because they are cumbersome; they can only be in the main contract for now and make the code lengthy.
+  - Every state-changing entry point now emits a public event: `NewRole` / `RoleRevoked`, `Paused` / `Unpaused` / `Deactivated`, `AddressFrozen`, `AddressListed`, `OperationsSet`, `Terms`, `TokenId`, and the debt-variant `DebtLogEvent` / `DebtInstrumentLogEvent` / `CreditEventsLogEvent`. Events must be declared in the contract module rather than in the library, which is why each variant's `main.nr` re-declares them.
+  - Events for delayed flags (`AddressFrozen`, `AddressListed`, `OperationsSet`) carry `effective_at`, the timestamp from which the scheduled value is current, so an indexer need not know the delay.
+  - `Transfer` is delivered privately to the recipient; what remains open is its delivery mode and whether the issuer should receive it — see the analysis report, findings C-2 and H-4.
 
 ### What will we never be able to do by design?
 

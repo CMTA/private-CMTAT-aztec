@@ -27,14 +27,16 @@ pub contract CMTATAztecDebt {
         access_controlModule::{
             AccessControlModule, BURNER_ROLE, DEFAULT_ADMIN_ROLE, MINTER_ROLE, VALIDATION_ROLE,
         },
-        enforcementModule::{Freezable, FreezableFlag},
+        enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
         extraInformationModule::{DocumentInfo, ExtraInformation},
         extensions::{
             creditEventsModule::{CreditEvents, CreditEventsStruct},
             debtModule::{Debt, DebtInformation, DebtInstrument},
         },
         pauseModule::PauseModule,
-        validationModule::{SetFlag, UserFlags, ValidationModule},
+        validationModule::{
+            CHANGE_ROLES_DELAY_SECONDS as LIST_DELAY_SECONDS, SetFlag, UserFlags, ValidationModule,
+        },
     };
 
     // Changing the issuer address takes effect only after this delay. Expressed in seconds: since
@@ -138,6 +140,58 @@ pub contract CMTATAztecDebt {
         account: AztecAddress,
     }
 
+
+    // --- C-6: administrative operations now leave a trail ---------------------------------------
+    // Names follow the reference where one exists: `Paused` / `Unpaused` and `RoleRevoked` are the
+    // OpenZeppelin events CMTAT Solidity inherits (`NewRole` above corresponds to `RoleGranted`);
+    // `AddressFrozen` is CMTAT's own. The freeze and list flags are DelayedPublicMutable, so those
+    // events also carry `effective_at`: the timestamp from which the scheduled value is current.
+    // It is computed as block timestamp + the module's delay, which is exactly what
+    // DelayedPublicMutable::schedule_value_change records; it stays exact because neither module ever
+    // reschedules its delay.
+
+    #[event]
+    struct Paused {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct Unpaused {
+        account: AztecAddress,
+    }
+
+    #[event]
+    struct RoleRevoked {
+        role: Field,
+        account: AztecAddress,
+        sender: AztecAddress,
+    }
+
+    #[event]
+    struct AddressFrozen {
+        account: AztecAddress,
+        is_frozen: bool,
+        enforcer: AztecAddress,
+        effective_at: u64,
+    }
+
+    #[event]
+    struct AddressListed {
+        account: AztecAddress,
+        is_blacklisted: bool,
+        is_whitelisted: bool,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
+    #[event]
+    struct OperationsSet {
+        operate_blacklist: bool,
+        operate_whitelist: bool,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
     #[storage]
     struct Storage<Context> {
         pause_module: PauseModule<Context>,
@@ -199,12 +253,16 @@ pub contract CMTATAztecDebt {
      */
     #[external("public")]
     fn revoke_role(role: Field, account: AztecAddress) {
-        self.storage.access_control.revoke_role(role, account, self.msg_sender());
+        let sender = self.msg_sender();
+        self.storage.access_control.revoke_role(role, account, sender);
+        self.emit(RoleRevoked { role, account, sender });
     }
 
     #[external("public")]
     fn renounce_role(role: Field, callerConfirmation: AztecAddress) {
-        self.storage.access_control.renounce_role(role, self.msg_sender(), callerConfirmation);
+        let sender = self.msg_sender();
+        self.storage.access_control.renounce_role(role, sender, callerConfirmation);
+        self.emit(RoleRevoked { role, account: sender, sender });
     }
 
     /** ==========================================================
@@ -219,31 +277,51 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     fn set_operations(operations: SetFlag) {
-        self.storage.validation_module.set_operations(
-            self.msg_sender(),
-            operations,
-            self.storage.access_control,
-        );
+        let operator = self.msg_sender();
+        self.storage.validation_module.set_operations(operator, operations, self.storage.access_control);
+        self.emit(OperationsSet {
+            operate_blacklist: operations.operate_blacklist,
+            operate_whitelist: operations.operate_whitelist,
+            operator,
+            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+        });
     }
 
     #[external("public")]
     fn add_to_list(newListAddress: AztecAddress, userFlag: UserFlags) {
+        let operator = self.msg_sender();
         self.storage.validation_module.add_to_list(
-            self.msg_sender(),
+            operator,
             newListAddress,
             userFlag,
             self.storage.access_control,
         );
+        self.internal._emit_listed(newListAddress, userFlag, operator);
     }
 
     #[external("public")]
     fn remove_from_list(removeListAddress: AztecAddress, userFlag: UserFlags) {
+        let operator = self.msg_sender();
         self.storage.validation_module.remove_from_list(
-            self.msg_sender(),
+            operator,
             removeListAddress,
             userFlag,
             self.storage.access_control,
         );
+        self.internal._emit_listed(removeListAddress, userFlag, operator);
+    }
+
+    /// `add_to_list` and `remove_from_list` both schedule the same kind of change - a new flag set for
+    /// an address - so they share one event, emitted here so its shape lives in one place.
+    #[internal("public")]
+    fn _emit_listed(account: AztecAddress, flags: UserFlags, operator: AztecAddress) {
+        self.emit(AddressListed {
+            account,
+            is_blacklisted: flags.is_blacklisted,
+            is_whitelisted: flags.is_whitelisted,
+            operator,
+            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+        });
     }
 
     /** ==========================================================
@@ -264,12 +342,14 @@ pub contract CMTATAztecDebt {
     fn pause_contract() {
         let admin = self.msg_sender();
         self.storage.pause_module.pause(admin, self.storage.access_control);
+        self.emit(Paused { account: admin });
     }
 
     #[external("public")]
     fn unpause_contract() {
         let admin = self.msg_sender();
         self.storage.pause_module.unpause(admin, self.storage.access_control);
+        self.emit(Unpaused { account: admin });
     }
 
     #[external("public")]
@@ -306,22 +386,26 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     fn freeze(user: AztecAddress, value: FreezableFlag) {
-        self.storage.enforcement_module.freeze(
-            self.msg_sender(),
-            user,
-            value,
-            self.storage.access_control,
-        );
+        let enforcer = self.msg_sender();
+        self.storage.enforcement_module.freeze(enforcer, user, value, self.storage.access_control);
+        self.emit(AddressFrozen {
+            account: user,
+            is_frozen: value.is_freezed,
+            enforcer,
+            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
+        });
     }
 
     #[external("public")]
     fn unfreeze(user: AztecAddress, value: FreezableFlag) {
-        self.storage.enforcement_module.unfreeze(
-            self.msg_sender(),
-            user,
-            value,
-            self.storage.access_control,
-        );
+        let enforcer = self.msg_sender();
+        self.storage.enforcement_module.unfreeze(enforcer, user, value, self.storage.access_control);
+        self.emit(AddressFrozen {
+            account: user,
+            is_frozen: value.is_freezed,
+            enforcer,
+            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
+        });
     }
 
     /** ==========================================================

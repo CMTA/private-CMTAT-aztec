@@ -125,6 +125,10 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- Public events on every remaining state-changing entry point: `Paused`, `Unpaused`, `RoleRevoked` (from both `revoke_role` and `renounce_role`), `AddressFrozen` (from both `freeze` and `unfreeze`, with an `is_frozen` flag), `AddressListed` (from both `add_to_list` and `remove_from_list`) and `OperationsSet`.
+  - Names follow the reference where one exists: the pause and role events are the OpenZeppelin ones CMTAT Solidity inherits, `AddressFrozen` is CMTAT's own. With these, every operation that changes contract state leaves a trail; previously `grant_role` emitted and `revoke_role` did not, `deactivate_contract` emitted and `pause_contract` did not.
+  - The three events for delayed flags carry `effective_at`, the timestamp from which the scheduled value is current — exactly what the state variable records, so an indexer need not know the contract's delay to know when a freeze or a listing takes effect.
+  - The README no longer describes events as future work, and the assessment's Conclusion no longer says batching is capped at one address.
 - `NewRole` is now emitted for the roles the constructor grants, which were previously the only silent grants in the contract's life.
   - An indexer built on `NewRole` saw every later grant and missed the founding ones, so the role table it reconstructed was wrong rather than obviously incomplete.
   - Every grant now goes through one inlined `_grant_role_internal` helper that writes and emits together, so the two cannot be separated again. It is `#[internal("public")]`, so it costs no call and no gas, and it replaces what would otherwise be nine copies of the emit across the three variants.
