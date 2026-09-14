@@ -28,6 +28,13 @@ Noir has no inheritance and allows one contract per package, so the variants are
 | `CMTATAztec` | The above plus the validation module (blacklist / whitelist) |
 | `CMTATAztecDebt` | The above plus credit events and debt, for bond-like instruments |
 
+Two further contracts are not tokens but **ARC-403 authorization contracts**: they apply CMTAT's pause, deactivation and freeze to the stock tokens of the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), which call them as a hook before every transfer and burn. See [`doc/auth/README.md`](doc/auth/README.md).
+
+| Contract | Restricts |
+|---|---|
+| `CMTATAztecAuth` | AIP-20 `Token` |
+| `CMTATAztecAuthMultiToken` | ARC-1155 `MultiToken` |
+
 ## Features
 
 - **Private** mint, transfer and burn, in single and batched form, with [authwits](https://docs.aztec.network/developers/docs/foundational-topics/advanced/authwit) in place of ERC-20 allowances.
@@ -73,6 +80,8 @@ contracts/
   cmtat-aztec/       CMTATAztec, with the full Noir test suite
   cmtat-aztec-debt/  CMTATAztecDebt
   cmtat-aztec-light/ CMTATAztecLight
+  cmtat-aztec-auth/  CMTATAztecAuth — ARC-403 hook for the AIP-20 token of aztec-standards
+  cmtat-aztec-auth-multitoken/  CMTATAztecAuthMultiToken — the same for ARC-1155
 src/                 TypeScript: generated artifacts, e2e tests, PXE / account helpers
 scripts/             Testnet scripts (deploy, interact, fees, profiling)
 doc/                 Technical documentation, diagrams, standards analyses, assessment, audits
@@ -85,6 +94,7 @@ submodules/          Pinned reference repositories: CMTAT, CMTAT-Confidential, t
 - [**Technical documentation**](doc/README.md) — the full specification: assumptions and privacy requirements, the private/public split of each operation with sequence diagrams, batching limits, the event list, what each operation publishes, the module design, deployment, the comparisons with Solidity CMTAT and with CMTAT-Confidential (Zama FHE), known limitations and a glossary.
 - [`CHANGELOG.md`](CHANGELOG.md) — release history, semver policy and the pre-release checklist.
 - [`doc/standards/`](doc/standards/) — how this token relates to Aztec's AIP-20 token standard: a [detailed comparison](doc/standards/cmtat-vs-aip20.md), whether it could be [built on the `aztec-standards` library](doc/standards/building-on-aip20.md), used as an [ARC-403 authorization contract](doc/standards/cmtat-as-aip20-auth-contract.md), which [AIP-20 features fit CMTAT](doc/standards/aip20-features-for-cmtat.md), and how the [`aztec-standards` fork](https://github.com/CMTA/aztec-standards) checked out under `submodules/` was [brought to Aztec 5.2.0](doc/standards/upgrading-aztec-standards.md).
+- [`doc/auth/README.md`](doc/auth/README.md) — the two authorization contracts: how the ARC-403 hook works, what they enforce and cannot (no recipient or initiator screening, mints unhooked, AIP-721 without a hook), how to deploy and operate them, and how they were verified against the real tokens.
 - [`doc/cmtat-assessment/`](doc/cmtat-assessment/README.md) — the CMTAT equivalency assessment of this implementation, criterion by criterion.
 - [`doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md`](doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md) — tool-assisted code-quality review against Aztec 5.2.0, with a measured gate-count baseline and the disposition of every finding.
 - [`LEARN-AZTEC.md`](LEARN-AZTEC.md) — Aztec / Noir notes written while building; background, not kept up to date.

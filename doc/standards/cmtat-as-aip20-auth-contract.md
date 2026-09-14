@@ -35,6 +35,8 @@ It is the mirror image of [`building-on-aip20.md`](./building-on-aip20.md), Opti
 
 Figures quoted from the Aztec documentation rather than measured here are marked as such.
 
+> **Status (2026-09-14).** Implemented, with a narrower scope than the probe: `contracts/cmtat-aztec-auth` (`CMTATAztecAuth`, AIP-20) and `contracts/cmtat-aztec-auth-multitoken` (`CMTATAztecAuthMultiToken`, ARC-1155) carry pause, deactivation and freeze only — no lists, no metadata — and check the pause in an enqueued public call rather than as a delayed flag, per the `H-3` decision. User documentation, limitations and verification: [`doc/auth/README.md`](../auth/README.md). The scorecard below still describes what the *hook* can and cannot express and is unchanged by the implementation.
+
 ## Short answer
 
 **Yes, it can be built — the probe compiles against the library as it stands — and it delivers real compliance to a stock AIP-20 token. But it is a weaker CMTAT than the one in this repository, costs more per transfer, and the two things it cannot do are the two a regulator asks about first: screen the recipient, and know who initiated an operation.**

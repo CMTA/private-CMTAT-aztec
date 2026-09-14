@@ -42,7 +42,7 @@ Custom changelog tag: `Dependencies`, `Documentation`, `Testing`
 
 > Before a new release, perform the following tasks
 
-- Code: update `VERSION` in each variant's `main.nr` ([cmtat-aztec](./contracts/cmtat-aztec/src/main.nr), [cmtat-aztec-debt](./contracts/cmtat-aztec-debt/src/main.nr), [cmtat-aztec-light](./contracts/cmtat-aztec-light/src/main.nr)), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
+- Code: update `VERSION` in each contract's `main.nr` ([cmtat-aztec](./contracts/cmtat-aztec/src/main.nr), [cmtat-aztec-debt](./contracts/cmtat-aztec-debt/src/main.nr), [cmtat-aztec-light](./contracts/cmtat-aztec-light/src/main.nr), and the two authorization contracts [cmtat-aztec-auth](./contracts/cmtat-aztec-auth/src/main.nr) and [cmtat-aztec-auth-multitoken](./contracts/cmtat-aztec-auth-multitoken/src/main.nr), which carry the same number), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
 - Pin one Aztec version, and check that it is the same in all three places: the `tag = "vX.Y.Z"` entries in [Nargo.toml](./Nargo.toml), the `@aztec/*` versions in [package.json](./package.json), and the `aztec-up X.Y.Z` instruction in [README.md](./README.md) and [doc/README.md](./doc/README.md)
 - Rebuild artifacts from a clean tree, so the release is not validated against a stale `src/artifacts/`
 
@@ -75,6 +75,16 @@ yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec star
 ## Unreleased
 
 Target: **0.4.0**. Not released yet; everything below is on the development branch.
+
+### Added
+
+- `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation and freeze to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`.
+  - Rules follow CMTAT Solidity on the arguments the hook provides: a transfer needs the contract not paused and `from` not frozen; a burn needs it not deactivated and `from` not frozen; burns are recognised by the reference contracts' selectors, everything else is a transfer. Mints never reach the hook, and neither the recipient nor the initiator is passed, so those are not screened.
+  - The freeze flag is read in private; the pause and deactivation flags are `PublicMutable` and checked by one enqueued public call whose only argument is `is_burn`, the same immediate-pause choice the token contracts made under `H-3`.
+  - Same modules, roles, events, freeze delay and `version()` as the token contracts; the two versions are kept equal by hand and the release checklist now lists five `VERSION` constants.
+  - New library module `authorizationHookModule.nr` holds the rules and the four pinned burn selectors; two contracts because the MultiToken hook carries an `id` and Noir has no overloading.
+  - Verified by 39 unit tests and by 9 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 8,447 gates.
+  - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
 
 ### Changed
 

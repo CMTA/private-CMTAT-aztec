@@ -4,3 +4,4 @@ pub mod validationModule;
 pub mod pauseModule;
 pub mod extensions;
 pub mod extraInformationModule;
+pub mod authorizationHookModule;
