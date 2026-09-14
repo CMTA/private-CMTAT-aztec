@@ -256,6 +256,37 @@ The third row is the useful one: renaming `transfer` to `transfer_private_to_pri
 
 The `Transfer` event already has the same name and the same fields (`from`, `to`, `amount`) on both sides.
 
+### The full AIP-20 surface, and what CMTAT does not have
+
+The profile above is seven functions. The fork's `Token` exposes twenty-two. This is the whole list, so that "partial profile" has a precise meaning; the status is for the three token variants after the 0.4.0 renames.
+
+| AIP-20 entry point | Context | In CMTAT | Why not, or what it would take |
+|---|---|---|---|
+| `constructor_with_initial_supply(name, symbol, decimals, initial_supply, to, auth_contract)` | public, initializer | different | CMTAT's `constructor(admin, name, symbol, decimals)` seats a role table and an issuer, not a minter and a hook. Deployment tooling differs whatever else is aligned; F7 in [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md#f7--named-constructors) adds named constructors |
+| `constructor_with_minter(name, symbol, decimals, minter, auth_contract)` | public, initializer | different | Same |
+| `transfer_private_to_private(from, to, amount, _nonce)` | private | **yes** | Aligned; may revert for compliance |
+| `transfer_private_to_public(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `to`. Public balances expose holdings and are conflict 1 in the [comparison](./cmtat-vs-aip20.md); F6 keeps them out of CMTAT-private and reserves them for a separate variant |
+| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | private | **no** | Public balance plus a partial note: conflicts 1 and 2 |
+| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | private | **no** | A partial note whose recipient was fixed at initialization; screening has to move to `initialize_transfer_commitment` and the completion amount is published unencrypted. F2 describes the three additions it needs, and why it belongs to the AIP20 variant only |
+| `transfer_public_to_private(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `from` (conflict 1) |
+| `initialize_transfer_commitment(to, completer)` | private | **no** | The partial-note entry point; comes with F2 |
+| `transfer_public_to_public(from, to, amount, _nonce)` | public | **no** | Public balances on both sides, and the parties and amount are public call arguments (conflict 1) |
+| `transfer_public_to_commitment(from, commitment, amount, _nonce)` | public | **no** | Conflicts 1 and 2 |
+| `balance_of_private(owner)` | utility | **yes** | Aligned |
+| `balance_of_public(owner)` | public, view | **no** | No public balance map (conflict 1) |
+| `total_supply()` | public, view | **yes** | Aligned |
+| `name()`, `symbol()`, `decimals()` | public, view | **yes** | Aligned; `private_get_*` are extras |
+| `get_auth_contract()` | public, view | **no** | CMTAT's compliance is internal to the token; there is no hook to point at. F3 would add a rule-engine hook, in the ARC-403 shape but passed the recipient and caller, with its own getter |
+| `mint_to_private(to, amount)` | private | **yes** | Aligned; `MINTER_ROLE` instead of one immutable minter |
+| `mint_to_public(to, amount)` | public | **no** | Public balances (conflict 1) |
+| `mint_to_commitment(commitment, amount)` | public | **no** | Partial notes (conflict 2) |
+| `burn_private(from, amount, _nonce)` | private | **deliberately not** | CMTAT has `burn(account, amount, authwit_nonce)`, `BURNER_ROLE`-gated on top of the holder's authwit — see the trap below. Same shape, different authorisation, so a different name |
+| `burn_public(from, amount, _nonce)` | public | **no** | Public balances (conflict 1) |
+
+Read down the "why" column and the missing fifteen collapse to three causes: **public balances** (eight entry points), **partial notes** (five, two of them also public), and the **burn authorisation** (one), plus the constructors. The first two are the design conflicts the comparison document identifies, and both are answered by the same product decision recorded in [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md): they stay out of CMTAT-private and go, if anywhere, into a separate CMTAT-private-AIP20 variant that discloses what they publish.
+
+What CMTAT has that AIP-20 does not, for the mirror image: `transfer_batch`, `mint_batch`, `burn_batch`, `cancel_authwit`, the `private_get_*` getters, `public_get_issuer` / `private_get_issuer` / `set_issuer`, `version`, and the whole compliance and metadata surface (roles, pause, deactivation, freeze, lists, terms, token ID, and on the Debt variant credit events and debt).
+
 ### The burn trap
 
 `burn` is the one function that *could* be renamed to match and *must not* be, because an identical selector with different semantics is worse than a different name.
