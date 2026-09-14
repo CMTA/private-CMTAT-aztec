@@ -38,7 +38,7 @@ The purpose is to explain *why* those two things do not fit together, in enough 
 
 > **A caveat on the AIP-20 side.** The canonical AIP-20 implementation is the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) repository maintained by DeFi Wonderland, and the Aztec documentation says explicitly that it differs from the reference contracts shipped in `aztec-packages`. This document is written against the **published Aztec documentation** for AIP-20, not against a checkout of that repository. Storage layout, the partial-note flow, the note-count constants and the recursion pattern are quoted from it directly. Where the full function list matters, treat the repository as authoritative.
 >
-> **Updated after reading the source.** The library has since been checked out at `lib/aztec-standards` (commit `a3859e5`) and read directly. That reading **corrected one claim in this document** — AIP-20 does have a transfer-authorization hook, ARC-403, which an earlier revision said it lacked. The correction is applied below and explained in [`building-on-aip20.md`](./building-on-aip20.md).
+> **Updated after reading the source.** The library has since been checked out at `submodules/aztec-standards` (commit `a3859e5`) and read directly. That reading **corrected one claim in this document** — AIP-20 does have a transfer-authorization hook, ARC-403, which an earlier revision said it lacked. The correction is applied below and explained in [`building-on-aip20.md`](./building-on-aip20.md).
 
 ## Summary
 

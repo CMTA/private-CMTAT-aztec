@@ -26,7 +26,7 @@ An assessment of whether this project could be rebuilt on the [`aztec-standards`
 
 | | |
 |---|---|
-| Library | `lib/aztec-standards`, commit `a3859e5`, described as `prerelease-0200230-14-ga3859e5` |
+| Library | `submodules/aztec-standards`, upstream commit `a3859e5` (`prerelease-0200230-14-ga3859e5`); since 0.4.0 the checkout is the CMTA fork at `5433e9c`, which is `a3859e5` moved to Aztec 5.2.0 |
 | Token source | `src/token_contract/src/main.nr`, 695 lines, one contract |
 | Its aztec-nr pin | `v5.0.0-rc.2`, from `aztec-packages/noir-projects/aztec-nr` |
 | This project's pin | `v5.2.0`, from the standalone `AztecProtocol/aztec-nr` repository |
@@ -341,11 +341,11 @@ Even if one of the options above were chosen, these apply:
 
 ## What to do with the submodule
 
-`lib/aztec-standards` is currently checked out but nothing in the build references it — no `Nargo.toml` in this workspace depends on it, and the workspace members are unchanged.
+`submodules/aztec-standards` is checked out but nothing in the build references it — no `Nargo.toml` in this workspace depends on it, and the workspace members are unchanged.
 
 Two coherent choices:
 
-- **Keep it, as a reference.** It is the canonical AIP-20 source and the documentation explicitly says the reference contracts in `aztec-packages` differ from it. Having it pinned makes claims about AIP-20 checkable. If kept, it should move under `submodules/` with the other reference repositories, since `lib/` in this workspace means "the shared Noir library" and a second meaning there is confusing.
+- **Keep it, as a reference.** It is the canonical AIP-20 source and the documentation explicitly says the reference contracts in `aztec-packages` differ from it. Having it pinned makes claims about AIP-20 checkable. It now lives under `submodules/` with the other reference repositories, since `lib/` in this workspace means "the shared Noir library" and a second meaning there is confusing.
 - **Drop it**, and cite the repository by URL and commit in these two documents instead.
 
-Keeping it is the better answer while these comparisons are live, provided it moves out of `lib/`.
+Keeping it is the better answer while these comparisons are live; it was moved out of `lib/` and repointed at the [CMTA fork](https://github.com/CMTA/aztec-standards), which carries the 5.2.0 upgrade of Option F.

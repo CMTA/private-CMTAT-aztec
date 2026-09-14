@@ -74,7 +74,14 @@ yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec star
 
 ## Unreleased
 
-Nothing yet.
+Target: **0.4.0**. Not released yet; everything below is on the development branch.
+
+### Changed
+
+- The `aztec-standards` submodule now tracks the [CMTA fork](https://github.com/CMTA/aztec-standards) at `5433e9c` (`Upgrade to Aztec 5.2.0`) instead of upstream `defi-wonderland/aztec-standards` at `a3859e5`, and lives at `submodules/aztec-standards` with the other reference repositories rather than under `lib/`.
+  - The fork is upstream `a3859e5` with its eleven Noir manifests and the `@aztec/*` packages moved from `v5.0.0-rc.2` to `v5.2.0`, the pin this repository uses, so the AIP-20 reference contracts and this token now compile and test on one toolchain: 22 artifacts, 79/79 `token_contract` tests.
+  - Nothing in the build depends on it yet; it is the pinned source the standards documents cite and the base for any AIP-20 integration work in 0.4.0.
+  - It has to be built and tested from a copy outside this tree (`git archive` into a temporary directory): `nargo` resolves the outermost `[workspace]`, which from inside the submodule is this repository's. Recorded as Trap 3 in `doc/standards/upgrading-aztec-standards.md`.
 
 ## 0.3.0 — 2026-09-14
 

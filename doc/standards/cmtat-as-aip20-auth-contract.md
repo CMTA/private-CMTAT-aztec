@@ -26,7 +26,7 @@ It is the mirror image of [`building-on-aip20.md`](./building-on-aip20.md), Opti
 
 | | |
 |---|---|
-| AIP-20 token | `lib/aztec-standards`, commit `a3859e5`, `src/token_contract/src/main.nr` |
+| AIP-20 token | `submodules/aztec-standards`, upstream commit `a3859e5` (the CMTA fork's `5433e9c` is the same source on Aztec 5.2.0), `src/token_contract/src/main.nr` |
 | Hook interface | `authorize_private(from, amount, selector)` and `authorize_public(from, amount, selector)`, read from the token source |
 | Hook call sites | 9 — all 7 transfer paths and both burns. **Not** the 3 mint paths |
 | `auth_contract` storage | `PublicImmutable<AztecAddress>` — fixed at deployment |

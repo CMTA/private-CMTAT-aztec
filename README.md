@@ -76,13 +76,15 @@ contracts/
 src/                 TypeScript: generated artifacts, e2e tests, PXE / account helpers
 scripts/             Testnet scripts (deploy, interact, fees, profiling)
 doc/                 Technical documentation, diagrams, standards analyses, assessment, audits
+submodules/          Pinned reference repositories: CMTAT, CMTAT-Confidential, the equivalency
+                     assessment template, and the CMTA fork of aztec-standards on Aztec 5.2.0
 ```
 
 ## Documentation
 
 - [**Technical documentation**](doc/README.md) — the full specification: assumptions and privacy requirements, the private/public split of each operation with sequence diagrams, batching limits, the event list, what each operation publishes, the module design, deployment, the comparisons with Solidity CMTAT and with CMTAT-Confidential (Zama FHE), known limitations and a glossary.
 - [`CHANGELOG.md`](CHANGELOG.md) — release history, semver policy and the pre-release checklist.
-- [`doc/standards/`](doc/standards/) — how this token relates to Aztec's AIP-20 token standard: a [detailed comparison](doc/standards/cmtat-vs-aip20.md), whether it could be [built on the `aztec-standards` library](doc/standards/building-on-aip20.md), used as an [ARC-403 authorization contract](doc/standards/cmtat-as-aip20-auth-contract.md), which [AIP-20 features fit CMTAT](doc/standards/aip20-features-for-cmtat.md), and how to [upgrade the standards fork](doc/standards/upgrading-aztec-standards.md).
+- [`doc/standards/`](doc/standards/) — how this token relates to Aztec's AIP-20 token standard: a [detailed comparison](doc/standards/cmtat-vs-aip20.md), whether it could be [built on the `aztec-standards` library](doc/standards/building-on-aip20.md), used as an [ARC-403 authorization contract](doc/standards/cmtat-as-aip20-auth-contract.md), which [AIP-20 features fit CMTAT](doc/standards/aip20-features-for-cmtat.md), and how the [`aztec-standards` fork](https://github.com/CMTA/aztec-standards) checked out under `submodules/` was [brought to Aztec 5.2.0](doc/standards/upgrading-aztec-standards.md).
 - [`doc/cmtat-assessment/`](doc/cmtat-assessment/README.md) — the CMTAT equivalency assessment of this implementation, criterion by criterion.
 - [`doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md`](doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md) — tool-assisted code-quality review against Aztec 5.2.0, with a measured gate-count baseline and the disposition of every finding.
 - [`LEARN-AZTEC.md`](LEARN-AZTEC.md) — Aztec / Noir notes written while building; background, not kept up to date.

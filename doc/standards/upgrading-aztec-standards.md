@@ -2,7 +2,9 @@
 
 Step-by-step instructions to bring a fork of [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) from the `v5.0.0-rc.2` it pins to the **`v5.2.0`** this repository uses, so that the two can be compiled, tested and composed on one toolchain.
 
-Every step below was performed once already, in a scratch copy, while writing [`building-on-aip20.md`](./building-on-aip20.md) (Option F). The outcome was **eleven manifest edits, zero source changes, the whole 11-crate workspace compiling, and 79/79 token tests passing.** These instructions reproduce that result on the real fork and record the two traps hit along the way.
+Every step below was performed once already, in a scratch copy, while writing [`building-on-aip20.md`](./building-on-aip20.md) (Option F). The outcome was **eleven manifest edits, zero source changes, the whole 11-crate workspace compiling, and 79/79 token tests passing.** These instructions reproduce that result on the real fork and record the traps hit along the way.
+
+> **Status (2026-09-14).** Done. The fork is [`CMTA/aztec-standards`](https://github.com/CMTA/aztec-standards), checked out as the submodule `submodules/aztec-standards` at commit `5433e9c7dc34f1b426adfe0ce9e0ae3a688351d9` (`Upgrade to Aztec 5.2.0`, branch `dev`, on top of upstream `a3859e5`). That commit repoints the eleven manifests as Step 1 describes and also bumps the TypeScript packages (Step 4) with a few matching edits to the escrow key-derivation code and the test utilities. Verified again from this repository: `aztec compile --workspace` exits 0 with 22 artifacts and `aztec test --package token_contract` passes **79/79** — but only when run from a copy **outside** this repository's tree; see Trap 3 in Step 2. The steps stay here for the next Aztec bump.
 
 ## Table of contents
 
@@ -30,24 +32,25 @@ Every step below was performed once already, in a scratch copy, while writing [`
 
 ## Step 0 — point the submodule at the fork
 
-This repository currently references upstream. Change `.gitmodules` to the fork:
+`.gitmodules` points at the fork, under `submodules/` with the other reference repositories (in this workspace `lib/` means "the shared Noir library", so the submodule was moved out of it):
 
 ```ini
-[submodule "lib/aztec-standards"]
-	path = lib/aztec-standards
-	url = <your-fork-url>
+[submodule "submodules/aztec-standards"]
+	path = submodules/aztec-standards
+	url = https://github.com/CMTA/aztec-standards
 ```
 
-then re-sync and check out the branch the upgrade will live on:
+To move to a newer commit of the fork:
 
 ```bash
-git submodule sync lib/aztec-standards
-cd lib/aztec-standards
-git remote -v                      # origin must now be the fork
-git checkout -b chore/upgrade-5.2.0
+git submodule sync submodules/aztec-standards
+cd submodules/aztec-standards
+git remote -v                      # origin must be the fork
+git fetch origin dev
+git checkout --detach <commit>     # the parent repository records the commit, not the branch
 ```
 
-> **Where the submodule lives.** It is at `lib/aztec-standards` today. In this workspace `lib/` means "the shared Noir library" (`cmtat_aztec_lib`), so the reference repositories all sit under `submodules/`. Moving it there — `git mv lib/aztec-standards submodules/aztec-standards` plus the `path =` line above — is recommended, and every path in this document assumes it has **not** been moved yet; adjust if you move it first.
+> **Moving a submodule.** `git mv` updates `path =` but keeps the old section name and the old `.git/modules/<name>` directory. To rename both, edit the section name in `.gitmodules`, `git config --rename-section submodule.<old> submodule.<new>`, move `.git/modules/<old>` to `.git/modules/<new>`, and rewrite the `gitdir:` line in the submodule's `.git` file; then `git submodule sync`. That is what was done for `lib/aztec-standards` → `submodules/aztec-standards`.
 
 ## Step 1 — repoint the Noir dependencies
 
@@ -134,9 +137,18 @@ Optionally also bump `compiler_version` in the manifests that still say `">=0.25
 ## Step 2 — compile the whole workspace
 
 ```bash
-cd lib/aztec-standards
+cd submodules/aztec-standards
 aztec compile --workspace
 ```
+
+> **Trap 3 — a submodule inside a Nargo workspace cannot be built in place.** `nargo` resolves the workspace by walking **up** from the current directory to the outermost `Nargo.toml` that declares `[workspace]`. From `submodules/aztec-standards/` that is this repository's root manifest, whose members are the CMTAT crates, so `aztec compile --workspace` silently compiles **this** project (its warnings appear, no `target/` is created in the fork) and `aztec test --package token_contract` fails with `Selected package `token_contract` was not found`. `--program-dir` does not help; the walk starts from it. Build and test the fork from a copy outside this tree:
+>
+> ```bash
+> tmp=$(mktemp -d) && git -C submodules/aztec-standards archive HEAD | tar -x -C "$tmp" && cd "$tmp"
+> aztec compile --workspace && aztec test --package token_contract
+> ```
+>
+> This is also why the scratch-copy run in the preamble worked and an in-place run does not. A contract in *this* workspace that depends on the fork by path (Step 5) is unaffected: it is compiled from this root, where the walk stops.
 
 Two things to note:
 
@@ -199,7 +211,7 @@ Once compiled at `v5.2.0`, the fork's crates can be depended on **as contract in
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-nr/", tag = "v5.2.0", directory = "aztec" }
 cmtat_aztec_lib = { path = "../../lib" }
-token_contract = { path = "../../lib/aztec-standards/src/token_contract" }
+token_contract = { path = "../../submodules/aztec-standards/src/token_contract" }
 ```
 
 and import the generated interface: `use token_contract::Token;`. Add the package to the root `Nargo.toml` workspace `members`; the fork itself does **not** become a member.
@@ -223,23 +235,23 @@ and add the fork to the dependency notes in `CLAUDE.md` / `AGENTS.md`, which mus
 Upstream moves slowly — four commits in the ninety days before `a3859e5`, three of them their own version bumps (`4.3.0`, `5.0.0`, `5.0.0-rc.2`). Expect them to reach `5.2.0` on their own; when they do, the fork's manifest diff collapses to nothing and the fork can be rebased onto upstream cleanly.
 
 ```bash
-cd lib/aztec-standards
+cd submodules/aztec-standards
 git remote add upstream https://github.com/defi-wonderland/aztec-standards.git
 git fetch upstream
 git log --oneline HEAD..upstream/dev        # what has landed since the fork point
 git rebase upstream/dev                     # or merge, per the fork's policy
-aztec compile --workspace && aztec test --package token_contract
+aztec compile --workspace && aztec test --package token_contract   # from a copy outside this tree, see Trap 3
 ```
 
 Watch upstream's `chore: upgrade …` commits in particular: each one changes the same eleven manifests this document changes, so a rebase across one will conflict trivially and resolve to "take upstream's line, then re-check the tag matches this repository".
 
 ## Checklist
 
-- [ ] `.gitmodules` points at the fork; `git submodule sync` done
-- [ ] Eleven manifests repointed; `grep -r "v5.0.0-rc.2" --include=Nargo.toml` returns nothing
-- [ ] `serde` in `escrow_contract` still points at `aztec-packages`, tag `v5.2.0`
-- [ ] `aztec compile --workspace` — zero errors, eleven artifacts
-- [ ] `aztec test --package token_contract` — 79 passed
-- [ ] `package.json` `@aztec/*` bumped to `5.2.0` (only if the TS side will be used)
-- [ ] Fork commit and branch recorded in the three standards documents and the agent guides
-- [ ] Both this repository and the fork pin the **same** `aztec-nr` tag
+- [x] `.gitmodules` points at the fork (`submodules/aztec-standards` → `CMTA/aztec-standards`); `git submodule sync` done
+- [x] Eleven manifests repointed; `grep -r "v5.0.0-rc.2" --include=Nargo.toml` returns nothing (fork commit `5433e9c`)
+- [x] `serde` in `escrow_contract` still points at `aztec-packages`, tag `v5.2.0`
+- [x] `aztec compile --workspace` — zero errors (22 artifacts, from a copy outside this tree)
+- [x] `aztec test --package token_contract` — 79 passed
+- [x] `package.json` `@aztec/*` bumped to `5.2.0`
+- [x] Fork commit and branch recorded in the standards documents and the agent guides
+- [x] Both this repository and the fork pin the **same** `aztec-nr` tag (`v5.2.0`)
