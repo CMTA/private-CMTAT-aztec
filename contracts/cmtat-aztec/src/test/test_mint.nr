@@ -15,7 +15,7 @@ unconstrained fn mint_private_success() {
     assert(ret == 1);
 
     let mint_amount = 10000 as u128;
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, mint_amount));
 
     utils::check_private_balance(env, token_contract_address, issuer, mint_amount);
 
@@ -54,7 +54,7 @@ unconstrained fn mint_private_failure_non_minter() {
     let (env, token_contract_address, _, user1) = utils::setup(/* with_account_contracts */ false);
     let mint_amount = 10000 as u128;
     // Try to mint some tokens as user1, who has no minter role
-    env.call_private(user1, Token::at(token_contract_address).mint(user1, mint_amount));
+    env.call_private(user1, Token::at(token_contract_address).mint_to_private(user1, mint_amount));
 }
 
 #[test(should_fail)]
@@ -68,6 +68,6 @@ unconstrained fn mint_private_failure_overflow() {
     // We have to do this in 2 steps because we have to pass in a valid u128
     let amount_until_overflow = 1000 as u128;
     let mint_amount = (2.pow_32(128) - amount_until_overflow as Field) as u128;
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, mint_amount));
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, mint_amount));
 }

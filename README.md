@@ -43,6 +43,7 @@ Two further contracts are not tokens but **ARC-403 authorization contracts**: th
 - **Issuer auditability**: an audit copy of every note and a constrained, unforgeable `Transfer` event to the issuer; the issuer address can be rotated with `set_issuer`.
 - **Role-based access control** with the CMTAT role set, plus CMTAT terms / token ID, and, on the debt variant, credit events and the `ICMTATDebt` record.
 - **Events** for every state change, public where the state is public and private (encrypted to the parties) for transfers.
+- **AIP-20 private profile**: `transfer_private_to_private`, `mint_to_private`, `name`, `symbol`, `decimals`, `balance_of_private` and `total_supply` have the names and types of the [Aztec token standard](https://github.com/CMTA/aztec-standards), so tooling that uses its private paths reaches this token by selector. Not full conformance — no public balances, no commitment transfers, and `burn` is role-gated under its own name; see [Comparison with AIP-20](doc/README.md#aip-20-private-profile).
 
 Not supported, unlike Solidity CMTAT: upgradeability, gasless transactions, and forced transfer (the issuer cannot move a holder's notes; the compliance lever is freezing the account).
 

@@ -154,6 +154,8 @@ Passing **`to`** and the **original caller** — the two arguments ARC-403 lacks
 
 ## F4 — AIP-20 entry-point names
 
+> **Done in 0.4.0**, in CMTAT-private itself (it needs no AIP-20 architecture): the five renames are applied, the assessment's implementation-details cells updated, and the selectors pinned by a test.
+
 Covered in detail in [`building-on-aip20.md`](./building-on-aip20.md#interface-alignment--an-aip-20-private-profile). Renaming `transfer`, `mint`, `public_get_name`, `public_get_symbol` and `public_get_decimals` to AIP-20's names makes them answer AIP-20's selectors exactly — verified by computing selectors on both artifacts; parameter names are not part of the selector, so `authwit_nonce` stays. `balance_of_private` and `total_supply` already match.
 
 **Equivalency.** Neutral; no criterion names a function. The assessment's implementation-details cells that name them must be updated.

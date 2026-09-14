@@ -13,7 +13,7 @@ unconstrained fn mint_transfer_burn() {
         utils::setup_and_mint(/* with_account_contracts */ false);
 
     let amount = 100 as u128;
-    env.call_private(issuer, Token::at(token).transfer(issuer, user1, amount, 0));
+    env.call_private(issuer, Token::at(token).transfer_private_to_private(issuer, user1, amount, 0));
     utils::check_private_balance(env, token, issuer, mint_amount - amount);
     utils::check_private_balance(env, token, user1, amount);
 
@@ -29,7 +29,7 @@ unconstrained fn transfer_blocked_when_paused() {
 
     env.call_public(issuer, Token::at(token).grant_role(PAUSE_ROLE, issuer));
     env.call_public(issuer, Token::at(token).pause_contract());
-    env.call_private(issuer, Token::at(token).transfer(issuer, user1, 100 as u128, 0));
+    env.call_private(issuer, Token::at(token).transfer_private_to_private(issuer, user1, 100 as u128, 0));
 }
 
 #[test(should_fail_with = "Frozen: Recipient")]
@@ -41,7 +41,7 @@ unconstrained fn transfer_blocked_when_frozen() {
     env.call_public(issuer, Token::at(token).freeze(user1, FreezableFlag { is_freezed: true }));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
-    env.call_private(issuer, Token::at(token).transfer(issuer, user1, 100 as u128, 0));
+    env.call_private(issuer, Token::at(token).transfer_private_to_private(issuer, user1, 100 as u128, 0));
 }
 
 #[test]

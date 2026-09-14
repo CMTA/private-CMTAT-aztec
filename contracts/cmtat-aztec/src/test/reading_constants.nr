@@ -23,7 +23,7 @@ unconstrained fn check_decimals_public() {
     let (env, token_contract_address, _, _) = utils::setup(/* with_account_contracts */ false);
 
     // Check decimals
-    let result = env.view_public(Token::at(token_contract_address).public_get_decimals());
+    let result = env.view_public(Token::at(token_contract_address).decimals());
 
     assert(result == 18 as u8);
 }

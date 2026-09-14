@@ -63,7 +63,7 @@ unconstrained fn mint_restricted_when_freezed() {
     assert(ret == 1);
 
     let mint_amount = 10000 as u128;
-    env.call_private(issuer, Token::at(token_contract_address).mint(user, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(user, mint_amount));
 }
 
 #[test(should_fail_with = "Frozen: Recipient")]
@@ -83,7 +83,7 @@ unconstrained fn transfer_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 }
 
@@ -97,7 +97,7 @@ unconstrained fn burn_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 
     let freezable_flag = FreezableFlag { is_freezed: true };
@@ -123,7 +123,7 @@ unconstrained fn burn_batch_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 
     let freezable_flag = FreezableFlag { is_freezed: true };

@@ -61,7 +61,7 @@ pub unconstrained fn setup_and_mint(
     let mint_amount = 10000 as u128;
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(MINTER_ROLE, issuer));
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, mint_amount));
 
     (env, token_contract_address, issuer, user1, mint_amount)
 }

@@ -33,7 +33,7 @@ unconstrained fn burn_private_on_behalf_of_other() {
     let user1_amount = 1000 as u128;
     let burn_amount = user1_amount / 10 as u128;
 
-    env.call_private(issuer, Token::at(token_contract_address).mint(user1, user1_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(user1, user1_amount));
     env.call_public(issuer, Token::at(token_contract_address).grant_role(BURNER_ROLE, caller));
 
     // Burn on behalf of other

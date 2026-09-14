@@ -224,6 +224,8 @@ The transfer gap is large, and it reconciles almost exactly against components a
 
 ## Interface alignment — an AIP-20 private profile
 
+> **Status (2026-09-14): done.** The five renames below were applied to all three variants in 0.4.0 — `transfer` → `transfer_private_to_private`, `mint` → `mint_to_private`, `public_get_name` / `_symbol` / `_decimals` → `name` / `symbol` / `decimals`; `burn` was kept, as the trap below requires. A test in the base variant (`test_aip20_profile.nr`) pins the seven private-profile selectors to the values read from the fork's `Token::interface()` and checks that `burn` does not answer AIP-20's `burn_private`. The table and mapping below are kept as the record of why.
+
 A narrower question than the options above: without adopting AIP-20's architecture, could this token's **entry points** be aligned with AIP-20's, so that tooling written for the standard's private paths works against it unchanged?
 
 **Yes, and it is a rename.** On Aztec a caller reaches a function by its **selector**, which is derived from the function name and the parameter *types* — not the parameter names. That was checked rather than assumed, by computing selectors from both compiled artifacts with `FunctionSelector.fromNameAndParameters`:

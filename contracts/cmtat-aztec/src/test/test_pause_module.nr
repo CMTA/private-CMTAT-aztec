@@ -61,7 +61,7 @@ unconstrained fn mint_when_paused_succeeds() {
     let ret = env.view_public(Token::at(token_contract_address).public_get_pause());
     assert(ret == 1);
 
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, mint_amount));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, mint_amount));
 
     utils::check_private_balance(env, token_contract_address, issuer, mint_amount);
     let total_supply = env.view_public(Token::at(token_contract_address).total_supply());
@@ -101,7 +101,7 @@ unconstrained fn transfer_when_paused_fails() {
 
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user1, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, transfer_amount, 0),
     );
 }
 
@@ -221,7 +221,7 @@ unconstrained fn mint_when_deactivated_fails() {
     env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
 
     // Mint survives a pause, so deactivation is checked explicitly in `_mint`.
-    env.call_private(issuer, Token::at(token_contract_address).mint(issuer, 10000 as u128));
+    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, 10000 as u128));
 }
 
 #[test(should_fail_with = "Error: token contract is paused")]
@@ -235,7 +235,7 @@ unconstrained fn transfer_when_deactivated_fails() {
 
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user1, 100 as u128, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, 100 as u128, 0),
     );
 }
 

@@ -6,7 +6,7 @@ skinparam maxMessageSize 250
 
 actor "Sender\n(or a delegate)" as Caller
 box "Client side — proved on the user's own device" #F4F8FC
-participant "transfer(from, to, amount, authwit_nonce)\nexternal private" as Priv
+participant "transfer_private_to_private(from, to, amount, authwit_nonce)\nexternal private" as Priv
 participant "PXE\n(sender's notes)" as PXE
 end box
 database "Public state\npause, roles, total_supply,\ndelayed freeze and list flags" as PS
@@ -16,7 +16,7 @@ end box
 participant "Issuer" as Issuer
 participant "Recipient" as To
 
-Caller -> Priv : transfer(from, to, amount, authwit_nonce)
+Caller -> Priv : transfer_private_to_private(from, to, amount, authwit_nonce)
 
 group Authwit — the authorize_once macro
   alt msg_sender == from

@@ -34,7 +34,7 @@ end note
 
 group Window: CHANGE_ROLES_DELAY_SECONDS (currently 360s)
   Target -> PS : reads the pending change — it is public
-  Target -> Priv : transfer(...) — still succeeds
+  Target -> Priv : transfer_private_to_private(...) — still succeeds
   Priv -> PS : is_frozen(target) still reads false
   note over Target, Priv
     The target can move funds until the delay elapses. This window
@@ -48,7 +48,7 @@ end
 
 == After the delay ==
 
-Target -> Priv : transfer(...)
+Target -> Priv : transfer_private_to_private(...)
 Priv -> PS : is_frozen(target) now reads true
 Priv --> Target : revert "Frozen: Sender"
 

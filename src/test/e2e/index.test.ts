@@ -129,7 +129,7 @@ describe("Token", () => {
 
             logger.info(`Minting tokens to Alice ...`);
             const { receipt: mintReceipt } = await token.methods
-                .mint(alice, initialSupply)
+                .mint_to_private(alice, initialSupply)
                 .send({ from: issuer, fee: { paymentMethod: sponsoredPaymentMethod } });
             expect(mintReceipt.hasExecutionSucceeded()).toBe(true);
 
@@ -147,7 +147,7 @@ describe("Token", () => {
             const bobTokens = 1000n;
 
             const { receipt } = await token.methods
-                .mint(bob, bobTokens)
+                .mint_to_private(bob, bobTokens)
                 .send({ from: issuer, fee: { paymentMethod: sponsoredPaymentMethod } });
             expect(receipt.hasExecutionSucceeded()).toBe(true);
 
@@ -175,7 +175,7 @@ describe("Token", () => {
         it("transfers funds from Alice to Bob", async () => {
             const transferQuantity = 543n;
             const { receipt } = await token.methods
-                .transfer(alice, bob, transferQuantity, 0)
+                .transfer_private_to_private(alice, bob, transferQuantity, 0)
                 .send({ from: alice, fee: { paymentMethod: sponsoredPaymentMethod } });
             expect(receipt.hasExecutionSucceeded()).toBe(true);
 
@@ -193,7 +193,7 @@ describe("Token", () => {
         it("transfers funds from Bob to issuer", async () => {
             const transferQuantity = 1000n;
             const { receipt } = await token.methods
-                .transfer(bob, issuer, transferQuantity, 0)
+                .transfer_private_to_private(bob, issuer, transferQuantity, 0)
                 .send({ from: bob, fee: { paymentMethod: sponsoredPaymentMethod } });
             expect(receipt.hasExecutionSucceeded()).toBe(true);
 
@@ -244,7 +244,7 @@ describe("Token", () => {
             const mintQuantity = 1000n;
             await expect(
                 token.methods
-                    .mint(bob, mintQuantity)
+                    .mint_to_private(bob, mintQuantity)
                     .send({ from: bob, fee: { paymentMethod: sponsoredPaymentMethod } }),
             ).rejects.toThrow();
         }, LONG_TEST_TIMEOUT);
@@ -318,7 +318,7 @@ describe("Token", () => {
 
             await expect(
                 token.methods
-                    .transfer(bob, alice, 10, 0)
+                    .transfer_private_to_private(bob, alice, 10, 0)
                     .send({ from: bob, fee: { paymentMethod: sponsoredPaymentMethod } }),
             ).rejects.toThrow();
         }, LONG_TEST_TIMEOUT);
@@ -334,7 +334,7 @@ describe("Token", () => {
             expect(paused).toEqual(0n);
 
             const { receipt } = await token.methods
-                .transfer(bob, alice, 10, 0)
+                .transfer_private_to_private(bob, alice, 10, 0)
                 .send({ from: bob, fee: { paymentMethod: sponsoredPaymentMethod } });
             expect(receipt.hasExecutionSucceeded()).toBe(true);
         }, LONG_TEST_TIMEOUT);

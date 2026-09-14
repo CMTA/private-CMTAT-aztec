@@ -575,7 +575,7 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     #[view]
-    fn public_get_name() -> pub FieldCompressedString {
+    fn name() -> pub FieldCompressedString {
         self.storage.name.read()
     }
 
@@ -587,7 +587,7 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     #[view]
-    fn public_get_symbol() -> pub FieldCompressedString {
+    fn symbol() -> pub FieldCompressedString {
         self.storage.symbol.read()
     }
 
@@ -599,7 +599,7 @@ pub contract CMTATAztecDebt {
 
     #[external("public")]
     #[view]
-    fn public_get_decimals() -> pub u8 {
+    fn decimals() -> pub u8 {
         self.storage.decimals.read()
     }
 
@@ -688,7 +688,7 @@ pub contract CMTATAztecDebt {
     * - The caller must have the minter role.
     */
     #[external("private")]
-    fn mint(to: AztecAddress, amount: u128) {
+    fn mint_to_private(to: AztecAddress, amount: u128) {
         let issuer = self.storage.issuer_address.get_current_value();
         self.internal._mint_internal(to, amount, issuer);
         self.enqueue_self._mint(self.msg_sender(), amount);
@@ -737,7 +737,7 @@ pub contract CMTATAztecDebt {
     */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+    fn transfer_private_to_private(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
         let issuer = self.storage.issuer_address.get_current_value();
         self.internal._transfer_internal(from, to, amount, issuer);
         self.enqueue_self._transfer();

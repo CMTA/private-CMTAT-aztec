@@ -30,6 +30,7 @@ This repository contains a functional private CMTAT prototype, where transaction
   - [Security and confidentiality properties](#security-and-confidentiality-properties)
   - [Modules](#modules)
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
+- [AIP-20 private profile](#aip-20-private-profile)
 - [Deployment](#deployment)
 - [Comparison with Solidity CMTAT](#comparison-with-solidity-cmtat)
 - [Comparison with CMTAT-Confidential (Zama FHE)](#comparison-with-cmtat-confidential-zama-fhe)
@@ -103,7 +104,7 @@ You may modify the token code by adding, removing, or modifying features, at you
   - **Total supply visibility**: The `totalSupply` should remain public and be updated according to mint and burn operations.
   - **Issuer and admin addresses**: The addresses of the issuer and admin can be publicly known.
   - **Third-party transactions**: We want to allow third parties to execute transactions on behalf of our users, so we use **authentication witnesses** when transferring. (same functionality as `transferFrom` on EVM)
-  - **Mint and burn restrictions**: There is no authentication witness in the `mint` and `burn` functions, as a third party is not allowed to mint or burn; only the issuer can perform these actions.
+  - **Mint and burn restrictions**: There is no authentication witness in the `mint_to_private` and `burn` functions, as a third party is not allowed to mint or burn; only the issuer can perform these actions.
   - **Admin role**: The admin cannot be changed. Issuers can be added or removed by the admin.
 
 - **Functionalities**:
@@ -230,7 +231,7 @@ Both numbers are measured, not derived from the protocol constants. Every value 
 
 | `MAX_TRANSFER_ADDR_PER_CALL` | `transfer_batch` | Result |
 |---:|---:|---|
-| 1 | 161,493 (= `transfer`) | all tests pass |
+| 1 | 161,493 (= `transfer_private_to_private`) | all tests pass |
 | **2** | **312,909** | **all tests pass** |
 | 3 | — | aborts: `Assertion failed: push out of bounds` |
 | 4 | — | aborts: `Assertion failed: push out of bounds` |
@@ -273,7 +274,7 @@ Events must be declared inside the contract module, not in the shared library, w
 
 | Event | Fields | Emitted by | Delivered to | Mode |
 |---|---|---|---|---|
-| `Transfer` | `from`, `to`, `amount` | `transfer`, and `transfer_batch` once per recipient | the **recipient** and the **issuer** | `onchain_constrained`, both |
+| `Transfer` | `from`, `to`, `amount` | `transfer_private_to_private`, and `transfer_batch` once per recipient | the **recipient** and the **issuer** | `onchain_constrained`, both |
 
 This one is worth explaining, because both choices — who receives it, and how — were made deliberately and cost something.
 
@@ -283,7 +284,7 @@ This one is worth explaining, because both choices — who receives it, and how 
 
 **Why the issuer.** The issuer's note copies are offchain by necessity — PXE cannot discover a note it does not own — so until this event the issuer's whole audit trail had no data availability and a dropped message was undetectable. An event has no nullifier and no discovery step, and it was **verified** that the issuer can receive one constrained and on chain. This is therefore the issuer's first on-chain, unforgeable record of who paid whom and how much.
 
-**What it cost.** `transfer` went from 120,824 to **161,493 gates** (+34%), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
+**What it cost.** `transfer_private_to_private` went from 120,824 to **161,493 gates** (+34%), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
 
 **What is not public.** The event is encrypted to its two recipients. An outside observer sees that private logs exist, padded like every other private log, and learns nothing about the parties or the amount — see [What each operation publishes](#what-each-operation-publishes).
 
@@ -295,8 +296,8 @@ Every private operation enqueues one public call, and **every argument of a publ
 
 | Operation | Public callee | Published in the clear | Kept private |
 |---|---|---|---|
-| `mint(to, amount)` | `_mint(caller, amount)` | the **minter's** address, the **amount** | the recipient `to` |
-| `transfer(from, to, amount, …)` | `_transfer()` — **no arguments** | that a transfer of this token occurred | sender, recipient, amount |
+| `mint_to_private(to, amount)` | `_mint(caller, amount)` | the **minter's** address, the **amount** | the recipient `to` |
+| `transfer_private_to_private(from, to, amount, …)` | `_transfer()` — **no arguments** | that a transfer of this token occurred | sender, recipient, amount |
 | `burn(account, amount, …)` | `_burn(caller, amount)` | the **burner's** address, the **amount** | the debited `account` |
 
 Three things follow, and they are worth stating precisely because the obvious reading of the table overstates the leak.
@@ -309,7 +310,7 @@ Three things follow, and they are worth stating precisely because the obvious re
 
 The public callee's **selector** also distinguishes the three operations from each other — an observer can tell a mint from a burn from a transfer. For transfer that reveals only "a transfer happened"; for mint and burn it composes with the two rows above. There is no cheap fix: hiding the selector would mean one shared public function taking the operation kind as an argument, which publishes the same fact one level down, and would newly publish the caller on transfers.
 
-The one design that would remove the transfer selector is to make the pause flag a `DelayedPublicMutable`, as the freeze and list flags already are, so that `transfer` could check it in private and enqueue nothing. That was considered and **rejected**: a scheduled pause takes effect only after the delay, and every private read of a delayed value sets the transaction's `expiration_timestamp`, so a delay short enough to be useful for a pause would give every transfer a validity window of minutes and an expiration offset unique to this contract, and the library's own recommendation is a delay of hours, which it calls unsuitable for an emergency shutdown. For a security token the pause is the emergency lever and must take effect in the next block, so `is_paused` stays a `PublicMutable<bool>` checked in `_transfer`, and the public call that reveals "a transfer of this token occurred" is the price. Analysis finding `H-3` records the four options and their costs.
+The one design that would remove the transfer selector is to make the pause flag a `DelayedPublicMutable`, as the freeze and list flags already are, so that `transfer_private_to_private` could check it in private and enqueue nothing. That was considered and **rejected**: a scheduled pause takes effect only after the delay, and every private read of a delayed value sets the transaction's `expiration_timestamp`, so a delay short enough to be useful for a pause would give every transfer a validity window of minutes and an expiration offset unique to this contract, and the library's own recommendation is a delay of hours, which it calls unsuitable for an emergency shutdown. For a security token the pause is the emergency lever and must take effect in the next block, so `is_paused` stays a `PublicMutable<bool>` checked in `_transfer`, and the public call that reveals "a transfer of this token occurred" is the price. Analysis finding `H-3` records the four options and their costs.
 
 - **Private mint call to public function**:
   - **Reveals minter address**: Since it is a parameter in the public function call. It is the issuer, whose address is already known, but still, private to public function calls pose a problem as they also reveal that the contract was called.
@@ -329,11 +330,11 @@ The one design that would remove the transfer selector is to make the pause flag
 
 ### Modules
 
-Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like abstract contract and inheritance. Instead, we use separated modules in the form of interfaces and implementations. Every function that can or should be called by a user needs to be exposed in the main contract. Consequently, not everything can be displaced from the main contract (e.g., `mint`, `burn`, and `transfer` are all in the main contract), and most functions are exposed there.
+Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like abstract contract and inheritance. Instead, we use separated modules in the form of interfaces and implementations. Every function that can or should be called by a user needs to be exposed in the main contract. Consequently, not everything can be displaced from the main contract (e.g., `mint_to_private`, `burn`, and `transfer_private_to_private` are all in the main contract), and most functions are exposed there.
 
 #### Authorisation module (access control) - Public Context
 
-- This module is used by other modules and by the `mint` and `burn` functions.
+- This module is used by other modules and by the `mint_to_private` and `burn` functions.
 - Modules only need to call the `only_role` function, which publicly verifies if an address has sufficient roles for the action; otherwise, it reverts.
 - The default role is the `DEFAULT_ADMIN_ROLE`, which can grant other roles.
 - **Implementation note**: This module's implementation is quite cumbersome, as in the main contract, an instance of this module is passed to each function call. This is because the object is unique, and we cannot pass it as a context (at least until a working implementation is found).
@@ -370,11 +371,11 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 
 - The pause module is a `PublicMutable`.
 - The functions to set and unset the pausable flag are protected under Access Control.
-- The pause check is done in public state, in the enqueued half of `transfer`. As in CMTAT Solidity, `mint` and `burn` are not stopped by a pause; their enqueued halves check deactivation instead, so a deactivated token (which is paused forever) can do none of the three.
+- The pause check is done in public state, in the enqueued half of `transfer_private_to_private`. As in CMTAT Solidity, `mint_to_private` and `burn` are not stopped by a pause; their enqueued halves check deactivation instead, so a deactivated token (which is paused forever) can do none of the three.
 
 #### Enforcement module - Shared Context
 
-- This module is called in `mint`, `transfer`, and `burn` to check if an address has been frozen.
+- This module is called in `mint_to_private`, `transfer_private_to_private`, and `burn` to check if an address has been frozen.
 - Unlike the validation module, this module is mandatory.
 - Changing an address to frozen has a delay, as the value is a `DelayedPublicMutable`.
 
@@ -387,6 +388,26 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 - **Delivery mode of the issuer's copy**: the owner's copy is delivered onchain and constrained; the issuer's copy is delivered **offchain**. Aztec's own documentation presents an onchain constrained copy to an auditor as the supported pattern, but PXE cannot process an onchain note message addressed to someone who is not the note's owner: note discovery computes the note's nullifier, which needs the owner's nullifier key. Delivering the issuer's copy offchain sidesteps that, at the cost of the issuer's copy having no onchain data availability - the issuer must capture these messages as they are produced, and a sender who drops them is not detectable onchain.
 - **Other potential implementations**:
   - **App-siloed key**: Use an app-siloed key that the issuer can use for decrypting any note in the note hash tree of this app.
+
+## AIP-20 private profile
+
+Seven entry points carry the exact names and parameter types of the AIP-20 `Token` in the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), and therefore answer its selectors — a caller reaches an Aztec function by selector, which is derived from the name and the parameter *types* only:
+
+| Entry point | AIP-20 selector | Note |
+|---|---|---|
+| `transfer_private_to_private(from, to, amount, authwit_nonce)` | `0xedc09d49` | May also revert for compliance reasons; AIP-20's may too, through its hook |
+| `mint_to_private(to, amount)` | `0xf8f84119` | `MINTER_ROLE` here, a single immutable minter there; identical from the caller's side |
+| `name()`, `symbol()`, `decimals()` | `0x5c5c9c42`, `0x62cc9647`, `0x6bff8f59` | The `private_get_*` variants remain as this project's extras |
+| `balance_of_private(owner)`, `total_supply()` | `0x4375727c`, `0x8dd382ec` | |
+
+`contracts/cmtat-aztec/src/test/test_aip20_profile.nr` pins these values, read from the fork's compiled `Token::interface()`.
+
+This is a **partial profile, not conformance**. Aztec has no interface detection, so the gaps show up at the first call rather than at discovery:
+
+- `burn(account, amount, authwit_nonce)` deliberately keeps its own name and selector. AIP-20's `burn_private` is holder-authorised; CMTAT's burn is redemption, an issuer act gated by `BURNER_ROLE` on top of the holder's consent. A wallet calling `0xc282ed79` as a self-burn would fail with a role error it cannot anticipate.
+- No `*_to_public`, `*_to_commitment`, `balance_of_public`, `initialize_transfer_commitment` or `get_auth_contract`: public balances and partial notes conflict with transfer restriction, as [`doc/standards/cmtat-vs-aip20.md`](standards/cmtat-vs-aip20.md) explains.
+- The constructor differs, so deployment tooling differs regardless.
+- `transfer_batch`, `mint_batch`, `burn_batch` and `cancel_authwit` are this project's extras with no AIP-20 counterpart.
 
 ## Deployment
 
@@ -678,7 +699,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Admin** | Holder of `DEFAULT_ADMIN_ROLE` (role `1`), the only role that can grant and revoke the others. Granted at deployment. Note that `getRoleAdmin` returns `DEFAULT_ADMIN_ROLE` for *every* role, including itself, so an admin can appoint another admin — the *Assumptions* section below states the admin cannot be changed, but the code does not enforce that. |
 | **Role** | A numeric permission checked in public state: `DEFAULT_ADMIN_ROLE` 1, `PAUSE_ROLE` 2, `ENFORCEMENT_ROLE` 3, `VALIDATION_ROLE` 4, `ADDRESS_LIST_ADD_ROLE` 5, `ADDRESS_LIST_REMOVE_ROLE` 6, `MINTER_ROLE` 7, `BURNER_ROLE` 8, `DEBT_ROLE` 9, `DEBT_CREDIT_EVENT_ROLE` 10, `EXTRA_INFORMATION_ROLE` 11. |
 | **Authorisation module** | The role table (`access_control`) plus `only_role`, the check every other module calls. |
-| **Pause module** | A public on/off switch. While paused, transfers revert, because `transfer` enqueues a public call that asserts the contract is not paused. Mint and burn continue through a pause, as in CMTAT Solidity, and stop only at deactivation. |
+| **Pause module** | A public on/off switch. While paused, transfers revert, because `transfer_private_to_private` enqueues a public call that asserts the contract is not paused. Mint and burn continue through a pause, as in CMTAT Solidity, and stop only at deactivation. |
 | **Enforcement module** | Per-address freezing. A frozen address can neither send nor receive. Because the flag is a `DelayedPublicMutable`, a freeze takes effect only after the delay. |
 | **Validation module** | Transfer restriction by address list. Holds each address's flags and the switch saying which lists are enforced. |
 | **Blacklist / whitelist** | The two list modes (`BLACKLIST_FLAG` 1, `WHITELIST_FLAG` 2). Blacklist blocks listed addresses, whitelist allows only listed ones. Exactly one mode is enforced per transfer. |

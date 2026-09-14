@@ -9,4 +9,4 @@ mod transfer_private;
 mod test_validation_module;
 mod test_enforcement_module;
 mod test_pause_module;
-mod test_extra_information;
+mod test_extra_information;mod test_aip20_profile;

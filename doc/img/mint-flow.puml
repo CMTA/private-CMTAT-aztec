@@ -6,7 +6,7 @@ skinparam maxMessageSize 250
 
 actor "Minter\n(the issuer)" as Minter
 box "Client side — proved on the minter's device" #F4F8FC
-participant "mint(to, amount)\nexternal private" as Priv
+participant "mint_to_private(to, amount)\nexternal private" as Priv
 end box
 database "Public state" as PS
 box "Sequencer — public" #FDF4F4
@@ -15,7 +15,7 @@ end box
 participant "Issuer" as Issuer
 participant "Recipient" as To
 
-Minter -> Priv : mint(to, amount)
+Minter -> Priv : mint_to_private(to, amount)
 note right of Priv
   No authwit. Minting is authorised by a role, not by
   the recipient, so there is nothing for `to` to sign.

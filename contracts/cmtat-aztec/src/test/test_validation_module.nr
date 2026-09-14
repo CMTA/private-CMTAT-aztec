@@ -62,7 +62,7 @@ unconstrained fn transfer_when_blacklisted() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 }
 
@@ -86,7 +86,7 @@ unconstrained fn transfer_when_not_whitelisted() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 }
 
@@ -122,7 +122,7 @@ unconstrained fn transfer_when_whitelisted() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 
     utils::check_private_balance(
@@ -145,7 +145,7 @@ unconstrained fn transfer_when_no_operations() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 }
 
@@ -193,7 +193,7 @@ unconstrained fn can_remove_from_list_when_role() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
     );
 }
 
@@ -228,7 +228,7 @@ unconstrained fn mint_to_blacklisted_fails() {
         UserFlags { is_blacklisted: true, is_whitelisted: false },
     );
 
-    env.call_private(issuer, Token::at(token).mint(user, 100 as u128));
+    env.call_private(issuer, Token::at(token).mint_to_private(user, 100 as u128));
 }
 
 #[test(should_fail_with = "The recipient is not in the whitelist")]
@@ -243,7 +243,7 @@ unconstrained fn mint_to_non_whitelisted_fails() {
         UserFlags { is_blacklisted: false, is_whitelisted: true },
     );
 
-    env.call_private(issuer, Token::at(token).mint(user, 100 as u128));
+    env.call_private(issuer, Token::at(token).mint_to_private(user, 100 as u128));
 }
 
 #[test(should_fail_with = "The sender is in the blacklist")]

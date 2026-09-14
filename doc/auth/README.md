@@ -97,7 +97,7 @@ What that call publishes is a single boolean, `is_burn`. A burn is already publi
 | Events | `Transfer` (private) plus public administrative events | The same public administrative events: `NewRole`, `RoleRevoked`, `Paused`, `Unpaused`, `Deactivated`, `AddressFrozen`, `AddressListed`, `OperationsSet` |
 | One deployment serves | One token | Any number of tokens: every token constructed with the same `auth_contract` shares its pause, deactivation and freeze state |
 | Replaceable | Not upgradeable | Not upgradeable, and the token's `auth_contract` is `PublicImmutable`: changing policy means redeploying the token |
-| Cost per private transfer | `transfer` 161,493 gates, one circuit | Token's `transfer_private_to_private` 63,310 + `authorize_private` 14,650 + the cross-contract kernel iteration (~101,000 by the framework's figure, not measured here) |
+| Cost per private transfer | `transfer_private_to_private` 161,493 gates, one circuit | Token's `transfer_private_to_private` 63,310 + `authorize_private` 14,650 + the cross-contract kernel iteration (~101,000 by the framework's figure, not measured here) |
 | `version()` | `0.3.0` | `0.3.0`, kept equal by hand — see [Version](#version) |
 
 The table in [`cmtat-as-aip20-auth-contract.md`](../standards/cmtat-as-aip20-auth-contract.md#mandatory-criteria-scorecard) scores the design against the CMTAT mandatory criteria; the partials there are the ones the *hook* cannot close, and this implementation does not change them.

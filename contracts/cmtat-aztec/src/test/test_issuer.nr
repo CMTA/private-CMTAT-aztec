@@ -35,12 +35,12 @@ unconstrained fn transfers_keep_working_across_an_issuer_change() {
     env.call_public(admin, Token::at(token).set_issuer(new_issuer));
 
     // During the delay the old issuer is still current; the transfer must succeed.
-    env.call_private(admin, Token::at(token).transfer(admin, user1, 100 as u128, 0));
+    env.call_private(admin, Token::at(token).transfer_private_to_private(admin, user1, 100 as u128, 0));
 
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
     // After the delay the new issuer is current; the transfer must still succeed.
-    env.call_private(admin, Token::at(token).transfer(admin, user1, 100 as u128, 0));
+    env.call_private(admin, Token::at(token).transfer_private_to_private(admin, user1, 100 as u128, 0));
 
     utils::check_private_balance(env, token, admin, mint_amount - 200 as u128);
     utils::check_private_balance(env, token, user1, 200 as u128);
