@@ -701,9 +701,9 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 
 ## Intellectual property
 
-This code is copyright (c) 2025 Taurus SA and is dual-licensed under the MIT and MPL-2.0 licenses.  You may choose either license.
+The code is copyright (c) Capital Market and Technology Association, 2026, and is released under the [Mozilla Public License 2.0](../LICENSE-MPL.md) and the [MIT license](../LICENSE-MIT.md). You may choose either license.
 
-See [LICENSE-MIT.md](../LICENSE-MIT.md) and [LICENSE-MPL.md](../LICENSE-MPL.md) for details.
+The history up to and including commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60) (the 0.1 and 0.1.1 releases) is copyright (c) 2025 Taurus SA, under the same two licenses. Later commits are copyright CMTA.
 
 We are not aware of any patent or patent application covering the techniques implemented.
 
