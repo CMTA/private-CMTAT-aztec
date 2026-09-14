@@ -75,6 +75,8 @@ Two further contracts are not tokens but **ARC-403 authorization contracts**: th
 | `CMTATAztecAuth` | AIP-20 `Token` |
 | `CMTATAztecAuthMultiToken` | ARC-1155 `MultiToken` |
 
+A fourth token variant, `CMTATAztecAIP20`, is the fork's AIP-20 `Token` with CMTAT's terms, token ID, roles and `version()` added on the token itself (Noir has no inheritance, so the standard's source is carried verbatim); pause, freeze and the lists reach it through `CMTATAztecAuth`. See [A CMTAT-flavoured AIP-20 token](auth/README.md#a-cmtat-flavoured-aip-20-token).
+
 Because there is no inheritance, an entry point added to a shared module has to be declared in each variant's `main.nr` that should expose it.
 
 ## Functionalities overview

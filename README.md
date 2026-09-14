@@ -35,6 +35,8 @@ Two further contracts are not tokens but **ARC-403 authorization contracts**: th
 | `CMTATAztecAuth` | AIP-20 `Token` |
 | `CMTATAztecAuthMultiToken` | ARC-1155 `MultiToken` |
 
+A fourth token variant, `CMTATAztecAIP20`, is the fork's AIP-20 `Token` with CMTAT's terms, token ID, roles and `version()` added on the token itself (Noir has no inheritance, so the standard's source is carried verbatim); pause, freeze and the lists reach it through `CMTATAztecAuth`. See [A CMTAT-flavoured AIP-20 token](doc/auth/README.md#a-cmtat-flavoured-aip-20-token).
+
 ## Features
 
 - **Private** mint, transfer and burn, in single and batched form, with [authwits](https://docs.aztec.network/developers/docs/foundational-topics/advanced/authwit) in place of ERC-20 allowances.
@@ -82,6 +84,8 @@ contracts/
   cmtat-aztec-light/ CMTATAztecLight
   cmtat-aztec-auth/  CMTATAztecAuth — ARC-403 hook for the AIP-20 token of aztec-standards
   cmtat-aztec-auth-multitoken/  CMTATAztecAuthMultiToken — the same for ARC-1155
+  cmtat-aztec-aip20/ CMTATAztecAIP20 — the aztec-standards Token plus CMTAT terms, token ID, roles, version
+  arc403-interface/  signature-only stub of CMTATAztecAuth, so the token can call the hook (never deployed)
 src/                 TypeScript: generated artifacts, e2e tests, PXE / account helpers
 scripts/             Testnet scripts (deploy, interact, fees, profiling)
 doc/                 Technical documentation, diagrams, standards analyses, assessment, audits
