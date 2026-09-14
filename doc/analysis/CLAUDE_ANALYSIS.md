@@ -50,7 +50,7 @@
 | G-6 | `yarn compile` produces artifacts `yarn codegen` cannot consume | ✅ fixed |
 | H-1 | `burn` publishes the caller's address and the amount | ✅ fixed — documented, as decided |
 | H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — now protected by `PRIVACY:` comments on all three public halves |
-| H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — 4 options costed; the one that removes the leak needs a pause of ≥ 6 min, effectively closing it |
+| H-3 | The enqueued public selector reveals which operation ran | ✅ decided — option 1: the pause stays a `PublicMutable` checked in public, and the leak is documented; a delayed pause of hours was judged too slow for the emergency lever |
 | H-4 | The `Transfer` event: its only unique datum is the sender, to the recipient, and it is delivered unverifiably | ✅ fixed — D adopted; transfer batch cap re-measured and lowered to 2 |
 | H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ⬜ decide — validity window and privacy set vs. freeze window |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
@@ -58,7 +58,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 25 ✅ (9 checked/keep, 16 fixed), 2 ⚠️ corrected, 8 ⬜ open (2 *implement*: D-2, J-1; 5 *decide*: B-3, D-1, F-1, H-3, H-6; 1 *leave*: B-4). *Counted from the table; earlier revisions of this line over-stated the row total by one.*
+**Counts:** 35 rows — 26 ✅ (9 checked/keep, 16 fixed, 1 decided), 2 ⚠️ corrected, 7 ⬜ open (2 *implement*: D-2, J-1; 4 *decide*: B-3, D-1, F-1, H-6; 1 *leave*: B-4). *Counted from the table; earlier revisions of this line over-stated the row total by one.*
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -70,7 +70,6 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
-| H-3 | The public selector | Four options costed in H-3. The only one that removes the leak — a delayed pause flag — would take at least 360 seconds and, by the library's guidance, hours, which the framework itself calls unsuitable for an emergency shutdown. Effectively closed; document the leak. |
 | H-6 | The delay itself | 360 seconds is far below the library's recommended "couple hours": every value-moving transaction expires six minutes after its anchor block, and a delay shorter than other contracts' is a fingerprint. Against that, a short delay is a short freeze window. Needs the network's typical delay, real proving times, and a compliance call. |
 
 ---
@@ -720,7 +719,9 @@ The entire public half of a transfer exists to read one boolean. It has to be pu
 
 **4. Make the role table `DelayedPublicMutable` too.** This is the symmetric fix for H-1: if roles could be read privately, `_mint`/`_burn` would not need the caller as an argument and the role-holder's address would stop being published. **The cost is worse than the disease** — a revoked minter would keep the ability to mint for the whole delay window, which is a live security regression, not a privacy trade. Recorded so the symmetry is visible and the answer is on file.
 
-**Verdict: decide — take 1 now; 3 is effectively closed by the duration analysis.** Option 3 is the only one that removes the leak rather than relocating it, but the leak it removes — that a transfer of this token occurred — is bought with a pause that takes six minutes at best and, by the library's guidance, hours. For a security token whose pause is the emergency lever, that is the wrong trade, and the framework's own documentation says so in as many words. Options 2 and 4 are recorded as rejected with reasons. What the duration analysis *did* surface is recorded separately as H-6.
+**Verdict: option 1, decided.** The project owner's call: keep the pause check where it is, because a pause that takes several hours is too slow for a pause. The residual leak is documented in the README under *What each operation publishes*, together with the reason the pause flag stays a `PublicMutable` while the freeze and list flags are delayed. Option 3 is recorded below as considered and rejected.
+
+The analysis that led there: Option 3 is the only one that removes the leak rather than relocating it, but the leak it removes — that a transfer of this token occurred — is bought with a pause that takes six minutes at best and, by the library's guidance, hours. For a security token whose pause is the emergency lever, that is the wrong trade, and the framework's own documentation says so in as many words. Options 2 and 4 are recorded as rejected with reasons. What the duration analysis *did* surface is recorded separately as H-6.
 
 ### H-4. The `Transfer` event: what it is for, what it tells whom, and whether anything else already tells them
 
