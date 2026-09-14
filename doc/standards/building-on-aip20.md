@@ -265,10 +265,10 @@ The profile above is seven functions. The fork's `Token` exposes twenty-two. Thi
 | `constructor_with_initial_supply(name, symbol, decimals, initial_supply, to, auth_contract)` | public, initializer | different | CMTAT's `constructor(admin, name, symbol, decimals)` seats a role table and an issuer, not a minter and a hook. Deployment tooling differs whatever else is aligned; F7 in [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md#f7--named-constructors) adds named constructors |
 | `constructor_with_minter(name, symbol, decimals, minter, auth_contract)` | public, initializer | different | Same |
 | `transfer_private_to_private(from, to, amount, _nonce)` | private | **yes** | Aligned; may revert for compliance |
-| `transfer_private_to_public(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `to`. Public balances expose holdings and are conflict 1 in the [comparison](./cmtat-vs-aip20.md); F6 keeps them out of CMTAT-private and reserves them for a separate variant |
-| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | private | **no** | Public balance plus a partial note: conflicts 1 and 2 |
-| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | private | **no** | A partial note whose recipient was fixed at initialization; screening has to move to `initialize_transfer_commitment` and the completion amount is published unencrypted. F2 describes the three additions it needs, and why it belongs to the AIP20 variant only |
-| `transfer_public_to_private(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `from` (conflict 1) |
+| `transfer_private_to_public(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `to` (conflict 1). A holder-initiated bridge, not a public ledger — see [the cross-domain paths](#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) for how it could be offered as the holder's choice |
+| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | private | **no** | Public balance plus a partial note: conflicts 1 and 2. See the cross-domain paths below |
+| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | private | **no** | A partial note whose recipient was fixed at initialization; screening has to move to `initialize_transfer_commitment` and the completion amount is published unencrypted. F2 describes the three additions it needs; see the cross-domain paths below |
+| `transfer_public_to_private(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `from` (conflict 1). See the cross-domain paths below |
 | `initialize_transfer_commitment(to, completer)` | private | **no** | The partial-note entry point; comes with F2 |
 | `transfer_public_to_public(from, to, amount, _nonce)` | public | **no** | Public balances on both sides, and the parties and amount are public call arguments (conflict 1) |
 | `transfer_public_to_commitment(from, commitment, amount, _nonce)` | public | **no** | Conflicts 1 and 2 |
@@ -286,6 +286,47 @@ The profile above is seven functions. The fork's `Token` exposes twenty-two. Thi
 Read down the "why" column and the missing fifteen collapse to three causes: **public balances** (eight entry points), **partial notes** (five, two of them also public), and the **burn authorisation** (one), plus the constructors. The first two are the design conflicts the comparison document identifies, and both are answered by the same product decision recorded in [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md): they stay out of CMTAT-private and go, if anywhere, into a separate CMTAT-private-AIP20 variant that discloses what they publish.
 
 What CMTAT has that AIP-20 does not, for the mirror image: `transfer_batch`, `mint_batch`, `burn_batch`, `cancel_authwit`, the `private_get_*` getters, `public_get_issuer` / `private_get_issuer` / `set_issuer`, `version`, and the whole compliance and metadata surface (roles, pause, deactivation, freeze, lists, terms, token ID, and on the Debt variant credit events and debt).
+
+### The cross-domain paths: what they are for, and offering them as a holder's choice
+
+Four of the missing entry points are not "public balances" in the sense of a transparent ledger; they are the **bridges between the private and the public domain** that give AIP-20 its "hybrid" character. A holder who has private notes can decide to move some of them into the public side of the token, and back. The question this raises for CMTAT is different from F6's: not "should balances be public" but "may a holder *choose* to make one of their own transfers public".
+
+#### What each one does, from the AIP-20 documentation and source
+
+| Entry point | What happens | Who decides | What becomes public | What stays private |
+|---|---|---|---|---|
+| `transfer_private_to_public(from, to, amount, _nonce)` | `from`'s notes are spent in private; `to`'s **public balance** is credited by an enqueued public call | The sender | `to`, `amount` (arguments of the public call) and a `Transfer(PRIVATE_ADDRESS, to, amount)` event | `from` |
+| `transfer_public_to_private(from, to, amount, _nonce)` | `from`'s public balance is debited by an enqueued public call; `to` receives a **note** | The sender (who holds a public balance) | `from`, `amount`, `Transfer(from, PRIVATE_ADDRESS, amount)` | `to` |
+| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | `from`'s notes are spent; the amount completes a **partial note** that `to` created earlier with `initialize_transfer_commitment(to, completer)` and handed to the sender | The recipient prepares, the sender pays | Nothing about the parties; the completion log carries the **amount unencrypted** (visible but unlinked, see F2) | `from`, `to` |
+| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | `transfer_private_to_public` plus a partial note for `to` with the sender as completer, returned as a commitment | The sender | As `transfer_private_to_public` | `from`; the commitment's recipient |
+
+The AIP-20 page states the purpose plainly. Private functions run on the holder's device against an anchor block and cannot read current public state — a DEX quote, an auction result, a vault's share price — so a private holder cannot interact with a public-side protocol in one step. The domain bridges are how a holder *enters* such a protocol (`private_to_public`: pay a contract that keeps public balances), *leaves* it again (`public_to_private`: shield the proceeds back into notes), and the partial-note forms are how the return leg can be prepared privately before the public computation happens (`_with_commitment`: deposit publicly now, receive the private output later through a note only the sender can complete; `to_commitment`: pay into a note whose owner is already fixed, so a contract or a counterparty can settle later). These are the AIP-4626 vault and AMM flows in the fork's own test suites, and they are also, in the words of [`cmtat-vs-aip20.md`](./cmtat-vs-aip20.md), delivery-versus-payment: an investor pre-opens a commitment, the other leg pays into it when it settles.
+
+#### Could CMTAT offer them alongside `transfer_private_to_private`?
+
+Yes, as a **holder's deliberate choice**, and the case is stronger than the F6 verdict suggests, because the four paths do not make the *token* public — they make *one transfer* public, at the initiative of the party whose side becomes visible:
+
+- In `transfer_private_to_public` the sender chooses; what is published is the recipient's public credit and the amount, and the recipient, by holding a public balance at all, has already accepted that its public position is visible. The sender stays private.
+- In `transfer_public_to_private` the sender is already public; the recipient stays private. Nobody's privacy is reduced by someone else's choice.
+- In the commitment forms the parties stay private on both sides; only the amount leaks, unlinked, and only when the recipient chose to work with a commitment.
+
+So the privacy-table change is not "balances become public" but *"a holder may opt a transfer, and its own public balance, out of privacy; counterparties keep theirs"*. Read that way the paths are compatible with a token that is private by default, provided the compliance chain follows them. What following them requires, path by path:
+
+| | Screening | Audit copy to the issuer | Lifecycle |
+|---|---|---|---|
+| `transfer_private_to_public` | `from` and `to` in the private half, exactly as today (`operateOnTransfer(from, to)`, freeze on both) | The public credit is public state the issuer reads directly; nothing to deliver | Pause check in the enqueued public half, as today |
+| `transfer_public_to_private` | Same, in the private half — the function is private in AIP-20 too | The note for `to` gets the issuer's offchain copy, as every note does | Same |
+| `transfer_private_to_commitment` | `from` at completion; **`to` at `initialize_transfer_commitment`**, since the commitment holds nothing to screen later | The issuer must receive the partial note at initialization (F2, addition 2) | Pause at completion; an **expiry** on the commitment (F2, addition 1) so a recipient frozen after initialization cannot be paid indefinitely |
+| `transfer_private_to_public_with_commitment` | As `private_to_public`, plus `to` is the commitment's recipient — already screened | As above | As above |
+
+The first two are a small change: two entry points, one `public_balances` map, `balance_of_public` to read it, the same private-half invariant chain the token already has, and the public `Transfer` events with the `PRIVATE_ADDRESS` marker (F5) that AIP-20 indexers expect. The commitment forms carry F2's three additions, and F2's conclusion stands: they belong to a variant that discloses the unencrypted completion amount.
+
+Two things would have to be decided by the issuer, not the holder, and both are one flag:
+
+1. **Whether holders get the choice at all.** A `PublicImmutable<bool>` set at deployment — `public_side_enabled` — under which the four paths revert. A token deployed with it off is byte-for-byte today's behaviour and privacy table; a token deployed with it on is the hybrid, and its assessment says so. This keeps one codebase and lets the privacy table read *"private; the issuer may enable a public side that holders opt into per transfer"*.
+2. **Whether public balances are also transferable publicly.** `transfer_public_to_public`, `mint_to_public` and `burn_public` are not needed for the four bridges — a public balance can exist only as a landing and departure point — but a holder with a public balance will expect to move it. If they are added, their compliance chain runs entirely in public (both parties, freeze, lists, pause), which is straightforward but doubles the surface to test; the parties and amounts are public call arguments, which is what the holder chose.
+
+**Where this leaves F6.** The F6 verdict — public balances in neither product — was written for a transparent second ledger. The four bridges are the narrower thing: per-transfer, holder-initiated, issuer-enabled. They are compatible with the CMTAT-private premise under the flag above and are the natural first content of the CMTAT-private-AIP20 variant; whether to enable them on a given deployment is the issuer's compliance call, and the assessment's privacy table must be filled for the deployment, not the code.
 
 ### The burn trap
 
