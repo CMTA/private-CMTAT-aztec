@@ -20,7 +20,6 @@ This document is the user-facing description. The feasibility analysis that prec
 - [Differences with the CMTAT token contracts](#differences-with-the-cmtat-token-contracts)
 - [How to use it](#how-to-use-it)
 - [Limitations](#limitations)
-- [A CMTAT-flavoured AIP-20 token](#a-cmtat-flavoured-aip-20-token)
 - [Version](#version)
 - [How it was verified](#how-it-was-verified)
 - [Adding AIP-721](#adding-aip-721)
@@ -157,33 +156,9 @@ The fork's token cannot be compiled from inside this repository (see Trap 3 in [
 - **The caller is not restricted.** Any contract may call `authorize_*`; the calls only assert and enqueue a check on the authorization contract's own state, so an unrelated caller can neither change state nor learn anything it could not read publicly.
 - **Privacy.** The private hook enqueues one public call carrying `is_burn`. An observer learns that a transfer of a token wired to this contract happened in this transaction — the same disclosure the CMTAT token contracts make — and nothing about the parties or the amount. A design that enqueues nothing exists (delayed pause) and was rejected for the reason given above.
 
-## A CMTAT-flavoured AIP-20 token
-
-`CMTATAztecAIP20` (`contracts/cmtat-aztec-aip20`) is the answer to "can we inherit from AIP-20 and add `set_terms`". Noir has no inheritance, and a contract's entry points cannot be imported from another contract crate, so inheriting means carrying the source: the contract is the fork's `Token` (`src/token_contract/src/main.nr` at `5433e9c`) copied verbatim between `AIP-20` markers, plus a `CMTAT` region appended after it. Nothing in the AIP-20 region changed except the contract name and one constructor parameter.
-
-What it adds, all from `cmtat_aztec_lib`:
-
-| Entry point | Role | Notes |
-|---|---|---|
-| `set_terms(DocumentInfo)` / `terms() -> [Field; 5]` | `EXTRA_INFORMATION_ROLE` | CMTAT terms: name, URI, 256-bit document hash as two `u128`, `lastModified` stamped by the contract; emits `Terms` |
-| `set_token_id(FieldCompressedString)` / `token_id()` | `EXTRA_INFORMATION_ROLE` | The tokenized asset's identifier (an ISIN, say); emits `TokenId` |
-| `has_role`, `grant_role`, `revoke_role`, `renounce_role` | `DEFAULT_ADMIN_ROLE` | The CMTAT role table; emits `NewRole` / `RoleRevoked` |
-| `version()` | — | Same `VERSION` constant as the other CMTAT contracts |
-
-What it does **not** add, on purpose: pause, deactivation, freeze and the lists. Those stay in `CMTATAztecAuth`, reached through the hook the copied token already calls, so the transfer path is the standard's and measures the same — `transfer_private_to_private` is **63,310 gates**, identical to the fork's. A deployment that wants both the on-token terms and the compliance rules deploys `CMTATAztecAuth` first and passes its address as `auth_contract`.
-
-The departures from the standard, exhaustively:
-
-- **Constructors take one more argument.** `constructor_with_initial_supply(name, symbol, decimals, initial_supply, to, auth_contract, admin)` and `constructor_with_minter(name, symbol, decimals, minter, auth_contract, admin)`: `admin` receives `DEFAULT_ADMIN_ROLE` and `EXTRA_INFORMATION_ROLE`. Constructors are deployment-time only; no runtime selector changes. A test pins the runtime selectors (`transfer_private_to_private` = `0xedc09d49`, `balance_of_private` = `0x4375727c`, `total_supply` = `0x8dd382ec`, the two burns) to the standard's values.
-- **Two storage fields appended** after the AIP-20 ones, so the standard's slots are unchanged.
-- **Eleven entry points and four events added.** A wallet or vault that knows AIP-20 sees a superset.
-- **The hook interface comes from a stub crate**, `contracts/arc403-interface`, rather than from `cmtat_aztec_auth`: the `#[event]` macro keeps a global selector registry across the crate graph, and the token's `NewRole` / `RoleRevoked` would collide with the authorization contract's identical events. The stub carries signatures only, is not a workspace member and must never be deployed.
-
-**Maintenance.** This is a fork of the fork. When `submodules/aztec-standards` moves, diff its `Token` against the AIP-20 region and re-apply; the selector test and the sixteen tests in `contracts/cmtat-aztec-aip20/src/test/` (mint, private and public transfer, burn, the hook end to end with a real `CMTATAztecAuth` deployed in the same workspace, terms, token ID, roles, version) are the regression net.
-
 ## Version
 
-`version()` returns the constant `VERSION` of the contract, `0.3.0` today. It is **kept equal to the CMTAT token contracts' `VERSION`** for now: the authorization contracts and `CMTATAztecAIP20` ship with the token release they are built and tested against, and the pre-release checklist in `CHANGELOG.md` bumps the six constants together. Should the authorization contracts start to evolve on their own cadence, give them their own line in the checklist and their own number.
+`version()` returns the constant `VERSION` of the contract, `0.3.0` today. It is **kept equal to the CMTAT token contracts' `VERSION`** for now: the authorization contracts ship with the token release they are built and tested against, and the pre-release checklist in `CHANGELOG.md` bumps the five constants together. Should the authorization contracts start to evolve on their own cadence, give them their own line in the checklist and their own number.
 
 ## How it was verified
 

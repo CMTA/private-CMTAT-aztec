@@ -42,7 +42,7 @@ Custom changelog tag: `Dependencies`, `Documentation`, `Testing`
 
 > Before a new release, perform the following tasks
 
-- Code: update `VERSION` in each contract's `main.nr` ([cmtat-aztec](./contracts/cmtat-aztec/src/main.nr), [cmtat-aztec-debt](./contracts/cmtat-aztec-debt/src/main.nr), [cmtat-aztec-light](./contracts/cmtat-aztec-light/src/main.nr), the two authorization contracts [cmtat-aztec-auth](./contracts/cmtat-aztec-auth/src/main.nr) and [cmtat-aztec-auth-multitoken](./contracts/cmtat-aztec-auth-multitoken/src/main.nr), and [cmtat-aztec-aip20](./contracts/cmtat-aztec-aip20/src/main.nr), which all carry the same number), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
+- Code: update `VERSION` in each contract's `main.nr` ([cmtat-aztec](./contracts/cmtat-aztec/src/main.nr), [cmtat-aztec-debt](./contracts/cmtat-aztec-debt/src/main.nr), [cmtat-aztec-light](./contracts/cmtat-aztec-light/src/main.nr), and the two authorization contracts [cmtat-aztec-auth](./contracts/cmtat-aztec-auth/src/main.nr) and [cmtat-aztec-auth-multitoken](./contracts/cmtat-aztec-auth-multitoken/src/main.nr), which carry the same number), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
 - Pin one Aztec version, and check that it is the same in all three places: the `tag = "vX.Y.Z"` entries in [Nargo.toml](./Nargo.toml), the `@aztec/*` versions in [package.json](./package.json), and the `aztec-up X.Y.Z` instruction in [README.md](./README.md) and [doc/README.md](./doc/README.md)
 - Rebuild artifacts from a clean tree, so the release is not validated against a stale `src/artifacts/`
 
@@ -85,11 +85,6 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - New library module `authorizationHookModule.nr` holds the rules and the four pinned burn selectors; two contracts because the MultiToken hook carries an `id` and Noir has no overloading.
   - Verified by 57 unit tests and by 10 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 14,650 gates, of which 6,203 are the list check.
   - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
-
-- `CMTATAztecAIP20`, the `aztec-standards` AIP-20 `Token` with CMTAT's terms, token ID, role table and `version()` on the token itself. Documented in `doc/auth/README.md`, "A CMTAT-flavoured AIP-20 token".
-  - Noir has no inheritance, so the fork's `Token` (`5433e9c`) is carried verbatim between markers, with two storage fields appended and an `admin` parameter added to both constructors; every runtime entry point keeps its name, types and selector, pinned by a test, and `transfer_private_to_private` measures the same 63,310 gates as the standard.
-  - Pause, deactivation, freeze and the lists are not on the token; they reach it through the ARC-403 hook and `CMTATAztecAuth`, which the tests exercise end to end in this workspace.
-  - Adds `contracts/arc403-interface`, a signature-only stub of `CMTATAztecAuth` (not a workspace member, never deployed): the token cannot depend on the real one because the `#[event]` macro's global selector registry rejects the identical `NewRole` / `RoleRevoked` events.
 
 ### Changed
 

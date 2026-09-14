@@ -7,6 +7,5 @@ members = [
     "contracts/cmtat-aztec-light",
     "contracts/cmtat-aztec-auth",
     "contracts/cmtat-aztec-auth-multitoken",
-    "contracts/cmtat-aztec-aip20",
 ]
 default-member = "contracts/cmtat-aztec"

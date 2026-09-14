@@ -2,7 +2,6 @@
 
 The third step of a three-step plan. Step one brings the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) fork to Aztec 5.2.0 ([`upgrading-aztec-standards.md`](./upgrading-aztec-standards.md)); step two packages the compliance modules as an ARC-403 authorization contract for a stock AIP-20 token, with its known limits on mint and burn ([`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md)). This document is step three: **which AIP-20 features can be brought into the CMTAT token itself without breaking its equivalence to CMTAT, and in what order.**
 
-> **Status (2026-09-14).** The **CMTAT-private-AIP20** product now exists in a first form: `contracts/cmtat-aztec-aip20` (`CMTATAztecAIP20`) is the fork's AIP-20 `Token` carried verbatim with CMTAT terms, token ID, roles and `version()` appended, and `CMTATAztecAuth` supplies pause, deactivation, freeze and a sender-side list through the hook. The note-budget recursion, the rule-engine hook with recipient and caller, and the commitment-transfer screening discussed below are not in it. See [`doc/auth/README.md`](../auth/README.md#a-cmtat-flavoured-aip-20-token).
 
 ## Table of contents
 
