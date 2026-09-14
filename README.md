@@ -90,7 +90,7 @@ doc/                 Technical documentation, diagrams, standards analyses, asse
 
 The code is copyright (c) Capital Market and Technology Association, 2026, and is released under the [Mozilla Public License 2.0](LICENSE-MPL.md) and the [MIT license](LICENSE-MIT.md). You may choose either license.
 
-The history up to and including commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60) (the 0.1 and 0.1.1 releases) is copyright (c) 2025 Taurus SA, under the same two licenses. Later commits are copyright CMTA.
+The history up to and including commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60) (the 0.2.0 release, and so the 0.1.0, 0.1.1 and 0.2.0 releases) is copyright (c) 2025 Taurus SA, under the same two licenses. Later commits are copyright CMTA.
 
 We are not aware of any patent or patent application covering the techniques implemented.
 

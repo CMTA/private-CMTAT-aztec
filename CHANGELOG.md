@@ -78,16 +78,16 @@ Nothing yet.
 
 ## 0.3.0 — 2026-09-14
 
-MAJOR under the policy above: storage layout, note delivery and the external API all changed with the framework upgrade, and 0.3.0 is not compatible with a 0.2 deployment. `version()` returns `0.3.0`. Built and tested on Aztec **5.2.0** (sandbox and testnet).
+MAJOR under the policy above: storage layout, note delivery and the external API all changed with the framework upgrade, and 0.3.0 is not compatible with a 0.2.0 deployment. `version()` returns `0.3.0`. Built and tested on Aztec **5.2.0** (sandbox and testnet).
 
 ### Summary
 
-- Upgraded from Aztec 0.63.1 to **5.2.0**, which is a rewrite of every file rather than a version bump: the framework renamed its function and state-variable macros, moved contract state behind `self`, replaced note delivery, and replaced the PXE-centric TypeScript API with a Wallet-centric one.
-- Restructured the contract into module structs, added testnet deployment scripts, and moved private balances onto the framework's own `BalanceSet`.
+- Upgraded from Aztec 0.87.8 to **5.2.0**, which is a rewrite of every file rather than a version bump: the framework renamed its function and state-variable macros, moved contract state behind `self`, replaced note delivery, and replaced the PXE-centric TypeScript API with a Wallet-centric one.
+- Moved private balances from the hand-written `BalanceSet` of 0.2.0 onto the framework's own `balance_set` library, and the module structs onto the framework's `StateVariable` trait.
 - Split into three deployment variants (`CMTATAztecLight`, `CMTATAztec`, `CMTATAztecDebt`) over one shared module library, and closed the CMTAT equivalency gaps: permanent deactivation, token ID, terms, `version()`, credit events and the `ICMTATDebt` record, issuer rotation with `set_issuer`, mint and burn lifecycle and screening rules aligned with CMTAT Solidity.
 - Made every state change observable: public events on every public entry point, and a `Transfer` event delivered constrained to both the recipient and the issuer, so the issuer holds an unforgeable on-chain record of who paid whom. Batching caps are now measured: 4 addresses for mint and burn, 2 recipients for transfer.
 - Documented the design in full: what each operation publishes, the delayed-flag model and its cost, the AIP-20 relationship in five standards documents, the equivalency assessment, and a tool-assisted code-quality review under `doc/audits/tools/v0.3.0/` whose findings are all fixed, decided or explicitly left open.
-- Copyright passed from Taurus SA to the Capital Market and Technology Association from the commit after `61f4220d`; the MIT / MPL-2.0 dual licence is unchanged.
+- Copyright passed from Taurus SA to the Capital Market and Technology Association from the commit after `61f4220d` (the 0.2.0 release); the MIT / MPL-2.0 dual licence is unchanged.
 
 ### Changed
 
@@ -199,9 +199,6 @@ MAJOR under the policy above: storage layout, note delivery and the external API
   - The `bytes32` document hash is stored as two `u128` halves, because a Noir `Field` holds ~254 bits and a 256-bit digest does not fit in one. Split the digest high-16-bytes / low-16-bytes and reassemble it the same way.
   - Adds `EXTRA_INFORMATION_ROLE = 11`, matching the role CMTAT Solidity uses for `setTerms`.
   - BREAKING CHANGE: adds a storage field, so every state variable declared after it moves.
-- Testnet deployment and interaction scripts under [scripts/](./scripts): `deploy_contract.ts`, `deploy_account.ts`, `interaction.ts`, `multiple_pxe.ts`, `get_block.ts`, `fees.ts`, `profile_deploy.ts`.
-- TypeScript helpers under [src/utils/](./src/utils) for wallet setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment method.
-- CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.
 - `cancel_authwit`, which pushes the authwit nullifier so a granted authentication witness can be revoked before use.
 - Agent guide files [CLAUDE.md](./CLAUDE.md) and [AGENTS.md](./AGENTS.md), and this changelog.
 
@@ -246,7 +243,7 @@ MAJOR under the policy above: storage layout, note delivery and the external API
 
 ### Dependencies
 
-- Aztec and `aztec-nr` upgraded from `aztec-packages-v0.63.1` to **v5.2.0**, and the libraries now come from the standalone `AztecProtocol/aztec-nr` repository rather than a directory inside `aztec-packages`.
+- Aztec and `aztec-nr` upgraded from `v0.87.8` to **v5.2.0**, and the libraries now come from the standalone `AztecProtocol/aztec-nr` repository rather than a directory inside `aztec-packages`.
 - Added the `balance_set` library; dropped `value_note` and the separate `authwit` library.
 - `@aztec/aztec.js`, `@aztec/accounts`, `@aztec/builder`, `@aztec/noir-contracts.js`, `@aztec/kv-store` and `@aztec/pxe` pinned to 5.2.0, and `@aztec/wallets` added.
 - Noir compiler is now 1.0.0-beta.25, shipped with the 5.2.0 toolchain.
@@ -265,7 +262,7 @@ MAJOR under the policy above: storage layout, note delivery and the external API
   - A `DelayedPublicMutable` pause would take at least the contract's 360 seconds, and the library recommends delays of "at least a couple hours" and calls the type unsuitable for an emergency shutdown, because a private read sets the transaction's `expiration_timestamp`: a shorter delay narrows every transaction's validity window and fingerprints it. That effectively closes the one option that would hide the transfer selector.
   - The same reasoning applies to the contract's existing 360-second delay, which is an order of magnitude under the recommendation: every mint, transfer and burn expires six minutes after its anchor block, and a delay shorter than other contracts' is distinguishable. Against that, a short delay is a short freeze window. Recorded as an open decision for the compliance owner and the network operator, with the three facts needed to settle it.
 - [SECURITY.md](./SECURITY.md) now defers to the [CMTAT security policy](https://github.com/CMTA/CMTAT/blob/master/SECURITY.md), following the transfer of the project to CMTA; the previous Taurus SA Signal and e-mail contacts are no longer the reporting channel.
-- Copyright changed hands: the code is copyright (c) Capital Market and Technology Association, 2026, from the commit after `61f4220d5565840fd4fcdd2b723c9f55eb824c60` (releases 0.1 and 0.1.1, which stay copyright (c) 2025 Taurus SA). Both README files and `LICENSE-MIT.md` carry the two notices; the licenses are unchanged, MIT and MPL-2.0 at the licensee's choice.
+- Copyright changed hands: the code is copyright (c) Capital Market and Technology Association, 2026, from the commit after `61f4220d5565840fd4fcdd2b723c9f55eb824c60`, the 0.2.0 release; releases 0.1.0, 0.1.1 and 0.2.0 stay copyright (c) 2025 Taurus SA. Both README files and `LICENSE-MIT.md` carry the two notices; the licenses are unchanged, MIT and MPL-2.0 at the licensee's choice.
 - The root `README.md` is now a short entry point (what the project is, the variants, features, quick start, repository layout, links) and the full specification moved unchanged to `doc/README.md`, with its relative links and image paths repointed; every reference from the code and the guides follows.
 - The public-selector finding (`H-3`) is closed by decision: the pause flag stays a `PublicMutable` checked in the enqueued public half of `transfer`, because a delayed pause of hours is too slow for an emergency lever. The README now states this next to the selector leak it leaves, with the rejected alternative and its cost, and the agent guide warns against moving the flag to `DelayedPublicMutable`.
 - The README now states exactly what each private operation publishes, in a table under *Security and confidentiality properties*: a mint publishes the minter and the amount, a burn the burner and the amount, a transfer nothing but the fact that one occurred.
@@ -324,11 +321,40 @@ MAJOR under the policy above: storage layout, note delivery and the external API
   - Findings have stable IDs and each ends in a verdict — implement, decide, or leave with the reason recorded. Two are marked as corrections, where measurement disproved the finding as first written.
 - README updated for the renamed state variables, the per-call protocol limits (now 8 private calls and 16 private logs, up from 4 and 4), the `aztec-up install 5.2.0` instruction, and the delivery mode of the issuer's note copy.
 
-## 0.2 — 2025-02-20
+## 0.2.0 — 2025-07-28
+
+Commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60). Last release copyright (c) 2025 Taurus SA.
 
 ### Summary
 
-- Documentation and licensing release. No contract changes: the token code is the same as 0.1, still built on Aztec 0.63.1.
+- Testnet release: upgraded from Aztec 0.63.1 to **0.87.8**, the first version with a public testnet, and added the scripts to deploy and interact with the token there.
+- Restructured the contract into module structs under `src/modules/`, and replaced the `ValueNote` balance map with a hand-written `BalanceSet` over `UintNote`.
+
+### Changed
+
+- Aztec and `aztec-nr` upgraded from `aztec-packages-v0.63.1` to **v0.87.8** (`aztec`, `authwit`, `compressed_string`, `value_note`, `uint_note`), with the `@aztec/*` JavaScript packages pinned to the same version.
+- The modules moved from `src/types/` to `src/modules/` and became structs implementing a `Storage<N>` trait: access control, pause, enforcement, validation, and the credit-events and debt-base extensions.
+- Private balances are held in a hand-written `BalanceSet` (`src/types/balance_set.nr`) over `UintNote`, replacing the `ValueNote` balance map and the custom token note.
+- The end-to-end suite moved to `src/test/e2e/` and gained an accounts suite; `src/index.ts` was removed.
+- `yarn clean` also removes `codegenCache.json`; the local PXE `store/` is gitignored.
+
+### Added
+
+- Testnet deployment and interaction scripts under [scripts/](./scripts): `deploy_contract.ts`, `deploy_account.ts`, `interaction.ts`, `multiple_pxe.ts`, `get_block.ts`, `fees.ts`, `profile_deploy.ts`.
+- TypeScript helpers under [src/utils/](./src/utils) for wallet setup (sandbox and testnet), Schnorr account deployment, account recreation from `.env`, and the sponsored FPC fee-payment method.
+- `.env.example` with the testnet variables (`L1_URL`, `NODE_URL`, `CMTA_TOKEN_CONTRACT_ADDRESS`, secrets and salts, `L1_CHAIN_ID`).
+
+### Documentation
+
+- README updated with the testnet deployment guidelines.
+
+## 0.1.1 — 2025-02-20
+
+Commit [`7c5dba760eea5e1b45a4a67290741f191f6a221a`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/7c5dba760eea5e1b45a4a67290741f191f6a221a).
+
+### Summary
+
+- Documentation and licensing release. No contract changes: the token code is the same as 0.1.0, still built on Aztec 0.63.1.
 
 ### Documentation
 
@@ -339,7 +365,9 @@ MAJOR under the policy above: storage layout, note delivery and the external API
 
 - Dual-licensed the project under MIT and MPL-2.0, © 2025 Taurus SA — see [LICENSE-MIT.md](./LICENSE-MIT.md) and [LICENSE-MPL.md](./LICENSE-MPL.md).
 
-## 0.1 — 2025-01-13
+## 0.1.0 — 2025-01-13
+
+Commit [`47edc39256aeaa45d2546d53b73e672ca5828601`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/47edc39256aeaa45d2546d53b73e672ca5828601).
 
 ### Summary
 
@@ -356,3 +384,5 @@ MAJOR under the policy above: storage layout, note delivery and the external API
 - Public pause of the contract and public freeze of individual accounts.
 - Transfer restriction through a validation module holding blacklist and whitelist flags.
 - Authentication witness support on transfer, the equivalent of `transferFrom`; mint and burn are restricted to the issuer and take no authwit.
+- CMTAT extension modules: credit events (`flagDefault`, `flagRedeemed`, `rating`) and debt base (interest rate, par value, maturity date, day-count and business-day conventions), each guarded by its own role.
+- Batched mint, transfer and burn, capped at one address per call by the four-encrypted-log limit of the time.
