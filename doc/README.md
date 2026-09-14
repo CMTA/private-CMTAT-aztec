@@ -2,32 +2,15 @@
 
 > This is the full specification and design rationale. The repository [README](../README.md) is the short version: what the project is, how to build and test it, and where to read next.
 
-This project implements a private version of the CMTAT security token,
-using [Aztec](https://aztec.network/).
-This allows banks and financial institutions to benefits from
-tokenization while maintaining privacy and compliance.
+This project implements a private version of the CMTAT security token, using [Aztec](https://aztec.network/). This allows banks and financial institutions to benefits from tokenization while maintaining privacy and compliance.
 
-[Aztec](https://aztec.network/) is a privacy-focused Layer 2 solution on
-Ethereum that enables confidential transactions using zero-knowledge
-proofs (ZKPs). 
+[Aztec](https://aztec.network/) is a privacy-focused Layer 2 solution on Ethereum that enables confidential transactions using zero-knowledge proofs (ZKPs).
 
-[CMTAT](https://github.com/CMTA/CMTAT?tab=readme-ov-file) is a framework
-for the tokenization of securities in compliance with local regulations.
-This project integrates Aztec with CMTAT, allowing financial
-institutions to adopt the standard while preserving transaction
-confidentiality.
+[CMTAT](https://github.com/CMTA/CMTAT?tab=readme-ov-file) is a framework for the tokenization of securities in compliance with local regulations. This project integrates Aztec with CMTAT, allowing financial institutions to adopt the standard while preserving transaction confidentiality.
 
-This repository contains a functional private CMTAT prototype, where
-transactions remain private for users, while issuers retain the ability
-to audit and monitor activity to ensure compliance. This marks a
-significant step forward, enabling institutions to participate in
-tokenized markets without exposing confidential data—overcoming one of
-the key limitations of public blockchains.
+This repository contains a functional private CMTAT prototype, where transactions remain private for users, while issuers retain the ability to audit and monitor activity to ensure compliance. This marks a significant step forward, enabling institutions to participate in tokenized markets without exposing confidential data—overcoming one of the key limitations of public blockchains.
 
-**Disclaimer:** Aztec is under heavy developpment, and this repository
-may be subject to rapid changes. Significant updates will needed once
-Aztec reaches mainnet. Additionally, unlike CMTAT, this code has not
-been audited and may not be fully compliant with the Swiss law. 
+**Disclaimer:** Aztec is under heavy developpment, and this repository may be subject to rapid changes. Significant updates will needed once Aztec reaches mainnet. Additionally, unlike CMTAT, this code has not been audited and may not be fully compliant with the Swiss law.
 
 
 ## Table of contents
@@ -96,17 +79,13 @@ The private CMTAT supports the following core features:
  - **Auditability** of users private transactions by a central issuer
  - **Transfer restriction** via address blacklisting/whitelisting
 
-Unlike the reference [Solidity CMTAT](https://github.com/CMTA/CMTAT), it
-does not support:
+Unlike the reference [Solidity CMTAT](https://github.com/CMTA/CMTAT), it does not support:
  - Upgradeability
  - Gasless transactions
 
-This reference implementation aims to fulfill the criteria required to
-tokenize financial instruments such as bonds, equity shares, and private
-credit notes.
+This reference implementation aims to fulfill the criteria required to tokenize financial instruments such as bonds, equity shares, and private credit notes.
 
-You may modify the token code by adding, removing, or modifying
-features, at your own risk.
+You may modify the token code by adding, removing, or modifying features, at your own risk.
 
 
 ## Private token implementation
@@ -219,7 +198,7 @@ _Diagram source: `doc/img/burn-flow.puml`._
 - **Pause module**: A pause does **not** stop a burn, as in CMTAT Solidity; deactivation does.
 - **Authwit**: If `from` doesn't issue an `AuthWit` the burn will fail
 
- > **Note**: The `AuthWit` issue is a key difference from Solidity smart contract logic, and users should be aware.  
+ > **Note**: The `AuthWit` issue is a key difference from Solidity smart contract logic, and users should be aware.
 
 **Limitations**:
 
@@ -329,7 +308,8 @@ The one design that would remove the transfer selector is to make the pause flag
   - **Reveals minter address**: Since it is a parameter in the public function call. It is the issuer, whose address is already known, but still, private to public function calls pose a problem as they also reveal that the contract was called.
   - **Randomizing `msg.sender`**: An out-of-protocol option is to deploy a diversified account contract and route transactions through this contract. Application developers might also do something similar to randomize the `msg.sender` of their app contract's address.
   - **Leakage of minted amount**: The amount being minted is leaked as it is passed to the public function from the private one.
-  > In the case of our token, when an issuer mints tokens, it is publicly known how much tokens he mints. This means that if the issuer mints “on-demand“ (every time a user wants to mint some tokens, the issuer mints) then there is a leak of information. This can be mitigated by the issuer minting a fixed amount of tokens at a certain point in time (= circulating supply), and then privately distributing to the users, thus revealing way less information. 
+
+  > In the case of our token, when an issuer mints tokens, it is publicly known how much tokens he mints. This means that if the issuer mints “on-demand“ (every time a user wants to mint some tokens, the issuer mints) then there is a leak of information. This can be mitigated by the issuer minting a fixed amount of tokens at a certain point in time (= circulating supply), and then privately distributing to the users, thus revealing way less information.
   - **Traceability**: The public transaction will be traceable back to the private proof.
   - **Disclosure of private function call**: It will leak that a private function (`private_mint`) has been called.
   - **Recipient address privacy**: It will **not** leak the address to which this amount is being sent.
@@ -418,7 +398,8 @@ Install the correct version of the toolkit with:
 ```bash
 aztec-up install 5.2.0
 ```
-version should match [Nargo.toml](https://github.com/taurusgroup/private-tokens/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
+
+The version should match the [Nargo.toml](https://github.com/taurushq-io/private-CMTAT-aztec/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
 
 Start the sandbox with:
 
@@ -441,7 +422,7 @@ The contract is deployed on the sandbox, by the [setup function](https://github.
 
 ---
 
-Use these deployment instructions for Testnet interactions.Testnet interactions are possible via scripts in the `./scrpits` folder. With the below commands, we run the `deploy_contract.ts` script. 
+Use these deployment instructions for Testnet interactions.Testnet interactions are possible via scripts in the `./scrpits` folder. With the below commands, we run the `deploy_contract.ts` script.
 
 Run:
 
@@ -458,7 +439,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 ### What can we actually do with private CMTAT?
 
-- **Mint/transfer**: Behave the same way as in CMTAT. 
+- **Mint/transfer**: Behave the same way as in CMTAT.
 - **Burn**: We can perform `burn_from` with allowance.
 - **Validation module**: Whitelisting and blacklisting are enabled on demand. The rule engine has been merged into the validation module, providing one interface that manages both and is always deployed along the main contract. The functionalities are private; storage can be read in public.
 - **Pause module**: Same functionalities as CMTAT. Pause is public and instantaneous. Deactivation follows the CMTAT Solidity model: `deactivate_contract` requires the admin role and an existing pause, and once set it blocks `unpause_contract` forever, so the token can never move again. `public_get_deactivated` reads the flag.
@@ -474,7 +455,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
   - The cap is currently 4 addresses per call, set by the per-call note-hash and log budgets rather than by the private-call budget — see [Batching limits](#batching-limits).
   - As those budgets grow, the cap can be raised: the logic is already written for arbitrary batch sizes. Each raise needs re-measuring rather than re-reading the constants, and the per-recipient proving cost grows with it.
 
-> These functions are not separated into their own “abstract contract” as it does not exist in Aztec. We could put them in a library but this would mean much more boilerplate code. Following Aztec improvements, we may improve composition/abstraction in the future. 
+> These functions are not separated into their own “abstract contract” as it does not exist in Aztec. We could put them in a library but this would mean much more boilerplate code. Following Aztec improvements, we may improve composition/abstraction in the future.
 
 - **Validation module enhancements**:
   - The limitation regarding `DelayedPublicMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.
@@ -489,6 +470,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 - **Force burning without consent**:
   - We will never be able to burn someone else’s tokens without their approval.
+
   > This could be possible if the token is implemented at the account contract level, and the issuer has shared nullifiers with the user for that specific account that holds notes for this token.
 
 - **Immediate shared state changes**:
@@ -580,8 +562,9 @@ Note that the two disagree about total supply in opposite directions: this imple
   - **Current limitation**: This is not possible in Aztec as it would require the issuer to nullify a user's notes without consent.
   - **Workaround**:
     - Freeze the account.
-    - If the account is frozen indefinitely, decrease the circulating supply. As a central issuer, I know the number of tokens the user has, so I can decrease supply accordingly. 
-> Note: account freeze could reveal how much tokens a user had. 
+    - If the account is frozen indefinitely, decrease the circulating supply. As a central issuer, I know the number of tokens the user has, so I can decrease supply accordingly.
+
+> Note: account freeze could reveal how much tokens a user had.
 
 - **Rotating the issuer does not recall past copies**: [SEE](#storage)
   - `set_issuer` redirects *future* audit copies after the delay. Every note copy already delivered to the previous issuer stays with it — there is no mechanism, on any ledger, to un-deliver an encrypted message.
