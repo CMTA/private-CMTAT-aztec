@@ -78,16 +78,17 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Added
 
-- `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation and freeze to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`.
-  - Rules follow CMTAT Solidity on the arguments the hook provides: a transfer needs the contract not paused and `from` not frozen; a burn needs it not deactivated and `from` not frozen; burns are recognised by the reference contracts' selectors, everything else is a transfer. Mints never reach the hook, and neither the recipient nor the initiator is passed, so those are not screened.
-  - The freeze flag is read in private; the pause and deactivation flags are `PublicMutable` and checked by one enqueued public call whose only argument is `is_burn`, the same immediate-pause choice the token contracts made under `H-3`.
+- `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation, freeze and a sender-side blacklist / whitelist to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`.
+  - Rules follow CMTAT Solidity on the arguments the hook provides: a transfer needs the contract not paused and `from` neither frozen nor stopped by the enabled list; a burn needs it not deactivated and the same on `from`; burns are recognised by the reference contracts' selectors, everything else is a transfer. Mints never reach the hook, and neither the recipient nor the initiator is passed, so a listed or frozen address can still receive.
+  - The freeze and list flags are read in private; the pause and deactivation flags are `PublicMutable` and checked by one enqueued public call whose only argument is `is_burn`, the same immediate-pause choice the token contracts made under `H-3`.
   - Same modules, roles, events, freeze delay and `version()` as the token contracts; the two versions are kept equal by hand and the release checklist now lists five `VERSION` constants.
   - New library module `authorizationHookModule.nr` holds the rules and the four pinned burn selectors; two contracts because the MultiToken hook carries an `id` and Noir has no overloading.
-  - Verified by 39 unit tests and by 9 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 8,447 gates.
+  - Verified by 57 unit tests and by 10 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 14,650 gates, of which 6,203 are the list check.
   - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
 
 ### Changed
 
+- `ValidationModule` gained `operateOnFrom(from)`, the sender half of `operateOnTransfer`, in both the private and the public context; `operateOnBurn` now delegates to it. Used by the authorization contracts, whose hook is never told the recipient.
 - The `aztec-standards` submodule now tracks the [CMTA fork](https://github.com/CMTA/aztec-standards) at `5433e9c` (`Upgrade to Aztec 5.2.0`) instead of upstream `defi-wonderland/aztec-standards` at `a3859e5`, and lives at `submodules/aztec-standards` with the other reference repositories rather than under `lib/`.
   - The fork is upstream `a3859e5` with its eleven Noir manifests and the `@aztec/*` packages moved from `v5.0.0-rc.2` to `v5.2.0`, the pin this repository uses, so the AIP-20 reference contracts and this token now compile and test on one toolchain: 22 artifacts, 79/79 `token_contract` tests.
   - Nothing in the build depends on it yet; it is the pinned source the standards documents cite and the base for any AIP-20 integration work in 0.4.0.

@@ -68,7 +68,7 @@ Noir has no inheritance and allows one contract per package, so the variants are
 | `CMTATAztec` | The above plus the validation module (blacklist / whitelist) |
 | `CMTATAztecDebt` | The above plus credit events and debt, for bond-like instruments |
 
-Two further contracts are not tokens but **ARC-403 authorization contracts**: they apply CMTAT's pause, deactivation and freeze to the stock tokens of the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), which call them as a hook before every transfer and burn. See [`doc/auth/README.md`](auth/README.md).
+Two further contracts are not tokens but **ARC-403 authorization contracts**: they apply CMTAT's pause, deactivation, freeze and sender-side blacklist / whitelist to the stock tokens of the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), which call them as a hook before every transfer and burn. See [`doc/auth/README.md`](auth/README.md).
 
 | Contract | Restricts |
 |---|---|

@@ -113,6 +113,23 @@ where
         access_control.only_role(ADDRESS_LIST_REMOVE_ROLE, caller);
         self.map.at(removeListAddress).schedule_value_change(userFlag);
     }
+
+    /// Public-context twin of the private `operateOnFrom`, for hooks that run in public.
+    pub fn operateOnFrom(self: Self, from: AztecAddress) {
+        let operations = self.operationsFlag.get_current_value();
+
+        if (operations.operate_blacklist) {
+            assert(
+                !self.map.at(from).get_current_value().get_is_blacklisted(),
+                TEXT_ADDRESS_FROM_IS_BLACKLISTED,
+            );
+        } else if (operations.operate_whitelist) {
+            assert(
+                self.map.at(from).get_current_value().get_is_whitelisted(),
+                TEXT_ADDRESS_FROM_NOT_WHITELISTED,
+            );
+        }
+    }
 }
 
 impl<T> ValidationModule<T, &mut PrivateContext>
@@ -146,6 +163,15 @@ where
      * `_canBurnByModuleAndRevert(from)`. Same rules as a mint, reported as the sender.
      */
     pub fn operateOnBurn(self: Self, from: AztecAddress) {
+        self.operateOnFrom(from);
+    }
+
+    /**
+     * @dev Screens one address as the sender, against whichever list mode is enabled. This is the
+     * sender half of `operateOnTransfer`; the ARC-403 authorization contracts use it because the hook
+     * they implement is never told the recipient.
+     */
+    pub fn operateOnFrom(self: Self, from: AztecAddress) {
         let operations = self.operationsFlag.get_current_value();
 
         if (operations.operate_blacklist) {

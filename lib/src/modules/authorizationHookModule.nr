@@ -4,9 +4,14 @@
 //! The hook receives `(from, amount, selector)` - never the recipient, never the initiator - so the
 //! rules are the subset of CMTAT Solidity's `ValidationModule` that can be evaluated on `from` alone:
 //!
-//! - a **transfer** (any selector that is not a burn) requires the contract not paused and `from` not
-//!   frozen: `_canTransferStandardByModule` minus the `spender` and `to` freeze checks;
-//! - a **burn** requires the contract not deactivated and `from` not frozen: `_canMintBurnByModule(from)`.
+//! - a **transfer** (any selector that is not a burn) requires the contract not paused, `from` not
+//!   frozen and `from` clear of the enabled list: `_canTransferStandardByModule` minus the `spender`
+//!   and `to` checks;
+//! - a **burn** requires the contract not deactivated, `from` not frozen and `from` clear of the
+//!   enabled list: `_canMintBurnByModule(from)` (allowlist variant).
+//!
+//! The list check is sender-only for the same reason: a blacklisted address cannot send or burn but
+//! can still receive. The token contracts screen both parties.
 //!
 //! A mint never reaches the hook (the AIP-20 and ARC-1155 mint paths do not call it), so the
 //! `_canMintBurnByModule(to)` rule of a mint cannot be applied and the minter must be trusted.
@@ -23,6 +28,7 @@ use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::ToField;
 use crate::modules::enforcementModule::{Freezable, FreezableFlag};
 use crate::modules::pauseModule::PauseModule;
+use crate::modules::validationModule::{UserFlags, ValidationModule};
 
 // AIP-20 `Token`: `burn_private(from: AztecAddress, amount: u128, _nonce: Field)` and `burn_public` alike.
 pub global AIP20_BURN_PRIVATE_SELECTOR: Field =
@@ -54,6 +60,23 @@ pub fn require_from_not_frozen_private(
     from: AztecAddress,
 ) {
     assert(!enforcement.is_frozen(from), TEXT_FROM_IS_FROZEN);
+}
+
+/// The sender-side list check, in private. Reverts with the validation module's own messages
+/// (`The sender is in the blacklist` / `The sender is not in the whitelist`).
+pub fn require_from_listed_private(
+    validation: ValidationModule<UserFlags, &mut PrivateContext>,
+    from: AztecAddress,
+) {
+    validation.operateOnFrom(from);
+}
+
+/// The sender-side list check, in public.
+pub fn require_from_listed_public(
+    validation: ValidationModule<UserFlags, PublicContext>,
+    from: AztecAddress,
+) {
+    validation.operateOnFrom(from);
 }
 
 /// The public half of the hook, and the whole of it when the token calls `authorize_public`.

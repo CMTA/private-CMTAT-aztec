@@ -1,6 +1,6 @@
 # Integration test of the authorization contracts against the `aztec-standards` tokens
 
-The fork under `submodules/aztec-standards` cannot be compiled in place (Trap 3 in [`upgrading-aztec-standards.md`](../standards/upgrading-aztec-standards.md): `nargo` resolves the outermost workspace, which is this repository's). The integration tests are therefore run in a copy of the fork with this repository's crates added to it. This file records how, and the test sources, so the run can be repeated after a fork or Aztec bump. Last run: fork `5433e9c`, Aztec 5.2.0, **9/9**.
+The fork under `submodules/aztec-standards` cannot be compiled in place (Trap 3 in [`upgrading-aztec-standards.md`](../standards/upgrading-aztec-standards.md): `nargo` resolves the outermost workspace, which is this repository's). The integration tests are therefore run in a copy of the fork with this repository's crates added to it. This file records how, and the test sources, so the run can be repeated after a fork or Aztec bump. Last run: fork `5433e9c`, Aztec 5.2.0, **10/10** (7 token, 3 multitoken).
 
 ## Set up the copy
 
@@ -48,7 +48,8 @@ use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::ToField;
 use aztec::test::helpers::test_environment::TestEnvironment;
 use cmtat_aztec_auth::CMTATAztecAuth as Auth;
-use cmtat_aztec_lib::modules::access_controlModule::{ENFORCEMENT_ROLE, PAUSE_ROLE};
+use cmtat_aztec_lib::modules::access_controlModule::{ADDRESS_LIST_ADD_ROLE, ENFORCEMENT_ROLE, PAUSE_ROLE};
+use cmtat_aztec_lib::modules::validationModule::{SetFlag, UserFlags};
 use cmtat_aztec_lib::modules::authorizationHookModule::{AIP20_BURN_PRIVATE_SELECTOR, AIP20_BURN_PUBLIC_SELECTOR};
 use cmtat_aztec_lib::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
 
@@ -69,7 +70,6 @@ unconstrained fn selectors_match_the_token_interface() {
     let (_, token, _, owner, _) = setup();
     assert_eq(Token::at(token).burn_private(owner, 1, 0).selector.to_field(), AIP20_BURN_PRIVATE_SELECTOR);
     assert_eq(Token::at(token).burn_public(owner, 1, 0).selector.to_field(), AIP20_BURN_PUBLIC_SELECTOR);
-
 }
 
 #[test]
@@ -120,6 +120,17 @@ unconstrained fn public_transfer_reverts_when_auth_paused() {
     env.call_public(owner, Auth::at(auth).pause_contract());
     env.call_public(owner, Token::at(token).transfer_public_to_public(owner, recipient, 1000, 0));
 }
+
+#[test(should_fail_with = "The sender is in the blacklist")]
+unconstrained fn private_transfer_reverts_for_blacklisted_sender() {
+    let (env, token, auth, owner, recipient) = setup();
+    env.call_public(owner, Auth::at(auth).grant_role(ADDRESS_LIST_ADD_ROLE, owner));
+    env.call_public(owner, Auth::at(auth).set_operations(SetFlag { operate_blacklist: true, operate_whitelist: false }));
+    env.call_public(owner, Auth::at(auth).add_to_list(owner, UserFlags { is_blacklisted: true, is_whitelisted: false }));
+    env.advance_next_block_timestamp_by(CHANGE_ROLES_DELAY_SECONDS + 1);
+    env.mine_block();
+    env.call_private(owner, Token::at(token).transfer_private_to_private(owner, recipient, 1000, 0));
+}
 ```
 
 ## `src/multitoken_contract/src/test/cmtat_auth.nr`
@@ -151,7 +162,6 @@ unconstrained fn selectors_match_the_multitoken_interface() {
     let (_, token, _, owner, _) = setup();
     assert_eq(MultiToken::at(token).burn_private(owner, ID, 1, 0).selector.to_field(), ARC1155_BURN_PRIVATE_SELECTOR);
     assert_eq(MultiToken::at(token).burn_public(owner, ID, 1, 0).selector.to_field(), ARC1155_BURN_PUBLIC_SELECTOR);
-
 }
 
 #[test]

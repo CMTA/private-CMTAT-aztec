@@ -16,8 +16,9 @@ use aztec::macros::aztec;
 /// value: it only refuses. What it can and cannot enforce, and how it differs from the CMTAT token
 /// contracts in this repository, is described in `doc/auth/README.md`.
 ///
-/// The three modules are the same `cmtat_aztec_lib` modules the CMTAT token contracts use, with the
-/// same roles, events and delays, so an operator runs them the same way.
+/// The four modules are the same `cmtat_aztec_lib` modules the CMTAT token contracts use, with the
+/// same roles, events and delays, so an operator runs them the same way. The list check is
+/// sender-only, because the hook never receives the recipient.
 #[aztec]
 pub contract CMTATAztecAuthMultiToken {
     use compressed_string::FieldCompressedString;
@@ -33,14 +34,18 @@ pub contract CMTATAztecAuthMultiToken {
     };
 
     use cmtat_aztec_lib::modules::{
-        access_controlModule::{AccessControlModule, DEFAULT_ADMIN_ROLE},
+        access_controlModule::{AccessControlModule, DEFAULT_ADMIN_ROLE, VALIDATION_ROLE},
         authorizationHookModule::{
             ARC1155_BURN_PRIVATE_SELECTOR, ARC1155_BURN_PUBLIC_SELECTOR, is_burn_selector,
+            require_from_listed_private, require_from_listed_public,
             require_from_not_frozen_private, require_from_not_frozen_public,
             require_lifecycle_allows,
         },
         enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
         pauseModule::PauseModule,
+        validationModule::{
+            CHANGE_ROLES_DELAY_SECONDS as LIST_DELAY_SECONDS, SetFlag, UserFlags, ValidationModule,
+        },
     };
 
     // Kept equal to the `VERSION` of the CMTAT token contracts (`contracts/cmtat-aztec*/src/main.nr`)
@@ -56,6 +61,7 @@ pub contract CMTATAztecAuthMultiToken {
         access_control: AccessControlModule<bool, Context>,
         pause_module: PauseModule<Context>,
         enforcement_module: Freezable<FreezableFlag, Context>,
+        validation_module: ValidationModule<UserFlags, Context>,
     }
 
     // Same events as the CMTAT token contracts, so one indexer serves both.
@@ -95,11 +101,29 @@ pub contract CMTATAztecAuthMultiToken {
         effective_at: u64,
     }
 
+    #[event]
+    struct AddressListed {
+        account: AztecAddress,
+        is_blacklisted: bool,
+        is_whitelisted: bool,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
+    #[event]
+    struct OperationsSet {
+        operate_blacklist: bool,
+        operate_whitelist: bool,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
     #[external("public")]
     #[initializer]
     fn constructor(admin: AztecAddress) {
         assert(!admin.is_zero(), "invalid admin");
         self.internal._grant_role_internal(DEFAULT_ADMIN_ROLE, admin);
+        self.internal._grant_role_internal(VALIDATION_ROLE, admin);
     }
 
     /** ==========================================================
@@ -108,7 +132,7 @@ pub contract CMTATAztecAuthMultiToken {
 
     /**
      * @notice: Called by the token from its private transfers and burns.
-     * @dev: The freeze flag is a DelayedPublicMutable and is checked here, in private. The pause and
+     * @dev: The freeze and list flags are DelayedPublicMutable and are checked here, in private. The pause and
      * deactivation flags are PublicMutable - immediate, as an emergency lever must be - so they are
      * checked by the enqueued public half. `is_burn` is the only thing that half publishes; a burn is
      * already public through the token's own enqueued supply update, and a transfer publishes only
@@ -122,6 +146,7 @@ pub contract CMTATAztecAuthMultiToken {
     fn authorize_private(from: AztecAddress, id: Field, amount: u128, selector: Field) {
         let _ = (id, amount);
         require_from_not_frozen_private(self.storage.enforcement_module, from);
+        require_from_listed_private(self.storage.validation_module, from);
         let is_burn = is_burn_selector(selector, BURN_SELECTORS);
         self.enqueue_self._require_lifecycle_allows(is_burn);
     }
@@ -133,6 +158,7 @@ pub contract CMTATAztecAuthMultiToken {
     fn authorize_public(from: AztecAddress, id: Field, amount: u128, selector: Field) {
         let _ = (id, amount);
         require_from_not_frozen_public(self.storage.enforcement_module, from);
+        require_from_listed_public(self.storage.validation_module, from);
         let is_burn = is_burn_selector(selector, BURN_SELECTORS);
         require_lifecycle_allows(self.storage.pause_module, is_burn);
     }
@@ -181,6 +207,55 @@ pub contract CMTATAztecAuthMultiToken {
         let sender = self.msg_sender();
         self.storage.access_control.renounce_role(role, sender, callerConfirmation);
         self.emit(RoleRevoked { role, account: sender, sender });
+    }
+
+    /** ==========================================================
+     * ===================== VALIDATION MODULE ===================
+     * ======================================================== */
+
+    // Sender-only: the hook never receives the recipient, so a listed address cannot send or burn
+    // but can still receive. Same entry points, roles, delay and events as the token contracts.
+
+    #[external("public")]
+    #[view]
+    fn get_operations() -> pub Field {
+        self.storage.validation_module.get_operations()
+    }
+
+    #[external("public")]
+    fn set_operations(operations: SetFlag) {
+        let operator = self.msg_sender();
+        self.storage.validation_module.set_operations(operator, operations, self.storage.access_control);
+        self.emit(OperationsSet {
+            operate_blacklist: operations.operate_blacklist,
+            operate_whitelist: operations.operate_whitelist,
+            operator,
+            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+        });
+    }
+
+    #[external("public")]
+    fn add_to_list(newListAddress: AztecAddress, userFlag: UserFlags) {
+        let operator = self.msg_sender();
+        self.storage.validation_module.add_to_list(
+            operator,
+            newListAddress,
+            userFlag,
+            self.storage.access_control,
+        );
+        self.internal._emit_listed(newListAddress, userFlag, operator);
+    }
+
+    #[external("public")]
+    fn remove_from_list(removeListAddress: AztecAddress, userFlag: UserFlags) {
+        let operator = self.msg_sender();
+        self.storage.validation_module.remove_from_list(
+            operator,
+            removeListAddress,
+            userFlag,
+            self.storage.access_control,
+        );
+        self.internal._emit_listed(removeListAddress, userFlag, operator);
     }
 
     /** ==========================================================
@@ -289,5 +364,16 @@ pub contract CMTATAztecAuthMultiToken {
     fn _grant_role_internal(role: Field, account: AztecAddress) {
         self.storage.access_control._grant_role(role, account);
         self.emit(NewRole { role, account });
+    }
+
+    #[internal("public")]
+    fn _emit_listed(account: AztecAddress, flags: UserFlags, operator: AztecAddress) {
+        self.emit(AddressListed {
+            account,
+            is_blacklisted: flags.is_blacklisted,
+            is_whitelisted: flags.is_whitelisted,
+            operator,
+            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+        });
     }
 }
