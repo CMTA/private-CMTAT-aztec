@@ -37,7 +37,7 @@
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
 | C-6 | Nine state-changing admin entry points emit nothing | ✅ fixed |
 | D-1 | The three `main.nr` files are 99–100% identical | ⬜ decide — guard mechanically, extraction is not available |
-| D-2 | `test/utils.nr` duplicated 75/78 lines across three crates | ⬜ implement (partially) |
+| D-2 | `test/utils.nr` duplicated 75/78 lines across three crates | ✅ fixed (partially, as scoped) — the two contract-agnostic helpers moved to a `test-helpers` lib crate |
 | E-1 | `#[view]` missing on four read-only entry points | ✅ fixed |
 | E-2 | Getters returning without `pub`, unlike every sibling | ✅ fixed — four, not three |
 | E-3 | `#[only_self]`, `#[initializer]`, `#[noinitcheck]` discipline | ✅ checked — clean |
@@ -58,7 +58,7 @@
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 26 ✅ (9 checked/keep, 16 fixed, 1 decided), 2 ⚠️ corrected, 7 ⬜ open (2 *implement*: D-2, J-1; 4 *decide*: B-3, D-1, F-1, H-6; 1 *leave*: B-4). *Counted from the table; earlier revisions of this line over-stated the row total by one.*
+**Counts:** 35 rows — 27 ✅ (9 checked/keep, 17 fixed, 1 decided), 2 ⚠️ corrected, 6 ⬜ open (1 *implement*: J-1; 4 *decide*: B-3, D-1, F-1, H-6; 1 *leave*: B-4). *Counted from the table; earlier revisions of this line over-stated the row total by one.*
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -66,7 +66,7 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
+| J-1 | The *implement* set | Not yet applied. One word each and no storage or note-layout change, so it can land in any commit before 0.3. A-1, G-2 and D-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
@@ -383,7 +383,7 @@ All three copies are 78 code lines; 75 are identical between any pair. Unlike D-
 - **Cannot move:** `setup`, `setup_and_more_addresses`, `setup_and_mint`, `check_private_balance`. All name the contract type (`crate::CMTATAztec as Token`) and the deploy string, which differ per variant. This is the same constraint as D-1.
 - **Can move:** `advance_past_delay` (4 lines) and `call_private_on_behalf_of` (14 lines). Neither mentions a contract type; both are generic helpers over `TestEnvironment`. They are currently maintained in triplicate, and `call_private_on_behalf_of` carries a six-line doc comment explaining the authwit/scopes interaction — the kind of explanation that drifts between copies.
 
-**Verdict: implement, partially.** Move those two into `cmtat_aztec_lib` (a `pub mod test_helpers`, or a fourth `type = "lib"` crate if the project prefers to keep test scaffolding out of the shipped library — the latter is cleaner and costs one manifest). Leave the rest and note in the guide that the per-variant `setup` triplication is structural.
+**Verdict: implement, partially — done.** The fourth-crate form was taken: `test-helpers/` is a `type = "lib"` package named `cmtat_aztec_test_helpers`, a workspace member depending on `aztec` only, holding `advance_past_delay` and `call_private_on_behalf_of` with their doc comments. Each variant's `Nargo.toml` adds it as a path dependency and each `test/utils.nr` re-exports the two with `pub use`, so every existing call site (`utils::advance_past_delay(...)`) is unchanged. Each `utils.nr` loses 32 lines (107 to 79, doc comments included) and now differs between variants only in the three lines that name the contract type and deploy string. Suite unchanged at 89/89. The per-variant `setup*` and `check_private_balance` stay triplicated for the D-1 reason, recorded in the crate's module comment and the agent guide.
 
 ---
 

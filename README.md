@@ -75,7 +75,7 @@ Enough to read the rest of this document. The full [Glossary](#glossary) at the 
 
 ## Deployment variants
 
-Noir has no inheritance and allows one contract per package, so the variants are separate contract packages over a shared module library (`lib/`), built together as a Nargo workspace.
+Noir has no inheritance and allows one contract per package, so the variants are separate contract packages over a shared module library (`lib/`), built together as a Nargo workspace. A second library crate, `test-helpers/`, holds the test scaffolding the three Noir suites share, so that it does not ship inside `lib/`.
 
 | Variant | Contents |
 |---|---|
@@ -433,7 +433,7 @@ yarn codegen
 yarn test
 ```
 
-The contract is deployed on the sandbox, by the [setup function](https://github.com/taurushq-io/private-CMTAT-aztec/blob/master/src/test/utils.nr), and all the tests are run.
+The contract is deployed on the sandbox, by the [setup function](https://github.com/taurushq-io/private-CMTAT-aztec/blob/master/contracts/cmtat-aztec/src/test/utils.nr), and all the tests are run.
 
 ### Testnet
 

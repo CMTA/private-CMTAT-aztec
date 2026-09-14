@@ -51,6 +51,9 @@ lib/                                 # cmtat_aztec_lib, type = "lib": every modu
         ├── creditEventsModule.nr    # CMTAT credit events (flagDefault, flagRedeemed, rating)
         └── debtModule.nr            # CMTAT debt: DebtIdentifier + DebtInstrument, mirroring ICMTATDebt
 
+test-helpers/                        # cmtat_aztec_test_helpers, type = "lib": test scaffolding shared by the
+└── src/lib.nr                       # variants (advance_past_delay, call_private_on_behalf_of); not shipped in lib/
+
 contracts/
 ├── cmtat-aztec/                     # CMTATAztec — the base token; carries the full Noir test suite
 │   └── src/{main.nr, test.nr, test/*.nr}
@@ -120,6 +123,6 @@ scripts/                             # tsx entry points, run via yarn
 - Every new public/private entry point goes in `src/main.nr` under the matching banner comment block (`AUTHORIZATION MODULE`, `VALIDATION MODULE`, `MINT`, `TRANSFER`, `BURN`, `INTERNAL`, `UNCONSTRAINED`), with a NatSpec-style `@dev` / `Requirements:` comment.
 - Any state-mutating operation must keep the invariant chain: freeze check + validation check in the private internal function (the validation check screens **both parties** of a transfer, the **recipient** of a mint and the **account** of a burn, as CMTAT Solidity's `_canMintBurnByModule` does), role check + lifecycle check in the enqueued public internal function. The lifecycle check differs by operation and this is deliberate: `_transfer` asserts not-paused, `_mint` and `_burn` assert not-deactivated. A pause therefore stops transfers only, as in CMTAT Solidity; `deactivate_contract` requires an existing pause and blocks `unpause_contract` forever, which stops transfers, and the explicit not-deactivated check is what stops mint and burn.
 - Any note written for a user must also be delivered to the current `issuer_address` — auditability is a hard requirement of the design. The issuer's copy uses `MessageDelivery::offchain()`; see the key concept above before changing that.
-- Every behaviour change needs a Noir test in `src/test/` (and an e2e test when it crosses the TS boundary); tests build their world through `src/test/utils.nr` `setup*` helpers.
+- Every behaviour change needs a Noir test in `src/test/` (and an e2e test when it crosses the TS boundary); tests build their world through `src/test/utils.nr` `setup*` helpers. Those `setup*` helpers and `check_private_balance` are **deliberately triplicated** across the variants: they name the variant's contract type and deploy string, which a shared crate cannot. Helpers that do not name a contract (`advance_past_delay`, `call_private_on_behalf_of`) live once in `test-helpers/` and are re-exported by each `utils.nr`; add new contract-agnostic helpers there, not in a variant.
 - Bumping the Aztec version means updating `Nargo.toml`, `package.json` and the `aztec-up` version together — they must match. `aztec compile` warns when the dependency tag and the CLI disagree.
 - The e2e suite and any operator runbook must account for `CHANGE_ROLES_DELAY_SECONDS`: a scheduled value change is not readable until the delay has elapsed, and a sandbox's clock cannot be fast-forwarded.

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "lib",
+    "test-helpers",
     "contracts/cmtat-aztec",
     "contracts/cmtat-aztec-debt",
     "contracts/cmtat-aztec-light",

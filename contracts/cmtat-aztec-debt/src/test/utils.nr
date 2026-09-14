@@ -1,9 +1,10 @@
-use aztec::context::calls::PrivateCall;
 use aztec::protocol::address::AztecAddress;
-use aztec::protocol::traits::Deserialize;
-use aztec::test::helpers::test_environment::{CallPrivateOptions, TestEnvironment};
+use aztec::test::helpers::test_environment::TestEnvironment;
 
 use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
+// Contract-agnostic helpers live in the shared `cmtat_aztec_test_helpers` crate (analysis D-2); they
+// are re-exported here so tests keep calling `utils::advance_past_delay` / `utils::call_private_on_behalf_of`.
+pub use cmtat_aztec_test_helpers::{advance_past_delay, call_private_on_behalf_of};
 use crate::CMTATAztecDebt as Token;
 use crate::CMTATAztecDebt::CHANGE_ROLES_DELAY_SECONDS;
 
@@ -65,28 +66,6 @@ pub unconstrained fn setup_and_mint(
     (env, token_contract_address, issuer, user1, mint_amount)
 }
 
-/// Calls a private function as `caller` while granting the transaction access to `owner`'s secrets.
-///
-/// While an authwit authorizes a contract to perform an action, spending private notes still requires
-/// knowledge of the note secrets, so the owner's scope must be available to the transaction. Making
-/// `caller` the sender is what makes `msg_sender` differ from `from`, which is the condition that
-/// triggers authwit validation.
-pub unconstrained fn call_private_on_behalf_of<let M: u32, let N: u32, T>(
-    env: TestEnvironment,
-    caller: AztecAddress,
-    owner: AztecAddress,
-    call: PrivateCall<M, N, T>,
-) -> T
-where
-    T: Deserialize,
-{
-    env.call_private_opts(
-        caller,
-        CallPrivateOptions::new().with_additional_scopes([owner]),
-        call,
-    )
-}
-
 pub unconstrained fn check_private_balance(
     env: TestEnvironment,
     token_contract_address: AztecAddress,
@@ -97,11 +76,4 @@ pub unconstrained fn check_private_balance(
         env.execute_utility(Token::at(token_contract_address).balance_of_private(address)),
         address_amount,
     );
-}
-
-/// Advances the chain past a DelayedPublicMutable delay so that a scheduled value change (the issuer
-/// address, a freeze, a blacklist entry, an operations flag) has become the current value.
-pub unconstrained fn advance_past_delay(env: TestEnvironment, delay: u64) {
-    env.advance_next_block_timestamp_by(delay + 1);
-    env.mine_block();
 }
