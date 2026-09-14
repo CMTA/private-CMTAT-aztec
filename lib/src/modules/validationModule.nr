@@ -32,7 +32,11 @@ pub struct UserFlags {
     pub is_whitelisted: bool,
 }
 
-trait UserFlagsTrait {
+/// The contract a per-address flag type must satisfy to be the `T` of `ValidationModule<T, Context>`.
+/// The module's screening (`operateOnTransfer`, `operateOnMint`, `operateOnBurn`) reads only these
+/// two predicates; a downstream contract may add flags of its own to `T` and enforce them itself by
+/// reading `map.at(address).get_current_value()`. `T` must also be `Eq + ToField + FromField + Packable`.
+pub trait UserFlagsTrait {
     fn get_is_blacklisted(self) -> bool;
     fn get_is_whitelisted(self) -> bool;
 }

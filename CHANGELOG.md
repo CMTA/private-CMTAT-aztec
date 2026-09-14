@@ -136,6 +136,9 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Added
 
+- `UserFlagsTrait` and `FreezableFlagTrait` are now `pub`, so a downstream contract can supply its own flag type as the `T` of `ValidationModule<T, Context>` and `Freezable<T, Context>` (for example a list entry with a KYC bit, or a freeze flag with a reason code) and enforce its extra flags itself by reading `map.at(address).get_current_value()`.
+  - Until now the type parameter was unusable outside the library: the bounds were private, so `T` could only be `UserFlags` / `FreezableFlag`. Verified with a downstream contract that compiles against the library unmodified.
+  - The traits are a public API from this release on: adding a method to either is a MAJOR change under the policy above, since it breaks every downstream implementor.
 - `set_issuer(new_issuer)`, so the address that receives the audit copy of every note can be rotated without redeploying the token.
   - Guarded by `DEFAULT_ADMIN_ROLE`; refuses the zero address; schedules the change on the existing `DelayedPublicMutable`, so it becomes current after `CHANGE_ROLES_DELAY_SECONDS` and every mint, transfer and burn keeps addressing the previous issuer until then. Emits `IssuerChanged` with `effective_at`.
   - Rotation redirects future copies only. A note copy already delivered to the previous issuer cannot be recalled, so a compromised issuer key keeps the history it already holds; and the new issuer's PXE must be live from `effective_at`, or copies sent in the gap are lost to the issuer side while still reaching the holders. Both consequences are recorded in the README.

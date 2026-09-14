@@ -13,7 +13,11 @@ pub struct FreezableFlag {
     pub is_freezed: bool,
 }
 
-trait FreezableFlagTrait {
+/// The contract a flag type must satisfy to be the `T` of `Freezable<T, Context>`. The module only
+/// ever asks a flag whether the address is frozen; a downstream contract may carry more state per
+/// address (a reason code, an expiry) in its own `T`, as long as `T` is also `Eq + Packable`.
+/// Keep `T`'s packing small: a `DelayedPublicMutable<T>` costs `2 * N + 2` slots per address.
+pub trait FreezableFlagTrait {
     fn get_is_frozen(self) -> bool;
 }
 

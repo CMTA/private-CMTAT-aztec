@@ -54,11 +54,11 @@
 | H-4 | The `Transfer` event: its only unique datum is the sender, to the recipient, and it is delivered unverifiably | ✅ fixed — D adopted; transfer batch cap re-measured and lowered to 2 |
 | H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ⬜ decide — validity window and privacy set vs. freeze window |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
-| J-1 | `UserFlagsTrait` / `FreezableFlagTrait` are not `pub` | ⬜ implement — one word each |
+| J-1 | `UserFlagsTrait` / `FreezableFlagTrait` are not `pub` | ✅ fixed — both `pub`, after checking that exposing the extension point beats removing it; a downstream probe with three-flag and reason-coded types compiles |
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 27 ✅ (9 checked/keep, 17 fixed, 1 decided), 2 ⚠️ corrected, 6 ⬜ open (1 *implement*: J-1; 4 *decide*: B-3, D-1, F-1, H-6; 1 *leave*: B-4). *Counted from the table; earlier revisions of this line over-stated the row total by one.*
+**Counts:** 35 rows — 28 ✅ (9 checked/keep, 18 fixed, 1 decided), 2 ⚠️ corrected, 5 ⬜ open (4 *decide*: B-3, D-1, F-1, H-6; 1 *leave*: B-4). The *implement* set is exhausted. *Counted from the table; earlier revisions of this line over-stated the row total by one.*
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -66,7 +66,6 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| J-1 | The *implement* set | Not yet applied. One word each and no storage or note-layout change, so it can land in any commit before 0.3. A-1, G-2 and D-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
@@ -883,6 +882,14 @@ So `T` can only ever be the module's own `UserFlags` / `FreezableFlag`. Every de
 
 **Verdict: implement — two words.** Make both traits `pub`. There is no downside: they are already implemented for the module's own types and exporting them costs nothing. Then the type parameter means what it appears to mean.
 
+**Done, after a second look at whether exposing the parameter is better than deleting it.** "Two words" was the cost of one of two consistent states; the other is to drop `T` altogether (`Freezable<Context>` over `FreezableFlag`, `ValidationModule<Context>` over `UserFlags`), which is what a reviewer applying "you aren't going to need it" would propose. The two were weighed on what the generic can actually deliver:
+
+- **What `T` buys a downstream contract.** The module's screening reads exactly two predicates (`get_is_blacklisted`, `get_is_whitelisted`) and one (`get_is_frozen`). Everything else about `T` is the downstream contract's business: it can carry a KYC tier, a jurisdiction, a freeze reason, and enforce those itself by reading `map.at(address).get_current_value()`, which is `pub`. That is the customisation a regulated issuer asks for first, and it needs no change to the library. The `operationsFlag` (`SetFlag`) is *not* generic, so the module's own enforcement cannot be extended; that boundary is now stated in the trait docs.
+- **What it costs.** Nothing at runtime: Noir monomorphises, so `ValidationModule<UserFlags, _>` compiles to the same circuit as a non-generic module. Nothing in storage: `T`'s packing only sizes the per-address `DelayedPublicMutable` (`2 * N + 2` slots), which is the same accounting the module already does for `UserFlags`. One thing in API terms: a `pub` trait is a public contract, so adding a method to it later breaks every downstream implementor and is a MAJOR change under this project's semver policy. Both traits are one and two methods and are unlikely to grow; the note is in the changelog.
+- **What deleting `T` would cost.** A signature change on both modules and all three storage structs for no capability gained, and the loss of the extension point that J-3 was written to confirm the modules have.
+
+**Verified by compiling a second probe**, the mirror image of the first: a contract crate depending only on `cmtat_aztec_lib`, declaring a three-flag `KycFlags { is_blacklisted, is_whitelisted, is_kyc }` (derived `Packable`, hand-written `ToField`/`FromField`, `impl UserFlagsTrait`) and a `FreezeWithReason { is_freezed, reason: u8 }` (`impl FreezableFlagTrait`), using `ValidationModule<KycFlags, Context>` and `Freezable<FreezeWithReason, Context>` in storage, with public `add_to_list` / `set_operations` / `freeze` entry points and a private function that runs `operateOnTransfer` and then asserts the downstream-only `is_kyc` bit. `aztec compile` exits 0 and emits the artifact. The two traits carry doc comments stating the contract a `T` must satisfy and the packing cost. Suite unchanged at 89/89; the ABI of the three variants is unchanged, so no artifact regeneration is forced.
+
 ### J-2. ⚠️ Corrected — tests live in the contract crates, but the compiler does not object
 
 `#[test]` functions live inside the contract crates (`contracts/*/src/test/*.nr`, 75 tests across three crates), not in separate test crates. General Aztec guidance holds that `aztec compile` warns about this.
@@ -938,7 +945,7 @@ Every `type = "contract"` crate contains exactly one `pub contract`, whose name 
 
 ## Method and limitations
 
-**What was run.** `aztec-nargo compile --workspace` (clean, exit 0); `aztec test --workspace` (75 tests passing at review time: 62 base, 9 debt, 4 light; 76 after the A-1/G-2 regression test); `aztec profile gates ./target` for the baseline and for three before/after comparisons; two throwaway contract crates compiled for J-1 and J-3 and deleted; a full-text sweep of `.nr` sources for doc pointers, attribute usage, emit sites and trait visibility.
+**What was run.** `aztec-nargo compile --workspace` (clean, exit 0); `aztec test --workspace` (75 tests passing at review time: 62 base, 9 debt, 4 light; 76 after the A-1/G-2 regression test); `aztec profile gates ./target` for the baseline and for three before/after comparisons; three throwaway contract crates compiled for J-1 (before and after the fix) and J-3 and deleted; a full-text sweep of `.nr` sources for doc pointers, attribute usage, emit sites and trait visibility.
 
 **What was reasoned about but not executed.**
 
