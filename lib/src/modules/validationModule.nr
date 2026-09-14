@@ -143,6 +143,15 @@ where
      * the lists and the freeze flag do.
      */
     pub fn operateOnMint(self: Self, to: AztecAddress) {
+        self.operateOnTo(to);
+    }
+
+    /**
+     * @dev Screens one address as the recipient, against whichever list mode is enabled. The
+     * recipient half of `operateOnTransfer`; used where the sender is not yet known, such as when a
+     * commitment is initialized for `to` before anyone pays into it.
+     */
+    pub fn operateOnTo(self: Self, to: AztecAddress) {
         let operations = self.operationsFlag.get_current_value();
 
         if (operations.operate_blacklist) {

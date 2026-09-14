@@ -89,6 +89,7 @@ describe("Token", () => {
             tokenName,
             tokenSymbol,
             tokenDecimals,
+            false, // public_side_enabled: keep the fully private token
         ).send({ from: deployer, fee: { paymentMethod: sponsoredPaymentMethod } });
 
         expect(receipt.hasExecutionSucceeded()).toBe(true);

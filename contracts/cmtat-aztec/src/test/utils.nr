@@ -11,6 +11,14 @@ use crate::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
 pub unconstrained fn setup(
     with_account_contracts: bool,
 ) -> (TestEnvironment, AztecAddress, AztecAddress, AztecAddress) {
+    setup_with_public_side(with_account_contracts, /* public_side_enabled */ false)
+}
+
+/// `public_side_enabled` is the constructor flag that opens the four private/public bridges.
+pub unconstrained fn setup_with_public_side(
+    with_account_contracts: bool,
+    public_side_enabled: bool,
+) -> (TestEnvironment, AztecAddress, AztecAddress, AztecAddress) {
     // Setup env, generate keys
     let mut env = TestEnvironment::new();
     let (issuer, user1) = if with_account_contracts {
@@ -29,6 +37,7 @@ pub unconstrained fn setup(
         "TestToken0000000000000000000000",
         "TT00000000000000000000000000000",
         18,
+        public_side_enabled,
     );
     let token_contract_address =
         env.deploy("CMTATAztec").with_public_initializer(issuer, initializer_call);

@@ -18,7 +18,7 @@ pub contract CMTATAztecLight {
         messages::delivery::MessageDelivery,
         protocol::address::AztecAddress,
         protocol::traits::ToField,
-        state_vars::{DelayedPublicMutable, Owned, PublicImmutable, PublicMutable},
+        state_vars::{DelayedPublicMutable, Owned, PublicImmutable, PublicMutable, StateVariable},
     };
 
     use balance_set::BalanceSet;
@@ -27,6 +27,10 @@ pub contract CMTATAztecLight {
         access_controlModule::{AccessControlModule, BURNER_ROLE, DEFAULT_ADMIN_ROLE, MINTER_ROLE},
         enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
         extraInformationModule::{DocumentInfo, ExtraInformation},
+        hybridModule::{
+            complete_commitment, initialize_commitment, PRIVATE_ADDRESS_MAGIC_VALUE, PublicBalances,
+            require_public_side_enabled,
+        },
         pauseModule::PauseModule,
     };
 
@@ -90,6 +94,14 @@ pub contract CMTATAztecLight {
         from: AztecAddress,
         to: AztecAddress,
         amount: u128,
+    }
+
+    // Hybrid: the issuer's record of a partial note opened for `to` (see initialize_transfer_commitment).
+    #[event]
+    struct CommitmentInitialized {
+        to: AztecAddress,
+        completer: AztecAddress,
+        commitment: Field,
     }
 
     #[event]
@@ -178,15 +190,24 @@ pub contract CMTATAztecLight {
         symbol: PublicImmutable<FieldCompressedString, Context>,
         name: PublicImmutable<FieldCompressedString, Context>,
         decimals: PublicImmutable<u8, Context>,
+
+        // Hybrid: the public balances and whether the bridges to them are open. Appended last so the
+        // slots above are unchanged.
+        public_balances: PublicBalances<Context>,
+        public_side_enabled: PublicImmutable<bool, Context>,
     }
 
     #[external("public")]
     #[initializer]
-    fn constructor(admin: AztecAddress, name: str<31>, symbol: str<31>, decimals: u8) {
+    // `public_side_enabled` is the issuer's deployment-time choice: whether holders may move value
+    // between their private notes and a public balance (the four AIP-20 bridges). Off reproduces the
+    // fully private token; it cannot be changed after deployment.
+    fn constructor(admin: AztecAddress, name: str<31>, symbol: str<31>, decimals: u8, public_side_enabled: bool) {
         assert(!admin.is_zero(), "invalid admin");
         self.storage.name.initialize(FieldCompressedString::from_string(name));
         self.storage.symbol.initialize(FieldCompressedString::from_string(symbol));
         self.storage.decimals.initialize(decimals);
+        self.storage.public_side_enabled.initialize(public_side_enabled);
         self.internal._grant_role_internal(DEFAULT_ADMIN_ROLE, admin);
 
         self.storage.issuer_address.schedule_value_change(admin);
@@ -744,6 +765,182 @@ pub contract CMTATAztecLight {
         assert(!self.storage.pause_module.is_deactivated(), "Error: token contract is deactivated");
         let new_supply = self.storage.total_supply.read().sub(amount);
         self.storage.total_supply.write(new_supply);
+    }
+
+    /** ==========================================================
+     * ===================== HYBRID: PRIVATE/PUBLIC BRIDGES ======
+     * ======================================================== */
+    // The four AIP-20 paths that move value between the private notes and a public balance, offered
+    // as the holder's own choice and only when the token was deployed with `public_side_enabled`.
+    // Same names, parameter types and selectors as AIP-20. What each publishes is stated in
+    // doc/README.md, "Private/public bridges"; the helpers and the licence of the derived parts are in
+    // lib/src/modules/hybridModule.nr. The CMTAT compliance chain runs in the private half exactly as
+    // for transfer_private_to_private; the enqueued public halves add the pause check and the public
+    // balance move, whose arguments (the public party and the amount) are published by design.
+
+    #[external("public")]
+    #[view]
+    fn balance_of_public(owner: AztecAddress) -> pub u128 {
+        self.storage.public_balances.balance_of(owner)
+    }
+
+    #[external("public")]
+    #[view]
+    fn public_get_public_side_enabled() -> pub Field {
+        self.storage.public_side_enabled.read().to_field()
+    }
+
+    /**
+     * @dev: Spends `from`'s notes in private and credits `to`'s PUBLIC balance. `to` and `amount` become
+     * public; `from` stays private. Both parties are screened as for a private transfer.
+     *
+     * Requirements:
+     * - The public side must be enabled.
+     * - The contract must not be paused.
+     * - Neither party may be frozen; both must pass the enabled list.
+     */
+    #[authorize_once("from", "authwit_nonce")]
+    #[external("private")]
+    fn transfer_private_to_public(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+        require_public_side_enabled(self.storage.public_side_enabled.read());
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._screen_transfer(from, to);
+        self.internal._debit_private(from, amount, issuer);
+        self.enqueue_self._credit_public(to, amount);
+    }
+
+    /**
+     * @dev: Debits `from`'s PUBLIC balance and creates a note for `to`. `from` and `amount` become
+     * public; `to` stays private. Both parties are screened as for a private transfer.
+     *
+     * Requirements: as transfer_private_to_public, plus a sufficient public balance.
+     */
+    #[authorize_once("from", "authwit_nonce")]
+    #[external("private")]
+    fn transfer_public_to_private(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+        require_public_side_enabled(self.storage.public_side_enabled.read());
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._screen_transfer(from, to);
+        self.internal._credit_private(to, amount, issuer);
+        self.enqueue_self._debit_public(from, amount);
+    }
+
+    /**
+     * @dev: Opens a partial note for `to` that only `completer` can later fill with an amount
+     * (transfer_private_to_commitment). The recipient is screened HERE, because at completion the
+     * contract holds only the commitment; the issuer is told which address the commitment belongs
+     * to through a constrained event, since the library delivers the partial note to `to` alone.
+     *
+     * Requirements:
+     * - The public side must be enabled.
+     * - `to` must not be frozen and must pass the enabled list.
+     */
+    #[external("private")]
+    fn initialize_transfer_commitment(to: AztecAddress, completer: AztecAddress) -> pub Field {
+        require_public_side_enabled(self.storage.public_side_enabled.read());
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._open_commitment(to, completer, issuer)
+    }
+
+    /**
+     * @dev: Spends `from`'s notes and completes `commitment` with `amount`. The parties stay private;
+     * the completion log carries the amount unencrypted, tagged by the commitment. The recipient was
+     * screened when the commitment was opened; the sender is screened here.
+     *
+     * Requirements:
+     * - The public side must be enabled.
+     * - The contract must not be paused.
+     * - `from` must not be frozen and must pass the enabled list.
+     * - The caller must be the completer the commitment was opened for.
+     */
+    #[authorize_once("from", "authwit_nonce")]
+    #[external("private")]
+    fn transfer_private_to_commitment(from: AztecAddress, commitment: Field, amount: u128, authwit_nonce: Field) {
+        require_public_side_enabled(self.storage.public_side_enabled.read());
+        let issuer = self.storage.issuer_address.get_current_value();
+        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
+        self.internal._debit_private(from, amount, issuer);
+        complete_commitment(
+            self.context,
+            commitment,
+            self.msg_sender(),
+            self.storage.private_balances.get_storage_slot(),
+            amount,
+        );
+        self.enqueue_self._transfer();
+    }
+
+    /**
+     * @dev: transfer_private_to_public plus a partial note for `to` that the SENDER may later
+     * complete - the AIP-20 "deposit now, receive the private output later" pattern.
+     */
+    #[authorize_once("from", "authwit_nonce")]
+    #[external("private")]
+    fn transfer_private_to_public_with_commitment(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) -> pub Field {
+        require_public_side_enabled(self.storage.public_side_enabled.read());
+        let issuer = self.storage.issuer_address.get_current_value();
+        self.internal._screen_transfer(from, to);
+        self.internal._debit_private(from, amount, issuer);
+        self.enqueue_self._credit_public(to, amount);
+        self.internal._open_commitment(to, self.msg_sender(), issuer)
+    }
+
+    // ---- hybrid: private helpers ----
+
+    #[internal("private")]
+    fn _screen_transfer(from: AztecAddress, to: AztecAddress) {
+        assert(!self.storage.enforcement_module.is_frozen(from), "Frozen: Sender");
+        assert(!self.storage.enforcement_module.is_frozen(to), "Frozen: Recipient");
+    }
+
+    /// Spends `amount` of `from`'s notes; the change note goes to `from` and, as every note, to the issuer.
+    #[internal("private")]
+    fn _debit_private(from: AztecAddress, amount: u128, issuer: AztecAddress) {
+        let change_message = self.storage.private_balances.at(from).sub(amount);
+        change_message.deliver(MessageDelivery::onchain_constrained());
+        change_message.deliver_to(issuer, MessageDelivery::offchain());
+    }
+
+    #[internal("private")]
+    fn _credit_private(to: AztecAddress, amount: u128, issuer: AztecAddress) {
+        let note_message = self.storage.private_balances.at(to).add(amount);
+        note_message.deliver(MessageDelivery::onchain_constrained());
+        note_message.deliver_to(issuer, MessageDelivery::offchain());
+    }
+
+    #[internal("private")]
+    fn _open_commitment(to: AztecAddress, completer: AztecAddress, issuer: AztecAddress) -> Field {
+        assert(!self.storage.enforcement_module.is_frozen(to), "Frozen: Recipient");
+        let commitment = initialize_commitment(self.context, to, completer).to_field();
+        // The issuer's record of the partial note: who it belongs to and its tag, so the issuer can
+        // later match the (unencrypted, commitment-tagged) completion log to a holder.
+        self.emit(CommitmentInitialized { to, completer, commitment }).deliver_to(
+            issuer,
+            MessageDelivery::onchain_constrained(),
+        );
+        commitment
+    }
+
+    // ---- hybrid: public halves ----
+
+    #[external("public")]
+    #[only_self]
+    // PRIVACY: `to` and `amount` are published - that is the nature of a public credit, chosen by the
+    // sender. `from` never reaches this half.
+    fn _credit_public(to: AztecAddress, amount: u128) {
+        assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
+        self.storage.public_balances.increase(to, amount);
+        self.emit(Transfer { from: PRIVATE_ADDRESS_MAGIC_VALUE, to, amount });
+    }
+
+    #[external("public")]
+    #[only_self]
+    // PRIVACY: `from` and `amount` are published - the debited balance is public state anyway. `to`
+    // never reaches this half.
+    fn _debit_public(from: AztecAddress, amount: u128) {
+        assert(!self.storage.pause_module.is_paused(), "Error: token contract is paused");
+        self.storage.public_balances.decrease(from, amount);
+        self.emit(Transfer { from, to: PRIVATE_ADDRESS_MAGIC_VALUE, amount });
     }
 
     /** ==========================================================

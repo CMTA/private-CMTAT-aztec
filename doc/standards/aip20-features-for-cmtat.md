@@ -184,7 +184,7 @@ Covered in detail in [`building-on-aip20.md`](./building-on-aip20.md#interface-a
 
 **Verdict: in neither product.** If an issuer needs it, it is a separate *hybrid* variant with its own assessment and its own privacy table, not a change to CMTAT-private or CMTAT-private-AIP20 — both of which are named for the property F6 removes.
 
-> **Refinement (2026-09-14).** The four private↔public *bridges* (`transfer_private_to_public`, `transfer_public_to_private` and the two commitment forms) are a narrower thing than a public ledger: per-transfer, initiated by the party whose side becomes visible, and enable-able by the issuer with one deployment flag. [`building-on-aip20.md`](./building-on-aip20.md#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) works through what each is for and what following them with the compliance chain costs; under an issuer flag they fit the CMTAT-private-AIP20 variant without changing a deployment that leaves the flag off.
+> **Refinement (2026-09-14).** The four private↔public *bridges* (`transfer_private_to_public`, `transfer_public_to_private` and the two commitment forms) are a narrower thing than a public ledger: per-transfer, initiated by the party whose side becomes visible, and enable-able by the issuer with one deployment flag. [`building-on-aip20.md`](./building-on-aip20.md#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) works through what each is for and what following them with the compliance chain costs; under an issuer flag they fit the CMTAT-private-AIP20 variant without changing a deployment that leaves the flag off. **Implemented in 0.4.0** in the three variants themselves, behind `public_side_enabled`.
 
 ## F7 — Named constructors
 

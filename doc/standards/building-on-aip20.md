@@ -265,15 +265,15 @@ The profile above is seven functions. The fork's `Token` exposes twenty-two. Thi
 | `constructor_with_initial_supply(name, symbol, decimals, initial_supply, to, auth_contract)` | public, initializer | different | CMTAT's `constructor(admin, name, symbol, decimals)` seats a role table and an issuer, not a minter and a hook. Deployment tooling differs whatever else is aligned; F7 in [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md#f7--named-constructors) adds named constructors |
 | `constructor_with_minter(name, symbol, decimals, minter, auth_contract)` | public, initializer | different | Same |
 | `transfer_private_to_private(from, to, amount, _nonce)` | private | **yes** | Aligned; may revert for compliance |
-| `transfer_private_to_public(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `to` (conflict 1). A holder-initiated bridge, not a public ledger — see [the cross-domain paths](#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) for how it could be offered as the holder's choice |
-| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | private | **no** | Public balance plus a partial note: conflicts 1 and 2. See the cross-domain paths below |
-| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | private | **no** | A partial note whose recipient was fixed at initialization; screening has to move to `initialize_transfer_commitment` and the completion amount is published unencrypted. F2 describes the three additions it needs; see the cross-domain paths below |
-| `transfer_public_to_private(from, to, amount, _nonce)` | private | **no** | Needs a public balance for `from` (conflict 1). See the cross-domain paths below |
-| `initialize_transfer_commitment(to, completer)` | private | **no** | The partial-note entry point; comes with F2 |
+| `transfer_private_to_public(from, to, amount, _nonce)` | private | **yes, behind `public_side_enabled`** | Since 0.4.0 — see [the cross-domain paths](#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) |
+| `transfer_private_to_public_with_commitment(from, to, amount, _nonce)` | private | **yes, behind `public_side_enabled`** | Since 0.4.0 |
+| `transfer_private_to_commitment(from, commitment, amount, _nonce)` | private | **yes, behind `public_side_enabled`** | Since 0.4.0; the recipient is screened at `initialize_transfer_commitment` and the issuer is notified there. No expiry (F2 addition 1) yet |
+| `transfer_public_to_private(from, to, amount, _nonce)` | private | **yes, behind `public_side_enabled`** | Since 0.4.0 |
+| `initialize_transfer_commitment(to, completer)` | private | **yes, behind `public_side_enabled`** | Since 0.4.0; screens `to` and notifies the issuer |
 | `transfer_public_to_public(from, to, amount, _nonce)` | public | **no** | Public balances on both sides, and the parties and amount are public call arguments (conflict 1) |
 | `transfer_public_to_commitment(from, commitment, amount, _nonce)` | public | **no** | Conflicts 1 and 2 |
 | `balance_of_private(owner)` | utility | **yes** | Aligned |
-| `balance_of_public(owner)` | public, view | **no** | No public balance map (conflict 1) |
+| `balance_of_public(owner)` | public, view | **yes** | Since 0.4.0 (reads zero when the public side is off) |
 | `total_supply()` | public, view | **yes** | Aligned |
 | `name()`, `symbol()`, `decimals()` | public, view | **yes** | Aligned; `private_get_*` are extras |
 | `get_auth_contract()` | public, view | **no** | CMTAT's compliance is internal to the token; there is no hook to point at. F3 would add a rule-engine hook, in the ARC-403 shape but passed the recipient and caller, with its own getter |
@@ -288,6 +288,8 @@ Read down the "why" column and the missing fifteen collapse to three causes: **p
 What CMTAT has that AIP-20 does not, for the mirror image: `transfer_batch`, `mint_batch`, `burn_batch`, `cancel_authwit`, the `private_get_*` getters, `public_get_issuer` / `private_get_issuer` / `set_issuer`, `version`, and the whole compliance and metadata surface (roles, pause, deactivation, freeze, lists, terms, token ID, and on the Debt variant credit events and debt).
 
 ### The cross-domain paths: what they are for, and offering them as a holder's choice
+
+> **Status (2026-09-14): implemented in 0.4.0**, as proposed below — the four bridges plus `initialize_transfer_commitment` and `balance_of_public`, behind the `public_side_enabled` deployment flag, with the compliance chain in the private half, recipient screening at commitment opening and a `CommitmentInitialized` event to the issuer. Not implemented: the commitment expiry, and the public-to-public transfer, public mint and public burn (decision 2 below, left as "not needed"). The derived code is in `lib/src/modules/hybridModule.nr` under the MIT licence. User documentation: [`doc/README.md`, "Private/public bridges"](../README.md#privatepublic-bridges).
 
 Four of the missing entry points are not "public balances" in the sense of a transparent ledger; they are the **bridges between the private and the public domain** that give AIP-20 its "hybrid" character. A holder who has private notes can decide to move some of them into the public side of the token, and back. The question this raises for CMTAT is different from F6's: not "should balances be public" but "may a holder *choose* to make one of their own transfers public".
 

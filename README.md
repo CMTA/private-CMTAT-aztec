@@ -43,6 +43,7 @@ Two further contracts are not tokens but **ARC-403 authorization contracts**: th
 - **Issuer auditability**: an audit copy of every note and a constrained, unforgeable `Transfer` event to the issuer; the issuer address can be rotated with `set_issuer`.
 - **Role-based access control** with the CMTAT role set, plus CMTAT terms / token ID, and, on the debt variant, credit events and the `ICMTATDebt` record.
 - **Events** for every state change, public where the state is public and private (encrypted to the parties) for transfers.
+- **Private/public bridges, at the issuer's option**: deployed with `public_side_enabled = true`, holders may move value between their private notes and a public balance through the four AIP-20 bridges (`transfer_private_to_public`, `transfer_public_to_private`, `transfer_private_to_commitment`, `transfer_private_to_public_with_commitment`), each publishing only the mover's own side; deployed with `false`, the token is fully private. See [Private/public bridges](doc/README.md#privatepublic-bridges).
 - **AIP-20 private profile**: `transfer_private_to_private`, `mint_to_private`, `name`, `symbol`, `decimals`, `balance_of_private` and `total_supply` have the names and types of the [Aztec token standard](https://github.com/CMTA/aztec-standards), so tooling that uses its private paths reaches this token by selector. Not full conformance — no public balances, no commitment transfers, and `burn` is role-gated under its own name; see [Comparison with AIP-20](doc/README.md#aip-20-private-profile).
 
 Not supported, unlike Solidity CMTAT: upgradeability, gasless transactions, and forced transfer (the issuer cannot move a holder's notes; the compliance lever is freezing the account).
@@ -104,6 +105,8 @@ submodules/          Pinned reference repositories: CMTAT, CMTAT-Confidential, t
 ## Intellectual property
 
 The code is copyright (c) Capital Market and Technology Association, 2026, and is released under the [Mozilla Public License 2.0](LICENSE-MPL.md) and the [MIT license](LICENSE-MIT.md). You may choose either license.
+
+**Third-party code.** `lib/src/modules/hybridModule.nr` contains code derived from the AIP-20 `Token` of [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards), Copyright (c) 2024 Wonderland, MIT License; that file is MIT-only and carries the notice.
 
 The history up to and including commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60) (the 0.2.0 release, and so the 0.1.0, 0.1.1 and 0.2.0 releases) is copyright (c) 2025 Taurus SA, under the same two licenses. Later commits are copyright CMTA.
 

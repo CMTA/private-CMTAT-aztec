@@ -104,7 +104,7 @@ describe("Accounts", () => {
 
         // arbitrary transactions to progress 2 blocks, and have fee juice on Aztec ready to claim
         for (let i = 0; i < 2; i++) {
-            await TokenContract.deploy(wallet, owner, tokenName, tokenSymbol, tokenDecimals)
+            await TokenContract.deploy(wallet, owner, tokenName, tokenSymbol, tokenDecimals, false)
                 .send({ from: owner, fee: { paymentMethod: sponsoredPaymentMethod } });
         }
 
@@ -144,6 +144,7 @@ describe("Accounts", () => {
             tokenName,
             tokenSymbol,
             tokenDecimals,
+            false,
             { salt, deployer: owner },
         ).send({
             from: owner,

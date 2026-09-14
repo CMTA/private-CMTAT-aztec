@@ -30,6 +30,7 @@ This repository contains a functional private CMTAT prototype, where transaction
   - [Security and confidentiality properties](#security-and-confidentiality-properties)
   - [Modules](#modules)
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
+- [Private/public bridges](#privatepublic-bridges)
 - [AIP-20 private profile](#aip-20-private-profile)
 - [Deployment](#deployment)
 - [Comparison with Solidity CMTAT](#comparison-with-solidity-cmtat)
@@ -106,6 +107,7 @@ You may modify the token code by adding, removing, or modifying features, at you
   - **Third-party transactions**: We want to allow third parties to execute transactions on behalf of our users, so we use **authentication witnesses** when transferring. (same functionality as `transferFrom` on EVM)
   - **Mint and burn restrictions**: There is no authentication witness in the `mint_to_private` and `burn` functions, as a third party is not allowed to mint or burn; only the issuer can perform these actions.
   - **Admin role**: The admin cannot be changed. Issuers can be added or removed by the admin.
+  - **Private by default, public by the holder's choice**: balances are private notes. If, and only if, the token was deployed with `public_side_enabled = true`, a holder may move value between its notes and a public balance through the four AIP-20 bridges; what such a move publishes is the mover's own side. See [Private/public bridges](#privatepublic-bridges).
 
 - **Functionalities**:
   - **Totalsupply - Public Context**: For a particular CMTAT token, anyone may know the total number of tokens in circulation at any point in time.
@@ -143,6 +145,7 @@ _Diagram source: `doc/img/state-split.puml`._
 - **Issuer_address**: `DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS>` - The address of the issuer, which receives a copy of every note and so can audit holder balances. It is a `DelayedPublicMutable` for two reasons: so that a *private* function can read it without a public call that would leak the caller, and so that it can be changed.
   - **It can be rotated by the admin**, with `set_issuer(new_issuer)` under `DEFAULT_ADMIN_ROLE`. The change is scheduled and becomes current after `CHANGE_ROLES_DELAY_SECONDS`; until then every mint, transfer and burn still addresses the previous issuer. The `IssuerChanged` event carries `effective_at`.
   - **Rotation transfers future visibility only.** Copies already delivered to the previous issuer cannot be recalled — a delivered note is delivered — so the previous issuer keeps what it has. The new issuer needs a PXE able to decrypt and store copies from the moment the change takes effect, or the audit trail has a hole for that period.
+- **Public balances** (`public_balances: PublicBalances`, a `Map<AztecAddress, PublicMutable<u128>>`) and **`public_side_enabled: PublicImmutable<bool>`** — the AIP-20 public side, reachable only through the four bridges and only when the deployment flag is on. See [Private/public bridges](#privatepublic-bridges).
 - **Balances**: `Owned<BalanceSet>` - Token balance of every user inside their PXE, accessed as `private_balances.at(address)`. The balance of a user is the sum of the amounts of all their private `UintNote`. `BalanceSet` now comes from the `balance_set` aztec-nr library rather than being defined in this repository.
 
 ### Mint private specifications
@@ -267,6 +270,7 @@ Events must be declared inside the contract module, not in the shared library, w
 | `Terms` | `name`, `uri`, `documentHashHigh`, `documentHashLow`, `lastModified` | `set_terms` | CMTAT `Terms` |
 | `TokenId` | `tokenId` | `set_token_id` | CMTAT `TokenId` |
 | `DebtLogEvent`, `DebtInstrumentLogEvent`, `CreditEventsLogEvent` | `account` | `set_debt`, `set_debt_instrument`, `set_credit_events` (`CMTATAztecDebt` only) | CMTAT, which emits them payload-free; these carry the caller |
+| `Transfer` (public) | `from`, `to`, `amount`, with `PRIVATE_ADDRESS_MAGIC_VALUE` for the private side | `transfer_private_to_public` (`from` = marker), `transfer_public_to_private` (`to` = marker) — the bridges only | AIP-20 `Transfer` and its `PRIVATE_ADDRESS` sentinel |
 
 `effective_at` appears on every event for a `DelayedPublicMutable` value. It is the timestamp from which the scheduled value is current — exactly what the state variable records, computed as block timestamp plus the module's delay — so an indexer does not need to know the contract's delay to know when a freeze, a listing, an operations change or an issuer rotation takes effect.
 
@@ -299,6 +303,10 @@ Every private operation enqueues one public call, and **every argument of a publ
 | `mint_to_private(to, amount)` | `_mint(caller, amount)` | the **minter's** address, the **amount** | the recipient `to` |
 | `transfer_private_to_private(from, to, amount, …)` | `_transfer()` — **no arguments** | that a transfer of this token occurred | sender, recipient, amount |
 | `burn(account, amount, …)` | `_burn(caller, amount)` | the **burner's** address, the **amount** | the debited `account` |
+| `transfer_private_to_public(from, to, amount, …)` | `_credit_public(to, amount)` | the **public recipient** and the **amount** — the sender chose to pay a public balance | the sender `from` |
+| `transfer_public_to_private(from, to, amount, …)` | `_debit_public(from, amount)` | the **public sender** and the **amount** — its balance was public already | the recipient `to` |
+| `transfer_private_to_commitment(from, commitment, amount, …)` | `_transfer()` — no arguments | that a transfer occurred; the **amount**, unencrypted in the completion log, tagged by the commitment | sender, recipient |
+| `initialize_transfer_commitment(to, completer)` | none | nothing (the validity commitment is a nullifier) | `to`, `completer` |
 
 Three things follow, and they are worth stating precisely because the obvious reading of the table overstates the leak.
 
@@ -389,6 +397,25 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 - **Other potential implementations**:
   - **App-siloed key**: Use an app-siloed key that the issuer can use for decrypting any note in the note hash tree of this app.
 
+## Private/public bridges
+
+Since 0.4.0 the token carries the four AIP-20 entry points that move value between a holder's private notes and a **public balance**, with the same names, parameter types and selectors as the standard. They exist so that a holder can interact with the public side of Aztec — a contract that keeps public balances, a vault, a settlement counterparty — without leaving the token, and they are the holder's choice per transfer: what a bridge publishes is the side of the transfer that the mover chose to make public, never the counterparty's.
+
+They are **off unless the issuer enables them at deployment**: the constructor's last argument, `public_side_enabled`, is a `PublicImmutable<bool>`; with `false` every bridge reverts with `Error: public side disabled at deploy` before any note is touched, and the token is exactly the fully private token described above. The flag cannot be changed afterwards.
+
+| Entry point | What it does | Published | Kept private |
+|---|---|---|---|
+| `transfer_private_to_public(from, to, amount, authwit_nonce)` | spends `from`'s notes, credits `to`'s public balance | `to`, `amount`, `Transfer(PRIVATE_ADDRESS, to, amount)` | `from` |
+| `transfer_public_to_private(from, to, amount, authwit_nonce)` | debits `from`'s public balance, creates a note for `to` (with the issuer's copy) | `from`, `amount`, `Transfer(from, PRIVATE_ADDRESS, amount)` | `to` |
+| `initialize_transfer_commitment(to, completer) -> commitment` | opens a partial note owned by `to` that only `completer` may fill | nothing | `to`, `completer` |
+| `transfer_private_to_commitment(from, commitment, amount, authwit_nonce)` | spends `from`'s notes and fills the commitment; the caller must be its completer | the amount, unencrypted in the completion log, tagged by the commitment; that a transfer occurred | `from`, `to` |
+| `transfer_private_to_public_with_commitment(from, to, amount, authwit_nonce) -> commitment` | `transfer_private_to_public` plus a commitment for `to` that the **sender** may fill later | as `transfer_private_to_public` | `from`, the commitment's owner |
+| `balance_of_public(owner)` | reads a public balance | — | — |
+
+**The compliance chain follows.** The private half of each bridge runs the same checks as `transfer_private_to_private`: both parties' freeze flags and the enabled list, then the issuer's copy of every note created; the public half asserts the contract is not paused. For a commitment the recipient is screened **when the commitment is opened**, because at completion the contract holds only the commitment, and the issuer is told which holder a commitment belongs to through a `CommitmentInitialized { to, completer, commitment }` event delivered constrained to it — the library delivers the partial note to `to` alone. Two things are deliberately not here: an expiry on commitments (a recipient frozen after opening one can still be paid into it, until the freeze is checked at the next bridge it uses), and public-to-public transfers, public mints and public burns — a public balance is a landing and departure point, not a second ledger.
+
+**Where the code lives.** The entry points are in each variant's `main.nr` under the `HYBRID` banner (Noir requires every external function in the contract module); the state and the helpers, which are derived from the AIP-20 `Token`, are in [`lib/src/modules/hybridModule.nr`](../lib/src/modules/hybridModule.nr). That one file is **MIT-only**, with Wonderland's copyright notice for the derived parts — see [Intellectual property](#intellectual-property).
+
 ## AIP-20 private profile
 
 Seven entry points carry the exact names and parameter types of the AIP-20 `Token` in the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), and therefore answer its selectors — a caller reaches an Aztec function by selector, which is derived from the name and the parameter *types* only:
@@ -405,7 +432,7 @@ Seven entry points carry the exact names and parameter types of the AIP-20 `Toke
 This is a **partial profile, not conformance**. Aztec has no interface detection, so the gaps show up at the first call rather than at discovery:
 
 - `burn(account, amount, authwit_nonce)` deliberately keeps its own name and selector. AIP-20's `burn_private` is holder-authorised; CMTAT's burn is redemption, an issuer act gated by `BURNER_ROLE` on top of the holder's consent. A wallet calling `0xc282ed79` as a self-burn would fail with a role error it cannot anticipate.
-- No `*_to_public`, `*_to_commitment`, `balance_of_public`, `initialize_transfer_commitment` or `get_auth_contract`: public balances and partial notes conflict with transfer restriction, as [`doc/standards/cmtat-vs-aip20.md`](standards/cmtat-vs-aip20.md) explains.
+- The four private/public bridges, `initialize_transfer_commitment` and `balance_of_public` are present since 0.4.0 but **behind the `public_side_enabled` deployment flag** — see [Private/public bridges](#privatepublic-bridges). Still absent: `transfer_public_to_public`, `transfer_public_to_commitment`, `mint_to_public`, `mint_to_commitment`, `burn_public` and `get_auth_contract`.
 - The constructor differs, so deployment tooling differs regardless.
 - `transfer_batch`, `mint_batch`, `burn_batch` and `cancel_authwit` are this project's extras with no AIP-20 counterpart.
 
@@ -713,6 +740,8 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 ## Intellectual property
 
 The code is copyright (c) Capital Market and Technology Association, 2026, and is released under the [Mozilla Public License 2.0](../LICENSE-MPL.md) and the [MIT license](../LICENSE-MIT.md). You may choose either license.
+
+**Third-party code.** `lib/src/modules/hybridModule.nr` contains code derived from the AIP-20 `Token` of [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards), Copyright (c) 2024 Wonderland, MIT License. That file is released under the MIT license only; its header carries the notice.
 
 The history up to and including commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60) (the 0.2.0 release, and so the 0.1.0, 0.1.1 and 0.2.0 releases) is copyright (c) 2025 Taurus SA, under the same two licenses. Later commits are copyright CMTA.
 
