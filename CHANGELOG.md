@@ -80,6 +80,8 @@ Nothing yet.
 
 MAJOR under the policy above: storage layout, note delivery and the external API all changed with the framework upgrade, and 0.3.0 is not compatible with a 0.2.0 deployment. `version()` returns `0.3.0`. Built and tested on Aztec **5.2.0** (sandbox and testnet).
 
+First release published on [github.com/CMTA/private-CMTAT-aztec](https://github.com/CMTA/private-CMTAT-aztec); from 0.3.0 on, releases are made there. Earlier releases were published on [github.com/taurushq-io/private-CMTAT-aztec](https://github.com/taurushq-io/private-CMTAT-aztec).
+
 ### Summary
 
 - Upgraded from Aztec 0.87.8 to **5.2.0**, which is a rewrite of every file rather than a version bump: the framework renamed its function and state-variable macros, moved contract state behind `self`, replaced note delivery, and replaced the PXE-centric TypeScript API with a Wallet-centric one.
@@ -323,7 +325,7 @@ MAJOR under the policy above: storage layout, note delivery and the external API
 
 ## 0.2.0 — 2025-07-28
 
-Commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60). Last release copyright (c) 2025 Taurus SA.
+Commit [`61f4220d5565840fd4fcdd2b723c9f55eb824c60`](https://github.com/taurushq-io/private-CMTAT-aztec/commit/61f4220d5565840fd4fcdd2b723c9f55eb824c60). Last release published on [github.com/taurushq-io/private-CMTAT-aztec](https://github.com/taurushq-io/private-CMTAT-aztec) and the last one copyright (c) 2025 Taurus SA.
 
 ### Summary
 

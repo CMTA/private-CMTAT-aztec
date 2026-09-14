@@ -399,7 +399,7 @@ Install the correct version of the toolkit with:
 aztec-up install 5.2.0
 ```
 
-The version should match the [Nargo.toml](https://github.com/taurushq-io/private-CMTAT-aztec/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
+The version should match the [Nargo.toml](https://github.com/CMTA/private-CMTAT-aztec/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
 
 Start the sandbox with:
 
@@ -416,7 +416,7 @@ yarn codegen
 yarn test
 ```
 
-The contract is deployed on the sandbox, by the [setup function](https://github.com/taurushq-io/private-CMTAT-aztec/blob/master/contracts/cmtat-aztec/src/test/utils.nr), and all the tests are run.
+The contract is deployed on the sandbox, by the [setup function](https://github.com/CMTA/private-CMTAT-aztec/blob/master/contracts/cmtat-aztec/src/test/utils.nr), and all the tests are run.
 
 ### Testnet
 

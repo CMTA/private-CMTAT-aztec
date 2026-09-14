@@ -4,6 +4,8 @@ A private version of the [CMTAT](https://github.com/CMTA/CMTAT) security token, 
 
 Balances and transfers are **private**: a holder's balance is a set of encrypted notes in their own client, and a transfer publishes neither the parties nor the amount. Compliance state stays **public**: total supply, the pause and deactivation flags, the role table, the freeze flags and the transfer-restriction lists. The **issuer** receives a copy of every note and a constrained `Transfer` event, so it can reconstruct every balance and audit activity without any user's cooperation.
 
+> **Repository.** Since **v0.3.0** the project is maintained and released by the [Capital Market and Technology Association](https://cmta.ch/) at [github.com/CMTA/private-CMTAT-aztec](https://github.com/CMTA/private-CMTAT-aztec). Releases 0.1.0 to 0.2.0 were published by Taurus SA at [github.com/taurushq-io/private-CMTAT-aztec](https://github.com/taurushq-io/private-CMTAT-aztec), whose history this repository carries.
+
 > **Disclaimer.** This is a prototype. It has **not** been audited, it is not upgradeable, it has no gasless-transaction support, and it may not be fully compliant with Swiss law. Aztec itself is under heavy development; expect breaking changes between toolchain versions.
 
 ## Table of contents
