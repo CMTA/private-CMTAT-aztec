@@ -249,6 +249,9 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Documentation
 
+- The analysis report now states how long a delayed pause would take and records a new finding about the delay itself.
+  - A `DelayedPublicMutable` pause would take at least the contract's 360 seconds, and the library recommends delays of "at least a couple hours" and calls the type unsuitable for an emergency shutdown, because a private read sets the transaction's `expiration_timestamp`: a shorter delay narrows every transaction's validity window and fingerprints it. That effectively closes the one option that would hide the transfer selector.
+  - The same reasoning applies to the contract's existing 360-second delay, which is an order of magnitude under the recommendation: every mint, transfer and burn expires six minutes after its anchor block, and a delay shorter than other contracts' is distinguishable. Against that, a short delay is a short freeze window. Recorded as an open decision for the compliance owner and the network operator, with the three facts needed to settle it.
 - The README now states exactly what each private operation publishes, in a table under *Security and confidentiality properties*: a mint publishes the minter and the amount, a burn the burner and the amount, a transfer nothing but the fact that one occurred.
   - Both amounts were already inferable from the public `total_supply` delta, and the published address always holds a public role, so the marginal disclosure is which role-holder acted and when; the recipient of a mint and the debited account of a burn are not published.
   - The caveat that matters is boxed: `BURNER_ROLE` and `MINTER_ROLE` must remain issuer roles. A holder granted `BURNER_ROLE` who redeems its own tokens publishes itself, turning a private operation public without any code changing.
