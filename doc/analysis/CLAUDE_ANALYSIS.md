@@ -14,7 +14,7 @@
 
 **Privacy findings are in section H.** On Aztec that is what a reader looks for first, and it is the section where a correct contract can still defeat its own purpose. The headline is that this contract's private/public split is mostly *right*: `mint` does not publish its recipient, and the enqueued half of `transfer` takes no arguments at all. The residue is in H-1 and H-3.
 
-**A-1, A-2, C-1, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-3, G-4, G-6 and H-1 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
+**A-1, A-2, C-1, C-2, C-3, C-4, C-6, E-1, E-2, G-1, G-2, G-3, G-4, G-6, H-1 and H-4 were fixed after the review** (commit follows this report); every other Outcome below is a verdict, not a record of work done. Two temporary probes were compiled and deleted (B-1, J-1/J-3); the working tree was verified clean afterwards and the baseline gate counts reproduced.
 
 ---
 
@@ -31,7 +31,7 @@
 | B-3 | `CreditEventsStruct` packs two `bool`s into two Fields where Solidity uses one | ⬜ decide — fold into the next storage break, do not schedule one |
 | B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave — hot and cold flags, sharing would tax the hot read |
 | C-1 | `transfer_batch` emits no `Transfer` event; `transfer` does | ✅ fixed |
-| C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ⬜ decide |
+| C-2 | `Transfer` delivered `onchain_unconstrained()` to `to` only | ✅ fixed — D adopted |
 | C-3 | `set_terms` emits nothing; `set_token_id` emits `TokenId` | ✅ fixed |
 | C-4 | Constructor configures the contract with no event at all | ✅ fixed |
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
@@ -51,13 +51,13 @@
 | H-1 | `burn` publishes the caller's address and the amount | ✅ fixed — documented, as decided |
 | H-2 | `mint` hides `to`; `_transfer()` takes no arguments | ✅ keep — now protected by `PRIVACY:` comments on all three public halves |
 | H-3 | The enqueued public selector reveals which operation ran | ⬜ decide — 4 options costed; only one removes the leak |
-| H-4 | The `Transfer` event: its only unique datum is the sender, to the recipient, and it is delivered unverifiably | ⬜ decide — run the one-line experiment first |
+| H-4 | The `Transfer` event: its only unique datum is the sender, to the recipient, and it is delivered unverifiably | ✅ fixed — D adopted; transfer batch cap re-measured and lowered to 2 |
 | I-1 | Workspace dependency graph | ✅ checked — clean |
 | J-1 | `UserFlagsTrait` / `FreezableFlagTrait` are not `pub` | ⬜ implement — one word each |
 | J-2 | `#[test]` functions live inside the contract crates | ⚠️ **corrected** — no compiler warning at 5.2.0 |
 | J-3 | Module structs are genuinely reusable | ✅ verified by compiling a downstream probe |
 
-**Counts:** 35 rows — 23 ✅ (9 checked/keep, 14 fixed), 2 ⚠️ corrected, 10 ⬜ open (1 *implement*, 7 *decide*, 2 *leave*).
+**Counts:** 35 rows — 25 ✅ (9 checked/keep, 16 fixed), 2 ⚠️ corrected, 8 ⬜ open (1 *implement*, 5 *decide*, 2 *leave*).
 
 G-6 was not found by reading; it surfaced while regenerating artifacts after the A-1 fix. It is included because it breaks the project's own documented build sequence.
 
@@ -68,7 +68,6 @@ G-6 was not found by reading; it surfaced while regenerating artifacts after the
 | D-2, J-1 | The *implement* set | Not yet applied. All are small and none is a storage or note-layout change, so they can land in one commit before 0.3. A-1 and G-2 have since been fixed — see below. |
 | D-1 | Cross-variant drift | Latent: it costs nothing while the three `main.nr` files agree, and becomes expensive the moment one of them is edited alone. |
 | B-3 | Credit-events packing | Unambiguously correct — Solidity gets the same layout for free, and unlike B-1 no measurement argues against it — but it is a storage break on a variant that only bond issuers deploy. Worth folding into a break that is happening anyway; not worth causing one. |
-| C-2, H-4 | The `Transfer` event | H-4 now establishes that the event's only unique information is the sender's identity to the recipient — everything else is restated from the notes — and that the current mode delivers even that unverifiably. Start with the one-line `onchain_constrained()`-to-issuer experiment: if the issuer can receive it, the event becomes a verifiable receipt and an on-chain audit record; if not, choose A or B. C is dominated either way. |
 | F-1 | AIP-20 | Answered in F-1: do not adopt it — public balances defeat the premise and partial notes cannot coexist with recipient screening. Two things remain: state the non-conformance in the README, and treat AIP-20's note budget as a separate optimisation worth a measured 43,046 gates per transfer. |
 | H-3 | The public selector | Four options costed in H-3. Only one — making the pause flag delayed so `transfer` enqueues nothing — actually removes the leak, and it trades an immediate pause for it. That is a compliance decision, not an engineering one. |
 
@@ -784,9 +783,30 @@ This reframes the question. It is not "should we pay DA for this event" but "**d
 
 **D is the "the event has a job" answer**, and it is the only one that makes the event's unique datum trustworthy. It also does something the notes cannot: it puts the issuer's `from`↔`to` pairing **on chain, constrained**, instead of leaving it to offchain correlation. That matters because of the finding that makes D worth testing before choosing B: the issuer's *note* copies were forced offchain by a PXE limitation about **note discovery** — computing a note's nullifier needs the owner's key. **An event is not a note.** It has no nullifier and no such discovery step, so the limitation may simply not apply — in which case the issuer could receive a guaranteed, on-chain, constrained record of every transfer even though it cannot receive guaranteed note copies. That would put the most important part of the audit trail — who paid whom, how much — back on chain with data availability, which the CHANGELOG currently records as absent.
 
-**This is a hypothesis, not a measurement.** The test is one line and one test run: change the delivery to `onchain_constrained()` with the issuer as a recipient and see whether the issuer's PXE processes it or fails discovery the way the note copies did.
+#### The experiment, run
 
-**Verdict: decide, in this order.** (i) Run the D experiment. (ii) If the issuer can receive it: D — the event becomes a verifiable receipt for the recipient and an on-chain audit record for the issuer, which is a real capability and not a cost. (iii) If not: choose between A and B on whether recipients need an in-band sender at all; B if yes, A if no. (iv) In every case, stop paying DA for an unverifiable receipt — C goes.
+Delivery changed to `onchain_constrained()` to **both** the recipient and the issuer, in `transfer` on the base variant, and the full package suite run:
+
+**76 / 76 pass** — including `transfer_private_check_issuer_view`, where the issuer is a third party to a user-to-user transfer. **The hypothesis holds: an event can be delivered constrained and on chain to the issuer.** The limitation that forced the note copies offchain is specific to note discovery and does not touch events.
+
+The full price list, measured on `transfer`:
+
+| Delivery of `Transfer` | Gates | vs. today |
+|---|---:|---:|
+| A — drop it | 119,145 | −1,679 |
+| B — `offchain()` to recipient and issuer | 119,227 | −1,597 |
+| C — `onchain_unconstrained()` to recipient *(today)* | 120,824 | — |
+| `onchain_constrained()` to recipient only | 140,988 | +20,164 |
+| D — `onchain_constrained()` to recipient **and** issuer | 161,493 | +40,669 |
+
+Two things the numbers say. Offchain delivery is essentially free in-circuit — 82 gates for two. A constrained delivery costs **~20,200 gates each**, so D is a 34% increase on a transfer.
+
+**Verdict: recommend D, framed as two separate purchases — and one prerequisite before adopting it.**
+
+- **The issuer leg (+20k) is the one to buy.** It gives the issuer, for the first time, an on-chain, data-available, *constrained* record of every transfer — `from`, `to`, `amount`, unforgeable by the sender — where today its entire audit trail is offchain and a dropped message is undetectable. That is the weakness the CHANGELOG's Security section records against this design, and a security token's audit trail is the point of the instrument. Twenty thousand gates is a fair price for closing it.
+- **The recipient leg (+20k) is the one to argue about.** Its value is a *verifiable* statement of who paid, which matters if recipients act on receipts — source-of-funds, settlement confirmation. If they do, buy it; the alternative to a verifiable receipt is no receipt (A), never an unverifiable one (C), because a receipt the sender can forge is a settlement-confirmation attack surface, not a convenience.
+- **Prerequisite, now done: the batch cap was re-measured, and the private-log arithmetic above was wrong.** Under D, `transfer_batch` aborts with `push out of bounds` at **4 and at 3**; it passes at **2**. The binding array is therefore not the sixteen private logs — 3 × 4 = 12 would have fitted. A model consistent with every measurement is that each constrained delivery consumes **two** of the sixteen key-validation requests a call may make: the old scheme at 4 recipients used 4 × 2 constrained × 2 = 16 exactly, D at 3 needs 24. The TXE gives no stack trace for the overflow, so this is recorded as a model, and the cap as the measurement. Mint and burn batches, which emit no per-recipient event, keep 4 under `MAX_ADDR_PER_CALL`; transfer gets its own `MAX_TRANSFER_ADDR_PER_CALL = 2`.
+- **Adopted.** D is implemented in all three variants: `transfer` and `transfer_batch` deliver `Transfer` constrained to the recipient and the issuer; `transfer` measures 161,493 and a 2-recipient batch 312,909. The README gained an *Events* section that records the reasoning. **Follow-on, not now:** the same on-chain record for mint and burn. The public halves already publish minter/burner and amount (H-1); what the issuer's on-chain trail would still lack is the private party — the recipient of a mint, the account of a burn. A constrained event to the issuer on those two paths would complete it.
 
 ### H-5. Patterns checked and absent
 

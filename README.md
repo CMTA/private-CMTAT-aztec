@@ -41,6 +41,7 @@ been audited and may not be fully compliant with the Swiss law.
   - [Transfer private specifications](#transfer-private-specifications)
   - [Burn private specifications](#burn-private-specifications)
   - [Batching limits](#batching-limits)
+  - [Events](#events)
   - [Security and confidentiality properties](#security-and-confidentiality-properties)
   - [Modules](#modules)
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
@@ -224,33 +225,79 @@ _Diagram source: `doc/img/burn-flow.puml`._
 
 ### Batching limits
 
-`mint_batch`, `transfer_batch` and `burn_batch` all act on at most `MAX_ADDR_PER_CALL` addresses, currently **4**.
+`mint_batch` and `burn_batch` act on at most `MAX_ADDR_PER_CALL` addresses, currently **4**. `transfer_batch` has its own, lower cap, `MAX_TRANSFER_ADDR_PER_CALL`, currently **2**.
 
-That number is measured, not derived from the protocol constants. Every value was tried by setting the global, adjusting the tests and running the full Noir suite:
+Both numbers are measured, not derived from the protocol constants. Every value was tried by setting the global, adjusting the tests and running the full Noir suite.
 
-| `MAX_ADDR_PER_CALL` | `mint_batch` | `burn_batch` | `transfer_batch` | Result |
-|---:|---:|---:|---:|---|
-| 1 | 30,776 | 81,736 | 119,145 | all tests pass |
-| 2 | 60,169 | 160,189 | 230,444 | all tests pass |
-| **4** | **107,871** | **306,820** | **454,050** | **all tests pass** |
-| 5 | — | — | — | transfer passes; batched mint and burn end with a wrong total supply |
-| 6 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
-| 8 | — | — | — | transfer aborts: `Assertion failed: push out of bounds` |
+**Mint and burn** — one note and one or two constrained deliveries per address:
 
-Gate counts are from `aztec profile gates` on `CMTATAztec`, and the N=4 row is the current code: issuer read hoisted out of the loop, and one `Transfer` event per recipient.
+| `MAX_ADDR_PER_CALL` | `mint_batch` | `burn_batch` | Result |
+|---:|---:|---:|---|
+| 1 | 30,776 | 81,736 | all tests pass |
+| 2 | 60,169 | 160,189 | all tests pass |
+| **4** | **132,584** | **331,362** | **all tests pass** |
+| 5 | — | — | batched mint and burn end with a wrong total supply |
 
-Two caveats on that table.
+**Transfer** — two notes and, since the `Transfer` event is delivered constrained to both the recipient and the issuer, **four constrained deliveries per recipient**:
 
-- The 5, 6 and 8 rows were measured **before** `transfer_batch` emitted a `Transfer` event per recipient. Each event costs about 1,687 gates and one more private log, so it can only tighten the budget at those values, never loosen it. 4 has been re-verified with the event in place; the rows above 4 are therefore conservative rather than exact.
-- The 5 row is an unexplained result, not a diagnosed one: transfer succeeds there but batched mint and burn finish with a wrong total supply and no protocol error. That is why the cap is 4 and not 5 — an unexplained failure is not a basis for a limit.
+| `MAX_TRANSFER_ADDR_PER_CALL` | `transfer_batch` | Result |
+|---:|---:|---|
+| 1 | 161,493 (= `transfer`) | all tests pass |
+| **2** | **312,909** | **all tests pass** |
+| 3 | — | aborts: `Assertion failed: push out of bounds` |
+| 4 | — | aborts: `Assertion failed: push out of bounds` |
 
-Three things are worth drawing out of that table.
+Gate counts are from `aztec profile gates` on `CMTATAztec` and are the current code. The mint and burn figures include the list screening on the target (about 6,200 gates per address); the transfer figures include both constrained event deliveries (about 20,200 gates each).
 
-- **Transfer sets the cap for all three.** It creates two notes and two constrained deliveries per recipient, where mint and burn create one, so it saturates the per-call note-hash and log budgets at roughly twice the rate. The cap is uniform because the three functions share one global.
+Three things are worth drawing out of those tables.
+
+- **Transfer's cap is set by its deliveries, not its notes.** With the `Transfer` event delivered constrained to two parties, a recipient costs four constrained deliveries where a mint costs one. Before the event was constrained, a 4-recipient batch passed; with it, 3 already fails. A model consistent with every measurement is that each constrained delivery consumes two of the sixteen key-validation requests a call may make — 4 × 2 × 2 = 16 fitted, 3 × 4 × 2 = 24 does not — but the cap is the measurement, not the model.
 - **The number of nested private calls is irrelevant.** The `_mint_internal` / `_transfer_internal` / `_burn_internal` helpers are `#[internal("private")]`, so the compiler inlines them: a batch makes no nested private calls at all, whatever the cap is. Earlier revisions of this document cited the 8-private-call limit as a constraint on batching; it never was one.
-- **Batching moves work, it does not remove it.** A 4-recipient transfer is a 447,303-gate circuit against 119,145 for a single transfer — and that proof is produced on the *user's own device*. What batching saves is the fixed per-transaction protocol overhead, which four separate transfers would pay four times. Batch because you want one transaction, not because you want a cheaper circuit.
+- **Batching moves work, it does not remove it.** A 2-recipient transfer is a 312,909-gate circuit against 161,493 for a single transfer — and that proof is produced on the *user's own device*. What batching saves is the fixed per-transaction protocol overhead, which two separate transfers would pay twice. Batch because you want one transaction, not because you want a cheaper circuit.
 
-Raising the cap further means repeating the measurement, not re-reading the protocol constants. It is also an ABI change: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the generated interface.
+Raising either cap means repeating the measurement, not re-reading the protocol constants. It is also an ABI change: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the generated interface. The transfer cap in particular was **lowered** from 4 to 2 by the decision to deliver the `Transfer` event constrained — see [Events](#events) for why that trade was taken.
+
+### Events
+
+Every operation that changes contract state emits an event. Most are **public** — plain logs anyone can read, mirroring the OpenZeppelin and CMTAT events of the Solidity implementation. One, `Transfer`, is **private**: encrypted and delivered to named recipients, because its content is exactly what this token keeps confidential.
+
+Events must be declared inside the contract module, not in the shared library, which is why each variant's `main.nr` re-declares them.
+
+#### Public events
+
+| Event | Fields | Emitted by | Reference |
+|---|---|---|---|
+| `NewRole` | `role`, `account` | `grant_role`, and the constructor for its two founding grants | OpenZeppelin `RoleGranted` |
+| `RoleRevoked` | `role`, `account`, `sender` | `revoke_role`, `renounce_role` | OpenZeppelin `RoleRevoked` |
+| `Paused` / `Unpaused` | `account` | `pause_contract` / `unpause_contract` | OpenZeppelin |
+| `Deactivated` | `account` | `deactivate_contract` | CMTAT |
+| `AddressFrozen` | `account`, `is_frozen`, `enforcer`, `effective_at` | `freeze`, `unfreeze` | CMTAT `AddressFrozen` |
+| `AddressListed` | `account`, `is_blacklisted`, `is_whitelisted`, `operator`, `effective_at` | `add_to_list`, `remove_from_list` | — (CMTAT's is allowlist-specific) |
+| `OperationsSet` | `operate_blacklist`, `operate_whitelist`, `operator`, `effective_at` | `set_operations` | ≈ CMTAT `AllowlistEnableStatus` |
+| `IssuerChanged` | `issuer`, `operator`, `effective_at` | `set_issuer` | — |
+| `Terms` | `name`, `uri`, `documentHashHigh`, `documentHashLow`, `lastModified` | `set_terms` | CMTAT `Terms` |
+| `TokenId` | `tokenId` | `set_token_id` | CMTAT `TokenId` |
+| `DebtLogEvent`, `DebtInstrumentLogEvent`, `CreditEventsLogEvent` | `account` | `set_debt`, `set_debt_instrument`, `set_credit_events` (`CMTATAztecDebt` only) | CMTAT, which emits them payload-free; these carry the caller |
+
+`effective_at` appears on every event for a `DelayedPublicMutable` value. It is the timestamp from which the scheduled value is current — exactly what the state variable records, computed as block timestamp plus the module's delay — so an indexer does not need to know the contract's delay to know when a freeze, a listing, an operations change or an issuer rotation takes effect.
+
+#### The private event
+
+| Event | Fields | Emitted by | Delivered to | Mode |
+|---|---|---|---|---|
+| `Transfer` | `from`, `to`, `amount` | `transfer`, and `transfer_batch` once per recipient | the **recipient** and the **issuer** | `onchain_constrained`, both |
+
+This one is worth explaining, because both choices — who receives it, and how — were made deliberately and cost something.
+
+**What it uniquely provides.** A transfer already delivers two constrained notes: the sender's change note and the recipient's new note, each copied offchain to the issuer. A note is a value and an owner; it has no sender field. So everything the event says is already known to someone from the notes — the amount, the recipient, the sender to the issuer by correlating its two copies — **except one thing: the sender's identity, to the recipient.** That is the event's job here: a receipt saying who paid you. It is not an indexer feed, as `Transfer` is in Solidity; it is encrypted.
+
+**Why constrained.** An `onchain_unconstrained` delivery is "on-chain delivery without constrained encryption": the circuit computes `from` correctly, but nothing proves that what the sender's PXE posts encrypts that value. The recipient would decrypt whatever the sender chose — a receipt the sender can forge is not a convenience but a settlement-confirmation attack surface. Constrained delivery makes the receipt provable. It costs about **20,200 gates per delivery**, measured.
+
+**Why the issuer.** The issuer's note copies are offchain by necessity — PXE cannot discover a note it does not own — so until this event the issuer's whole audit trail had no data availability and a dropped message was undetectable. An event has no nullifier and no discovery step, and it was **verified** that the issuer can receive one constrained and on chain. This is therefore the issuer's first on-chain, unforgeable record of who paid whom and how much.
+
+**What it cost.** `transfer` went from 120,824 to **161,493 gates** (+34%), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
+
+**What is not public.** The event is encrypted to its two recipients. An outside observer sees that private logs exist, padded like every other private log, and learns nothing about the parties or the amount — see [What each operation publishes](#what-each-operation-publishes).
 
 ### Security and confidentiality properties
 
@@ -432,10 +479,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 - **Audit capabilities**:
   - Users may, in the future, be able to arbitrarly share to third-parties a shareable key for audit purposes.
 
-- **Event management**:
-  - Every state-changing entry point now emits a public event: `NewRole` / `RoleRevoked`, `Paused` / `Unpaused` / `Deactivated`, `AddressFrozen`, `AddressListed`, `OperationsSet`, `Terms`, `TokenId`, and the debt-variant `DebtLogEvent` / `DebtInstrumentLogEvent` / `CreditEventsLogEvent`. Events must be declared in the contract module rather than in the library, which is why each variant's `main.nr` re-declares them.
-  - Events for delayed flags (`AddressFrozen`, `AddressListed`, `OperationsSet`) carry `effective_at`, the timestamp from which the scheduled value is current, so an indexer need not know the delay.
-  - `Transfer` is delivered privately to the recipient; what remains open is its delivery mode and whether the issuer should receive it — see the analysis report, findings C-2 and H-4.
+- **Event management**: every state-changing entry point emits an event — see [Events](#events). What remains open is the follow-on described there: an on-chain, constrained record to the issuer for mint and burn as well, whose private party (the recipient of a mint, the account of a burn) the public halves do not publish.
 
 ### What will we never be able to do by design?
 
@@ -504,7 +548,7 @@ Forced transfer is the sharpest divide, and the strongest argument for the FHE v
 |---|---|---|
 | Mechanism | Every note is delivered twice — once to the owner, once to the issuer (`deliver_to`) | ACL grants to registered observers, re-granted automatically on every balance update |
 | Granularity | Per note, so the issuer reconstructs the full history | The current balance handle, plus optional total-supply observers |
-| Onchain guarantee | **None today** — the issuer's copy is delivered offchain, see [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes) | Onchain ACL, and a grant once made is irrevocable |
+| Onchain guarantee | **Partial.** Every transfer's `Transfer` event reaches the issuer `onchain_constrained` — an on-chain, data-available record of sender, recipient and amount that the sender cannot forge. The *note* copies are still delivered offchain, because PXE cannot discover a note it does not own; see [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes) | Onchain ACL, and a grant once made is irrevocable |
 | Revocation | `set_issuer`, after the delay, stops future copies going to the old issuer; copies already delivered remain, since a delivered note cannot be recalled | Removing an observer stops future grants; past grants are irrevocable |
 
 ### Maturity
@@ -648,7 +692,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Debt extension** | CMTAT bond attributes, mirroring the Solidity `ICMTATDebt`: a *debt identifier* (issuer name and description, guarantor, debtholder representative) and a *debt instrument* (interest rate, par value, minimum denomination, issuance and maturity dates, coupon frequency, interest schedule and payment date, day-count and business-day conventions, payment currency and its contract address). |
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
 | **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
-| **Batch functions** | `mint_batch`, `transfer_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `4`) because the protocol limits how many note hashes and private logs one call may produce. The cap is measured, not derived — see [Batching limits](#batching-limits). |
+| **Batch functions** | `mint_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `4`), and `transfer_batch`, capped by `MAX_TRANSFER_ADDR_PER_CALL` (currently `2`) because each recipient costs four constrained deliveries. Both caps are measured, not derived — see [Batching limits](#batching-limits). |
 | **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to a freeze flag, a list entry or the operations switch becomes current. Nothing that reads those values sees the new one before it elapses. It also gates the issuer address — set by the constructor, which is why no mint, transfer or burn works until the delay has passed after deployment, and rescheduled by `set_issuer`. |
 
 ## Intellectual property

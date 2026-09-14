@@ -63,6 +63,15 @@ pub contract CMTATAztecLight {
     // grows with it (453k gates for a 4-recipient transfer against 119k for one).
     global MAX_ADDR_PER_CALL: u32 = 4;
 
+    // `transfer_batch` has its own, lower cap. A transfer delivers four constrained messages per
+    // recipient - the change note to the sender, the recipient's note, and the Transfer event to
+    // both the recipient and the issuer - where a mint or burn delivers one or two. Measured under
+    // that delivery: 2 recipients pass, 3 and 4 abort with "push out of bounds". A model consistent
+    // with every observation is that each constrained delivery consumes two of the sixteen
+    // key-validation requests a call may make (4 x 2 x 2 = 16 fitted before the issuer event was
+    // constrained; 3 x 4 x 2 = 24 does not), but the number is the measurement, not the model.
+    global MAX_TRANSFER_ADDR_PER_CALL: u32 = 2;
+
     // How every note created by this contract is additionally delivered to the issuer (see the
     // `deliver_to(issuer, ...)` calls below), which is what makes holder balances auditable.
     //
@@ -547,14 +556,19 @@ pub contract CMTATAztecLight {
         let issuer = self.storage.issuer_address.get_current_value();
         self.internal._transfer_internal(from, to, amount, issuer);
         self.enqueue_self._transfer();
-        self.emit(Transfer { from, to, amount }).deliver_to(
-            to,
-            MessageDelivery::onchain_unconstrained(),
-        );
+        // Delivered constrained to BOTH parties that need it, deliberately - see the README's event
+        // list for the reasoning. Constrained, because an unconstrained receipt lets the sender forge
+        // `from`; to the issuer, because this is the only on-chain, data-available record it has of
+        // who paid whom (its note copies are offchain by necessity, events are not). Measured at
+        // ~20,200 gates per constrained delivery.
+        let transfer_event = self.emit(Transfer { from, to, amount });
+        transfer_event.deliver_to(to, MessageDelivery::onchain_constrained());
+        transfer_event.deliver_to(issuer, MessageDelivery::onchain_constrained());
     }
 
     /*
-    * Batched transfers from a single sender. See MAX_ADDR_PER_CALL for the measured batch limit.
+    * Batched transfers from a single sender. See MAX_TRANSFER_ADDR_PER_CALL for the measured limit,
+    * which is lower than the mint and burn cap because each recipient costs four constrained deliveries.
     *
     * Emits one Transfer event per recipient, in the same mode as `transfer`, so that the batched and
     * the single path leave the same trail. Anything built on the event — an issuer reconciliation, an
@@ -564,8 +578,8 @@ pub contract CMTATAztecLight {
     #[external("private")]
     fn transfer_batch(
         from: AztecAddress,
-        accounts: [AztecAddress; MAX_ADDR_PER_CALL],
-        amount: [u128; MAX_ADDR_PER_CALL],
+        accounts: [AztecAddress; MAX_TRANSFER_ADDR_PER_CALL],
+        amount: [u128; MAX_TRANSFER_ADDR_PER_CALL],
         authwit_nonce: Field,
     ) {
         assert(accounts.len() != 0, "Mint module empty");
@@ -574,12 +588,11 @@ pub contract CMTATAztecLight {
         // Loop-invariant: one issuer for the whole call, read once rather than per recipient.
         let issuer = self.storage.issuer_address.get_current_value();
 
-        for i in 0..MAX_ADDR_PER_CALL {
+        for i in 0..MAX_TRANSFER_ADDR_PER_CALL {
             self.internal._transfer_internal(from, accounts[i], amount[i], issuer);
-            self.emit(Transfer { from, to: accounts[i], amount: amount[i] }).deliver_to(
-                accounts[i],
-                MessageDelivery::onchain_unconstrained(),
-            );
+            let transfer_event = self.emit(Transfer { from, to: accounts[i], amount: amount[i] });
+            transfer_event.deliver_to(accounts[i], MessageDelivery::onchain_constrained());
+            transfer_event.deliver_to(issuer, MessageDelivery::onchain_constrained());
         }
         self.enqueue_self._transfer();
     }

@@ -128,8 +128,8 @@ unconstrained fn transfer_private_batch_success() {
         issuer,
         Token::at(token_contract_address).transfer_batch(
             issuer,
-            [user1, user1, user1, user1],
-            [100 as u128, 200 as u128, 130 as u128, 30 as u128],
+            [user1, user1],
+            [100 as u128, 360 as u128],
             0,
         ),
     );

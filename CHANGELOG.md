@@ -83,6 +83,12 @@ Target: **0.3**. Not released yet; everything below is on the development branch
 
 ### Changed
 
+- The `Transfer` event is now delivered `onchain_constrained` to **both** the recipient and the issuer, replacing an `onchain_unconstrained` delivery to the recipient alone.
+  - The event's only information not already carried by the notes is the sender's identity, to the recipient. Unconstrained delivery let the sender forge that: the circuit computed `from` correctly, but nothing proved the posted ciphertext encrypted it. The receipt is now provable.
+  - The issuer's note copies must be offchain, because PXE cannot discover a note it does not own. An event has no nullifier, and it was verified in the suite that the issuer can receive one constrained and on chain — its first on-chain, data-available, unforgeable record of who paid whom and how much.
+  - Measured cost: `transfer` 120,824 → 161,493 gates, about 20,200 per constrained delivery.
+  - BREAKING CHANGE: `transfer_batch` now accepts at most **2** recipients, down from 4, under a new `MAX_TRANSFER_ADDR_PER_CALL`. Each recipient costs four constrained deliveries and three already exceed a per-call budget (`push out of bounds`); a model consistent with every measurement is two key-validation requests per constrained delivery against a limit of sixteen. `mint_batch` and `burn_batch` keep `MAX_ADDR_PER_CALL = 4`.
+  - The README gained an *Events* section listing every event, its fields, its emitter and, for `Transfer`, the reasoning above.
 - Mint and burn now follow CMTAT Solidity's lifecycle and screening rules: they continue through a pause, stop at deactivation, and their target is screened against the enabled list.
   - CMTAT's `_canMintBurnByModule` checks deactivation and the freeze flag, never `paused()`, and its allowlist variant screens the recipient of a mint and the account of a burn. Previously this token blocked mint and burn during a pause and did not apply the lists to either — the first a documented deviation, the second a gap the `mint` NatSpec had claimed was closed.
   - `_mint` and `_burn` now assert `!is_deactivated()` in their enqueued public half; `_transfer` still asserts `!is_paused()`. The validation module gained `operateOnMint(to)` and `operateOnBurn(account)`, called from `_mint_internal` and `_burn_internal`.
@@ -113,7 +119,7 @@ Target: **0.3**. Not released yet; everything below is on the development branch
   - `deriveSigningKey` is gone; accounts rebuilt from `.env` now derive their signing key with `deriveMasterMessageSigningSecretKey`. Both this and address computation changed, so the addresses recorded in `.env.example` no longer correspond to its SECRET/SALT pairs.
 - `transfer_batch` now emits one `Transfer` event per recipient, as `transfer` already did.
   - The two paths move tokens identically — at a batch of one they are the same operation — but only one of them left a trail, so anything built on the event silently missed every batched transfer.
-  - Delivered in the same mode as the single path (`onchain_unconstrained()` to the recipient), so the two remain consistent; whether that is the right mode at all is a separate open question recorded in the analysis report.
+  - Delivered in the same mode as the single path, so the two remain consistent. (Both paths were later changed to constrained delivery to the recipient and the issuer — see the *Changed* entry on the `Transfer` event.)
   - Costs 1,687 gates and one private log per recipient. That matters because the batch cap is set by the per-call log budget: the full suite was re-run at the cap of 4 to confirm the extra logs still fit.
 - `MAX_ADDR_PER_CALL` raised from 1 to **4**, so `mint_batch`, `transfer_batch` and `burn_batch` act on up to four addresses.
   - The ceiling was measured rather than derived: at 5 the batched mint and burn finish with a wrong total supply, and at 6 and above `transfer_batch` aborts with `push out of bounds`. Everything passes at 4.

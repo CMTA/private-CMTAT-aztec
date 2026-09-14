@@ -47,7 +47,8 @@ group Move the notes — none of this is public
   PXE --> Priv : create the recipient note
   Priv -> To : recipient note, onchain_constrained
   Priv -> Issuer : copy of the recipient note, offchain
-  Priv -> To : Transfer event, onchain_unconstrained
+  Priv -> To : Transfer event, onchain_constrained
+  Priv -> Issuer : Transfer event, onchain_constrained\n(the issuer's only on-chain audit record)
 end
 
 Priv -> Pub : enqueue_self _transfer()
