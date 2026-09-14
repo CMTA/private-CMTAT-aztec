@@ -42,8 +42,8 @@ Custom changelog tag: `Dependencies`, `Documentation`, `Testing`
 
 > Before a new release, perform the following tasks
 
-- Code: update `VERSION` in [src/main.nr](./src/main.nr), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
-- Pin one Aztec version, and check that it is the same in all three places: the `tag = "vX.Y.Z"` entries in [Nargo.toml](./Nargo.toml), the `@aztec/*` versions in [package.json](./package.json), and the `aztec-up X.Y.Z` instruction in [README.md](./README.md)
+- Code: update `VERSION` in each variant's `main.nr` ([cmtat-aztec](./contracts/cmtat-aztec/src/main.nr), [cmtat-aztec-debt](./contracts/cmtat-aztec-debt/src/main.nr), [cmtat-aztec-light](./contracts/cmtat-aztec-light/src/main.nr)), and check the mirrors — the `Implementation version` row of `doc/cmtat-assessment/README.md`, and the version named in any release tag.
+- Pin one Aztec version, and check that it is the same in all three places: the `tag = "vX.Y.Z"` entries in [Nargo.toml](./Nargo.toml), the `@aztec/*` versions in [package.json](./package.json), and the `aztec-up X.Y.Z` instruction in [README.md](./README.md) and [doc/README.md](./doc/README.md)
 - Rebuild artifacts from a clean tree, so the release is not validated against a stale `src/artifacts/`
 
 ```bash
@@ -55,31 +55,39 @@ yarn codegen
 - Run the formatter over the Noir sources and type-check the TypeScript
 
 ```bash
-aztec-nargo fmt          # or: nargo fmt
+aztec-nargo fmt          # or: nargo fmt (at 5.2.0 aztec-nargo is a bare nargo, which is fine for fmt)
 yarn typecheck           # never `npx tsc`: it can resolve to the Aztec toolchain's own compiler
 ```
 
 - Run both test profiles — neither one covers the other
 
 ```bash
-yarn test:nr             # Noir/TXE unit tests in src/test/
+yarn test:nr             # Noir/TXE unit tests in contracts/*/src/test/
 yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec start --sandbox
 ```
 
 - Documentation
-  - Update [README.md](./README.md) whenever the specification changes: the assumptions, the per-operation privacy requirements, the module descriptions, and the limitations list
+  - Update [doc/README.md](./doc/README.md) whenever the specification changes: the assumptions, the per-operation privacy requirements, the module descriptions, and the limitations list
   - Update the agent guide, and keep [CLAUDE.md](./CLAUDE.md) and [AGENTS.md](./AGENTS.md) byte-for-byte identical (`diff CLAUDE.md AGENTS.md` must be empty)
   - Check that no Markdown file mixes hard-wrapped and one-line-per-block prose
   - Update this changelog
 
 ## Unreleased
 
-Target: **0.3**. Not released yet; everything below is on the development branch.
+Nothing yet.
+
+## 0.3.0 — 2026-09-14
+
+MAJOR under the policy above: storage layout, note delivery and the external API all changed with the framework upgrade, and 0.3.0 is not compatible with a 0.2 deployment. `version()` returns `0.3.0`. Built and tested on Aztec **5.2.0** (sandbox and testnet).
 
 ### Summary
 
 - Upgraded from Aztec 0.63.1 to **5.2.0**, which is a rewrite of every file rather than a version bump: the framework renamed its function and state-variable macros, moved contract state behind `self`, replaced note delivery, and replaced the PXE-centric TypeScript API with a Wallet-centric one.
 - Restructured the contract into module structs, added testnet deployment scripts, and moved private balances onto the framework's own `BalanceSet`.
+- Split into three deployment variants (`CMTATAztecLight`, `CMTATAztec`, `CMTATAztecDebt`) over one shared module library, and closed the CMTAT equivalency gaps: permanent deactivation, token ID, terms, `version()`, credit events and the `ICMTATDebt` record, issuer rotation with `set_issuer`, mint and burn lifecycle and screening rules aligned with CMTAT Solidity.
+- Made every state change observable: public events on every public entry point, and a `Transfer` event delivered constrained to both the recipient and the issuer, so the issuer holds an unforgeable on-chain record of who paid whom. Batching caps are now measured: 4 addresses for mint and burn, 2 recipients for transfer.
+- Documented the design in full: what each operation publishes, the delayed-flag model and its cost, the AIP-20 relationship in five standards documents, the equivalency assessment, and a tool-assisted code-quality review under `doc/audits/tools/v0.3.0/` whose findings are all fixed, decided or explicitly left open.
+- Copyright passed from Taurus SA to the Capital Market and Technology Association from the commit after `61f4220d`; the MIT / MPL-2.0 dual licence is unchanged.
 
 ### Changed
 

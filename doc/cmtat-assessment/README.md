@@ -53,7 +53,7 @@
 | Implementation name | private CMTAT on Aztec — variants `CMTATAztec` (base), `CMTATAztecDebt`, `CMTATAztecLight` |
 | Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
 | Implementation language | Noir / Aztec.nr v5.2.0 |
-| Implementation version | `0.3.0` (unreleased), as returned by `version()` — see criterion 6 |
+| Implementation version | `0.3.0`, as returned by `version()` — see criterion 6 |
 | Source repository and commit | https://github.com/taurushq-io/private-CMTAT-aztec — `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
 | Assessment date | 2026-09-08 |
 | Assessed by | *(to be completed by the assessor)* |
@@ -645,7 +645,7 @@ Three consequences MUST be recorded:
 
 | Item | Repository | Version | Commit |
 |---|---|---|---|
-| Implementation assessed | https://github.com/taurushq-io/private-CMTAT-aztec | `0.3.0` (unreleased) | `ca9ce5ce61050f2d506831281275a6884549c4a3` |
+| Implementation assessed | https://github.com/taurushq-io/private-CMTAT-aztec | `0.3.0` | `ca9ce5ce61050f2d506831281275a6884549c4a3` |
 | Assessment template | https://github.com/CMTA/CMTAT-equivalency-assessment | `v0.3.0` | `e2ddb6ee05354311fcf2c00f421f5a4f0fb94944` |
 | Aztec toolchain and aztec-nr | https://github.com/AztecProtocol/aztec-nr | `v5.2.0` | — |
 
