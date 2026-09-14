@@ -154,7 +154,7 @@ Copy `token_contract/src/main.nr` — 695 lines — into this repository, add th
 What it buys:
 
 - The partial-note machinery, already written and tested.
-- The recursive balance subtraction, which [`F-1`](../analysis/CLAUDE_ANALYSIS.md) measures as worth **43,046 gates, 36% of a transfer**.
+- The recursive balance subtraction, which [`F-1`](../audits/tools/v0.3.0/CLAUDE_ANALYSIS.md) measures as worth **43,046 gates, 36% of a transfer**.
 - The public/private balance split, if wanted.
 - The AIP-20 entry-point names, which tooling recognises — though a fork that adds recipient screening is no longer conformant, so this benefit is partly illusory.
 

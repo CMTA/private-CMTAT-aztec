@@ -336,4 +336,4 @@ The middle ground people usually hope for — a CMTAT that is also an AIP-20 tok
 - AIP-721, AIP-4626 — same section of the Aztec documentation
 - `aztec-standards` (canonical AIP implementations) — <https://github.com/defi-wonderland/aztec-standards>
 - CMTAT-Confidential (the FHE variant compared in the README) — <https://github.com/CMTA/CMTAT-Confidential>
-- The gate measurements quoted here are reproduced in [`doc/analysis/CLAUDE_ANALYSIS.md`](../analysis/CLAUDE_ANALYSIS.md), finding `F-1`
+- The gate measurements quoted here are reproduced in [`doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md`](../audits/tools/v0.3.0/CLAUDE_ANALYSIS.md), finding `F-1`
