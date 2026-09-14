@@ -205,7 +205,7 @@ Once compiled at `v5.2.0`, the fork's crates can be depended on **as contract in
 
 **A. Reference only — nothing to do.** For the comparisons in `doc/standards/`, the checkout itself is the artefact; no manifest in this workspace needs to change.
 
-**B. A contract in this workspace that calls the AIP-20 token** — for example the authorization-contract probe from [`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md) promoted to a real package, or an end-to-end harness that deploys a stock token beside a CMTAT sidecar. Add the crate to the new package's manifest by path:
+**B. A contract in this workspace that calls the AIP-20 token** — for example an end-to-end harness that deploys a stock token beside one of the authorization contracts of [`doc/auth/README.md`](../auth/README.md) (`contracts/cmtat-aztec-auth*`). Add the crate to the new package's manifest by path:
 
 ```toml
 [dependencies]
@@ -226,7 +226,7 @@ Update the "What was checked" tables in the three standards documents with the f
 
 - [`building-on-aip20.md`](./building-on-aip20.md)
 - [`cmtat-vs-aip20.md`](./cmtat-vs-aip20.md)
-- [`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md)
+- [`doc/auth/README.md`](../auth/README.md)
 
 and add the fork to the dependency notes in `CLAUDE.md` / `AGENTS.md`, which must stay identical.
 

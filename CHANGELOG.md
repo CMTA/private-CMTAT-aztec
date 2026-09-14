@@ -86,6 +86,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - Verified by 57 unit tests and by 10 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 14,650 gates, of which 6,203 are the list check.
   - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
 
+### Removed
+
+- `doc/standards/cmtat-as-aip20-auth-contract.md`, the feasibility study for an authorization contract. Superseded by the contracts themselves: its mandatory-criteria scorecard (re-scored against what was built) and its list of hook changes that would close the partials moved into `doc/auth/README.md`; the probe measurements it recorded are replaced by the shipped contracts' numbers.
+
 ### Changed
 
 - BREAKING CHANGE: five entry points renamed to the AIP-20 names, in all three token variants, so the private profile answers the standard's selectors: `transfer` → `transfer_private_to_private`, `mint` → `mint_to_private`, `public_get_name` / `public_get_symbol` / `public_get_decimals` → `name` / `symbol` / `decimals`.

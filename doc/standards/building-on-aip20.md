@@ -92,7 +92,7 @@ There is no `type = "lib"` crate anywhere in the workspace, so there is not even
 
 **Verdict: the only genuinely interesting option, and it fails on one specific thing.**
 
-> The mirror image of this option — building the *hook contract* out of `cmtat_aztec_lib` so a stock AIP-20 token gains CMTAT compliance — is worked through, compiled and measured in [`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md). It reaches the same limit from the other side, and adds a second missing argument: the hook is not told who initiated the operation either.
+> The mirror image of this option — building the *hook contract* out of `cmtat_aztec_lib` so a stock AIP-20 token gains CMTAT compliance — is built, tested and measured: [`doc/auth/README.md`](../auth/README.md). It reaches the same limit from the other side, and adds a second missing argument: the hook is not told who initiated the operation either.
 
 The design would be: deploy a stock AIP-20 token, deploy a CMTAT compliance contract, and nominate the latter as the token's `auth_contract`. The compliance contract holds the roles, the pause flag, the freeze flags and the lists, and reverts in `authorize_private` / `authorize_public` when a transfer must not proceed.
 
@@ -338,7 +338,7 @@ Two observations fall out of that.
 
 `authorize_private` runs in private context, and a private function cannot read a `PublicMutable`. A pause flag inside the hook therefore has two possible shapes:
 
-- **`DelayedPublicMutable<bool>`** — readable from private, so the hook decides without enqueuing anything and the token's transfer acquires no public footprint at all. The cost is that a pause takes the delay to bite. This is what the [authorization-contract probe](./cmtat-as-aip20-auth-contract.md) does.
+- **`DelayedPublicMutable<bool>`** — readable from private, so the hook decides without enqueuing anything and the token's transfer acquires no public footprint at all. The cost is that a pause takes the delay to bite. The early feasibility probe did this; the shipped [`CMTATAztecAuth`](../auth/README.md#why-the-pause-is-checked-in-public) does not, for the reason given under `H-3`.
 - **`PublicMutable<bool>` plus an enqueued public check** — `authorize_private` enqueues a call to the hook's own `#[only_self]` checker. The pause is immediate. The price is a public call on every transfer that reveals the hook was consulted — the same footprint this repository's `_transfer()` already has, for the same reason.
 
 The first is not the free choice it looks. The delay would be at least this repository's 360 seconds, the library recommends *"at least a couple hours"* for a `DelayedPublicMutable`, and its documentation calls the type *"unsuitable for actions that must be executed immediately — such as an emergency shutdown"* — a shorter delay narrows every transaction's validity window and fingerprints it, since a private read sets the transaction's `expiration_timestamp`. CMTAT expects immediacy, so a policy that wants to match the reference takes the second. `authorize_public` can read the flag directly, but a CMTAT policy refuses every public path anyway. See the code-quality review's H-3 and H-6 for the full duration analysis.

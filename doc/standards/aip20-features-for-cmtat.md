@@ -1,6 +1,6 @@
 # AIP-20 features that CMTATAztec could adopt while staying CMTAT-equivalent
 
-The third step of a three-step plan. Step one brings the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) fork to Aztec 5.2.0 ([`upgrading-aztec-standards.md`](./upgrading-aztec-standards.md)); step two packages the compliance modules as an ARC-403 authorization contract for a stock AIP-20 token, with its known limits on mint and burn ([`cmtat-as-aip20-auth-contract.md`](./cmtat-as-aip20-auth-contract.md)). This document is step three: **which AIP-20 features can be brought into the CMTAT token itself without breaking its equivalence to CMTAT, and in what order.**
+The third step of a three-step plan. Step one brings the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) fork to Aztec 5.2.0 ([`upgrading-aztec-standards.md`](./upgrading-aztec-standards.md)); step two packages the compliance modules as an ARC-403 authorization contract for a stock AIP-20 token, with its known limits on mint and burn (built: [`doc/auth/README.md`](../auth/README.md)). This document is step three: **which AIP-20 features can be brought into the CMTAT token itself without breaking its equivalence to CMTAT, and in what order.**
 
 
 ## Table of contents
@@ -146,7 +146,7 @@ Passing **`to`** and the **original caller** — the two arguments ARC-403 lacks
 
 **Privacy table.** Unchanged provided the engine runs privately. An engine that enqueues a public call to read a `PublicMutable` publishes the sender on every transfer — the *transfer participants* row moves to `public` for the sender — so the extension point must state that an engine MUST NOT enqueue, and the assessment note must say what the deployed engine does.
 
-**Premise.** Compatible provided the engine itself runs privately — reads `DelayedPublicMutable` state and enqueues nothing — which the [authorization-contract probe](./cmtat-as-aip20-auth-contract.md) demonstrates is achievable. An engine that enqueues a public call publishes the caller; that is the engine author's responsibility and must be documented at the extension point.
+**Premise.** Compatible provided the engine itself runs privately — reads `DelayedPublicMutable` state and enqueues nothing — which the [authorization contracts](../auth/README.md) demonstrates is achievable. An engine that enqueues a public call publishes the caller; that is the engine author's responsibility and must be documented at the extension point.
 
 **Cost.** When no engine is set: one delayed read and a branch, on the order of the 1,920 gates a delayed read measured at in the code-quality review. When set: a cross-contract private call, roughly **101,000 gates per transfer** by the framework's figure — not measured here — plus the engine's own circuit. That is the price CMTAT Solidity does not pay for its `RuleEngine`, and it should be stated next to the setter.
 

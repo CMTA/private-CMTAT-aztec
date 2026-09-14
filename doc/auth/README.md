@@ -11,7 +11,7 @@ Both are built from the same `cmtat_aztec_lib` modules as the CMTAT token contra
 
 **AIP-721 is not covered**, for a reason outside this repository: the fork's `NFT` contract has no ARC-403 hook, so there is nothing an authorization contract could attach to. See [Adding AIP-721](#adding-aip-721).
 
-This document is the user-facing description. The feasibility analysis that preceded it, with the mandatory-criteria scorecard, is [`doc/standards/cmtat-as-aip20-auth-contract.md`](../standards/cmtat-as-aip20-auth-contract.md).
+This document is both the user-facing description and the record of the design: [CMTAT equivalency of the pair](#cmtat-equivalency-of-the-pair) scores a stock token plus this contract against the mandatory criteria, and [What would close the gaps](#what-would-close-the-gaps) lists the fork changes that would.
 
 ## Table of contents
 
@@ -20,6 +20,8 @@ This document is the user-facing description. The feasibility analysis that prec
 - [Differences with the CMTAT token contracts](#differences-with-the-cmtat-token-contracts)
 - [How to use it](#how-to-use-it)
 - [Limitations](#limitations)
+- [CMTAT equivalency of the pair](#cmtat-equivalency-of-the-pair)
+- [What would close the gaps](#what-would-close-the-gaps)
 - [Version](#version)
 - [How it was verified](#how-it-was-verified)
 - [Adding AIP-721](#adding-aip-721)
@@ -100,7 +102,7 @@ What that call publishes is a single boolean, `is_burn`. A burn is already publi
 | Cost per private transfer | `transfer_private_to_private` 161,493 gates, one circuit | Token's `transfer_private_to_private` 63,310 + `authorize_private` 14,650 + the cross-contract kernel iteration (~101,000 by the framework's figure, not measured here) |
 | `version()` | `0.3.0` | `0.3.0`, kept equal by hand — see [Version](#version) |
 
-The table in [`cmtat-as-aip20-auth-contract.md`](../standards/cmtat-as-aip20-auth-contract.md#mandatory-criteria-scorecard) scores the design against the CMTAT mandatory criteria; the partials there are the ones the *hook* cannot close, and this implementation does not change them.
+[CMTAT equivalency of the pair](#cmtat-equivalency-of-the-pair) scores the design against the CMTAT mandatory criteria; the partials there are the ones the *hook* cannot close.
 
 ## How to use it
 
@@ -155,6 +157,42 @@ The fork's token cannot be compiled from inside this repository (see Trap 3 in [
 - **Selector dependence.** Burns are recognised by selector. A fork that renames or re-types `burn_private` / `burn_public` would have its burns treated as transfers — blocked by a pause rather than only by deactivation — until the constants in `authorizationHookModule.nr` are updated. The pinned test catches the mismatch at the next test run, not at deployment.
 - **The caller is not restricted.** Any contract may call `authorize_*`; the calls only assert and enqueue a check on the authorization contract's own state, so an unrelated caller can neither change state nor learn anything it could not read publicly.
 - **Privacy.** The private hook enqueues one public call carrying `is_burn`. An observer learns that a transfer of a token wired to this contract happened in this transaction — the same disclosure the CMTAT token contracts make — and nothing about the parties or the amount. A design that enqueues nothing exists (delayed pause) and was rejected for the reason given above.
+
+## CMTAT equivalency of the pair
+
+Against the 19 mandatory criteria of the [CMTAT equivalency assessment](../cmtat-assessment/README.md), for a stock `aztec-standards` token plus `CMTATAztecAuth`, as built:
+
+| # | Criterion | Answer | Why |
+|---|---|---|---|
+| 1 | Name attribute | ✔ | Token |
+| 2 | Legally required documentation | **✘** | Neither the token nor the authorization contract carries terms. The authorization contract could host them (same `ExtraInformation` module as the token contracts, reached through `get_auth_contract()`); on the token itself it is a fork change |
+| 3 | Decimals | ✔ | Token |
+| 7 | Know total supply | ✔ | Token |
+| 8 | Know balance | **partial** | Holder: `balance_of_private`. Issuer: no note copies; only what the token publishes |
+| 9 | Transfer | ✔ | Token, screened on the sender |
+| 10 | Create tokens | ✔ with caveat | Token's single immutable minter; not hooked, not role-based |
+| 11 | Cancel tokens | **partial** | Holder self-redemption cannot be prevented; issuer-only burn is not expressible |
+| 14–16 | Pause, unpause, status | ✔ | Authorization contract; immediate |
+| 17–18 | Deactivate, status | ✔ | Authorization contract; permanent |
+| 19 | Freeze | **partial** | Sender only; a frozen account can still receive |
+| 20 | Unfreeze | ✔ | Symmetric with 19 |
+| 21 | Know frozen status | ✔ | Authorization contract |
+| 29–31 | Grant, revoke, role attribution | **partial** | Roles exist and administer the authorization contract, but cannot gate the token's mint or burn |
+
+One mandatory `✘` (terms, fixable on the authorization contract without any fork change) and four `partial`s that are the same fact told four ways: the hook does not know the recipient or the initiator, and does not see the notes. An assessor should read the partials, not the count. The sender-side lists change none of these rows: criterion 19 and the list criteria (22–28) are answered on the sender only.
+
+## What would close the gaps
+
+Four changes to the fork's ARC-403 hook, in order of impact. Together they would turn the pair from "a weaker CMTAT" into "a CMTAT", and they are what this project should propose to `aztec-standards`:
+
+1. **Pass the recipient.** `authorize_private(from, to, amount, selector)`, with `PRIVATE_ADDRESS_MAGIC_VALUE` (or zero) on the commitment paths. Closes criterion 19 fully and makes the whitelist meaningful.
+2. **Pass the initiator.** The account the token saw as `msg_sender()`. Closes 11 and 29–31: role-gated mint and burn become expressible.
+3. **Hook the mint paths.** Closes the `mint_to_public` / `mint_to_commitment` hole and lets the authorization contract gate issuance and screen the minted-to address.
+4. **Make `auth_contract` mutable under an admin.** So a policy can be corrected without redeploying the token and migrating holders.
+
+None of these is exotic: ERC-3643's compliance hook receives sender, recipient and amount; ERC-1404 checks both parties; CMTAT's own `RuleEngine` receives `from`, `to`, `value` and the spender. AIP-20's hook is the outlier, by omission rather than by decision.
+
+The audit-trail gap (criterion 8) is the one thing no hook change fixes: only the token can copy notes to an observer. That is a separate proposal — an optional observer delivery in AIP-20 itself — and the same auditability conversation [`cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md) already suggests for the standard.
 
 ## Version
 
