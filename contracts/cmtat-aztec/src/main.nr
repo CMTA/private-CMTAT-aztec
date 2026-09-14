@@ -641,8 +641,8 @@ pub contract CMTATAztec {
         let issuer = self.storage.issuer_address.get_current_value();
         self.internal._transfer_internal(from, to, amount, issuer);
         self.enqueue_self._transfer();
-        // Delivered constrained to BOTH parties that need it, deliberately - see the README's event
-        // list for the reasoning. Constrained, because an unconstrained receipt lets the sender forge
+        // Delivered constrained to BOTH parties that need it, deliberately - see the event list in
+        // doc/README.md for the reasoning. Constrained, because an unconstrained receipt lets the sender forge
         // `from`; to the issuer, because this is the only on-chain, data-available record it has of
         // who paid whom (its note copies are offchain by necessity, events are not). Measured at
         // ~20,200 gates per constrained delivery.

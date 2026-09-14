@@ -175,7 +175,7 @@ Covered in detail in [`building-on-aip20.md`](./building-on-aip20.md#interface-a
 
 **Privacy table — three rows change.** *Balance of an address* moves from `private` to `private or public, at the holder's choice`; *transfer amount* and *transfer participants* become `public` on every public-side path. That is the largest privacy-table change of any feature here, and it is the reason F6 is excluded from **both** products: each is named *private*, and F6 is the one feature that makes a balance public.
 
-**Premise — contradicts it.** The README's assumptions are that balances and transfers are private and only supply is public. Adding `public_balances` and the hybrid paths adds a transparent second ledger, and every public path then needs the full invariant chain — freeze, lists, role, pause — re-implemented in public context, doubling the compliance surface to test and audit.
+**Premise — contradicts it.** The assumptions in `doc/README.md` are that balances and transfers are private and only supply is public. Adding `public_balances` and the hybrid paths adds a transparent second ledger, and every public path then needs the full invariant chain — freeze, lists, role, pause — re-implemented in public context, doubling the compliance surface to test and audit.
 
 **A narrow form that might be legitimate:** a single issuer-owned public balance — a treasury — rather than public balances for everyone. Even that adds the hybrid paths.
 

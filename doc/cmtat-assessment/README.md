@@ -256,7 +256,7 @@ The flag is a `Map<AztecAddress, DelayedPublicMutable<FreezableFlag, CHANGE_ROLE
 - **Here it can be neither won nor hidden.** It is protocol-enforced rather than a consequence of transaction visibility: the scheduled change is visible in public state and becomes effective only after `CHANGE_ROLES_DELAY_SECONDS`.
 - **The mitigation is procedural rather than transactional.** Pause the token, schedule the freeze, wait out the delay, then unpause — which blocks every holder for the duration instead of racing one address.
 
-This is recorded in the repository README under "Limitations", and suggested as an addition to the CMTA criteria in [`cmtat_suggestion.md`](./cmtat_suggestion.md).
+This is recorded in the technical documentation (`doc/README.md`) under "Limitations", and suggested as an addition to the CMTA criteria in [`cmtat_suggestion.md`](./cmtat_suggestion.md).
 
 Because a frozen holding can be neither transferred nor burned (there is no forced path), freezing is terminal for that position until it is unfrozen. The accounting remedy the repository documents is to write the holding off against the public total supply, which the issuer can compute from its note copies.
 
