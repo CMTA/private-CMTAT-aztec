@@ -39,24 +39,23 @@ It holds no balances, moves no value, and receives no notes. It only refuses.
 
 ## How it works
 
-```
-holder ──► Token.transfer_private_to_private(from, to, amount, nonce)          [private]
-                │
-                │  self.call(AuthorizationContract::at(auth)
-                │            .authorize_private(from, amount, selector))
-                ▼
-        CMTATAztecAuth.authorize_private                                        [private]
-                │  assert !frozen(from)              ← DelayedPublicMutable, read in private
-                │  assert list allows from           ← DelayedPublicMutable, read in private
-                │  is_burn = selector ∈ {burn_private, burn_public}
-                │  enqueue_self._require_lifecycle_allows(is_burn)
-                ▼
-        CMTATAztecAuth._require_lifecycle_allows(is_burn)                       [public, only_self]
-                   is_burn ? assert !deactivated : assert !paused
-                                                          ← PublicMutable, immediate
-```
+The token calls the hook from inside its own private function, so the hook runs on the holder's device as part of the same proof; what it can read there is the public state at the anchor block, which is why the freeze and list flags are `DelayedPublicMutable` and the pause is checked by an enqueued public call. The diagrams follow one private transfer and one private burn through the AIP-20 token, then the ARC-1155 variant, then the public entry points. Sources are in [`img/`](./img/); edit the `.puml` and re-run `plantuml -tpng`, never the PNG.
 
-`authorize_public` performs the three checks synchronously, in public.
+### AIP-20 `Token` and `CMTATAztecAuth`
+
+![Sequence of a private AIP-20 transfer or burn through CMTATAztecAuth: the token calls authorize_private with from, amount and selector; the hook reads the freeze flag and the list entry of from at the anchor block, classifies the selector as burn or transfer, enqueues a public call carrying only is_burn, and the public phase asserts not deactivated for a burn or not paused for a transfer, reverting the whole transaction on refusal](./img/auth-aip20-flow.png)
+
+### ARC-1155 `MultiToken` and `CMTATAztecAuthMultiToken`
+
+The MultiToken hook adds the token `id`. The authorization contract accepts it and ignores it — pause, deactivation, freeze and the lists apply to every id alike — and never forwards it to the public half, so the id stays in the private domain as the standard intends. The burn selectors differ from AIP-20's because the signatures carry the extra `Field`.
+
+![Sequence of a private ARC-1155 transfer or burn through CMTATAztecAuthMultiToken: identical to the AIP-20 flow except that authorize_private also receives the token id, which is ignored and never published, and that the burn selectors are the id-bearing ones](./img/auth-arc1155-flow.png)
+
+### Public entry points
+
+`authorize_public` is called by the tokens' public transfers and burns and runs every rule synchronously against current state; nothing is enqueued.
+
+![Sequence of a public transfer through authorize_public: the token calls the hook in the public phase, the hook reads the freeze flag, the list entry, the pause and deactivation flags from current public state, asserts all of them at once, and either reverts or lets the token move the public balances](./img/auth-public-hook.png)
 
 ### The rules, and where they come from
 

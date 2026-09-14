@@ -78,7 +78,7 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Added
 
-- `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation, freeze and a sender-side blacklist / whitelist to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`.
+- `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation, freeze and a sender-side blacklist / whitelist to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`, with three PlantUML sequence diagrams under `doc/auth/img/` (AIP-20 flow, ARC-1155 flow, public entry points).
   - Rules follow CMTAT Solidity on the arguments the hook provides: a transfer needs the contract not paused and `from` neither frozen nor stopped by the enabled list; a burn needs it not deactivated and the same on `from`; burns are recognised by the reference contracts' selectors, everything else is a transfer. Mints never reach the hook, and neither the recipient nor the initiator is passed, so a listed or frozen address can still receive.
   - The freeze and list flags are read in private; the pause and deactivation flags are `PublicMutable` and checked by one enqueued public call whose only argument is `is_burn`, the same immediate-pause choice the token contracts made under `H-3`.
   - Same modules, roles, events, freeze delay and `version()` as the token contracts; the two versions are kept equal by hand and the release checklist now lists five `VERSION` constants.
