@@ -185,7 +185,7 @@ The **private half** runs on the holder's own device. It reads the freeze and va
 
 The **public half** is then enqueued with `self.enqueue_self` and runs on the sequencer after all private execution. It performs the role check and the pause check, and updates `total_supply`. It is marked `#[external("public")] #[only_self]`, so nothing outside the contract can call it. A revert here reverts the whole transaction, which is what makes the role and pause checks binding even though they run after the note work.
 
-Concretely, `mint_to_private` calls `self.internal._mint_internal(to, amount)` and then `self.enqueue_self._mint(self.msg_sender(), amount)`; `transfer_private_to_private` and `burn` are built the same way. Note that the caller passed to the public half is the *private* `msg_sender`, so the role is checked against the real user, not the contract.
+Concretely, `mint_to_private` calls `tokenModule::mint_private(...)` (screening and note movement, in the shared library) and then `self.enqueue_self._mint(self.msg_sender(), amount)`; `transfer_private_to_private` and `burn` are built the same way. Note that the caller passed to the public half is the *private* `msg_sender`, so the role is checked against the real user, not the contract.
 
 A balance is the sum of a holder's `UintNote`s. `BalanceSet::add` and `BalanceSet::sub` do not simply write a number: they return a note **message** that must be delivered, and `sub` asserts `Balance too low` if it cannot gather enough notes. Each message is delivered twice — to the note's owner, and to the issuer — which is the mechanism behind criterion 8 and the whole of [Privacy and Confidentiality](#privacy-and-confidentiality).
 
@@ -240,7 +240,7 @@ The one operational consequence worth stating: a deactivated token is indistingu
 
 Freezing is implemented as two guarded functions rather than the ERC-3643 single setter — `freeze(user, FreezableFlag { is_freezed: true })` and `unfreeze(user, ...)` — which the template explicitly permits for non-EVM chains. Each still takes the flag value as an argument, so the pair is closer to two guarded setters than to two verbs; `freeze` asserts the address is not already frozen and `unfreeze` that it is.
 
-The check itself runs in the **private** half of each operation: `_mint_internal` asserts `Frozen: Recipient`, `_transfer_internal` asserts both `Frozen: Sender` and `Frozen: Recipient`, and `_burn_internal` asserts the holder is not frozen. Blocking both directions is what distinguishes freeze from a simple spend block.
+The check itself runs in the **private** half of each operation, in the `Screening` implementation of `lib/src/modules/tokenModule.nr` that every variant passes to the shared chains: a mint asserts `Frozen: Recipient`, a transfer asserts both `Frozen: Sender` and `Frozen: Recipient`, and a burn asserts the holder is not frozen (`Frozen: Sender`). Blocking both directions is what distinguishes freeze from a simple spend block.
 
 The flag is a `Map<AztecAddress, DelayedPublicMutable<FreezableFlag, CHANGE_ROLES_DELAY_SECONDS>>`. The delay is not a tuning choice: a private function proves its execution against a historical state, so it can only trust a public value that is guaranteed not to change for a known window. Reading the flag any other way — through a public call — would publish the caller's address on every transfer. The delay is the price of checking compliance state privately.
 
@@ -521,7 +521,7 @@ The repository records the design that would restore the capability: implementin
 | Burn while pause | ✔ | `n` | — | **Differs from CMTAT Solidity.** `_burn` carries the same assertion. |
 | Self-Burn for everyone | ✘ | `n` | — | A holder cannot burn unilaterally: `burn` also requires `BURNER_ROLE` on the caller. |
 | Self-Burn for authorized addresses | ✔ | `y` | `BURNER_ROLE` | A holder that also holds `BURNER_ROLE` burns its own tokens with `authwit_nonce = 0`. |
-| Standard burn on a frozen address | ✘ | `n` | — | `_burn_internal` asserts the address is not frozen, and there is no forced path — so a frozen holding cannot be cancelled at all. This is a stricter position than CMTAT Solidity, which offers `forcedBurn` for exactly this case. |
+| Standard burn on a frozen address | ✘ | `n` | — | `tokenModule::burn_private` asserts the address is not frozen, and there is no forced path — so a frozen holding cannot be cancelled at all. This is a stricter position than CMTAT Solidity, which offers `forcedBurn` for exactly this case. |
 | Burn tokens with `forcedTransfer` | ✔ | `n` | — | No `forcedTransfer`. |
 
 ##### Note
@@ -530,7 +530,7 @@ One row differs from CMTAT Solidity, and one that used to differ no longer does.
 
 **Mint and burn continue through a pause, and stop at deactivation** — the CMTAT Solidity behaviour, matched deliberately. CMTAT's `_canMintBurnByModule` checks deactivation and the freeze flag, never `paused()`; only standard transfers consult the pause. Here `_transfer` asserts not-paused while `_mint` and `_burn` assert not-deactivated, so an issuer can issue into and redeem from a paused token, as in the reference. Earlier revisions of this implementation blocked all three during a pause; that was a consequence of where the check sat, not a policy, and it has been aligned.
 
-**A frozen holding cannot be cancelled at all.** `_burn_internal` asserts the address is not frozen, and there is no forced path to bypass it. CMTAT Solidity reaches this case with `forcedBurn`; this implementation has no equivalent, so freezing an address and then needing to remove its tokens from circulation leaves only the total-supply write-off described above.
+**A frozen holding cannot be cancelled at all.** `tokenModule::burn_private` asserts the address is not frozen, and there is no forced path to bypass it. CMTAT Solidity reaches this case with `forcedBurn`; this implementation has no equivalent, so freezing an address and then needing to remove its tokens from circulation leaves only the total-supply write-off described above.
 
 
 ### Self-Burn

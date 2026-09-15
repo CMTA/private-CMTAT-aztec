@@ -276,7 +276,7 @@ Every transfer therefore sizes its circuit for sixteen notes whether the sender 
 
 **Measured on this repository** (`aztec profile gates`, Aztec 5.2.0), replacing that call with a two-note budget:
 
-| `_transfer_internal` note budget | `transfer` gates |
+| transfer-chain note budget (`tokenModule::debit_private`) | `transfer` gates |
 |---|---:|
 | 16 (current) | 120,824 |
 | 2 (AIP-20's initial budget) | **77,778** |

@@ -86,6 +86,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - Verified by 57 unit tests and by 10 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 14,650 gates, of which 6,203 are the list check.
   - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
 
+### Documentation
+
+- Added `doc/design/token-module.md`, a design note on moving the mint, transfer, burn and bridge chains out of the three `main.nr` files into a library module: what Noir allows, the measured duplication, cost, advantages, disadvantages and remaining limits. Not applied.
+
 ### Removed
 
 - `doc/standards/cmtat-as-aip20-auth-contract.md`, the feasibility study for an authorization contract. Superseded by the contracts themselves: its mandatory-criteria scorecard (re-scored against what was built) and its list of hook changes that would close the partials moved into `doc/auth/README.md`; the probe measurements it recorded are replaced by the shipped contracts' numbers.
@@ -100,6 +104,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Changed
 
+- The mint, transfer, burn and bridge chains moved out of the three `main.nr` files into `lib/src/modules/tokenModule.nr`, so the compliance chain exists once (`doc/design/token-module.md`).
+  - Each variant's entry points now call `mint_private` / `transfer_private` / `burn_private` / `bridge_*` / `open_commitment` / `pay_commitment` with a `Screening` value built from its own storage (`FreezeAndLists` for the base and Debt variants, `FreezeOnly` for Light); the enqueued public halves call `mint_public` / `require_transfer` / `burn_public` / `credit_public` / `debit_public`. Noir keeps the declarations, attributes, enqueues and event emissions in the contract module, so those remain per variant.
+  - No storage, ABI, selector or note-layout change; the gate profile of every private circuit is identical before and after (both `#[internal]` helpers and library functions are inlined). The three `main.nr` lost 105, 105 and 97 lines.
+  - Closes the open `D-1` finding of the 0.3.0 review (cross-variant drift): a change to a chain now lands in all three variants by construction.
 - BREAKING CHANGE: five entry points renamed to the AIP-20 names, in all three token variants, so the private profile answers the standard's selectors: `transfer` → `transfer_private_to_private`, `mint` → `mint_to_private`, `public_get_name` / `public_get_symbol` / `public_get_decimals` → `name` / `symbol` / `decimals`.
   - Selectors depend on the name and parameter types only, so `authwit_nonce` keeps its name and the seven-function private profile (`transfer_private_to_private`, `mint_to_private`, `name`, `symbol`, `decimals`, `balance_of_private`, `total_supply`) now matches the fork's `Token::interface()` exactly; `test_aip20_profile.nr` pins the values.
   - `burn` is deliberately not renamed: AIP-20's `burn_private` is holder-authorised and CMTAT's burn is `BURNER_ROLE`-gated, and an identical selector with different authorisation would mislead wallets. `transfer_batch`, `mint_batch`, `burn_batch`, `cancel_authwit` and the `private_get_*` getters are unchanged.

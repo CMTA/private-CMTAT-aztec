@@ -74,7 +74,7 @@ Read as a product map: **CMTAT-private gains F1 and F3 and nothing else; CMTAT-p
 
 **Premise.** Fully compatible. The compliance checks (freeze, lists, issuer read) run once at the entry point before any note is touched; the recursion only consumes notes and neither reads compliance state nor delivers messages. The change note is still produced once, at the end, and delivered to the sender and the issuer exactly as today. The invariant chain is untouched.
 
-**Cost, measured.** Replacing the sixteen-note `sub` in `_transfer_internal` with a two-note budget moved `transfer` from **120,824 to 77,778 gates — 43,046 saved, 36%**, on the proof the sender's device produces. That is the common-case figure. A sender whose balance needs three to eight notes pays a recursive call instead — one extra private kernel iteration, roughly 101,000 gates by the framework's figure — and is worse off than today. So the feature wins if most transfers settle in one or two notes and loses otherwise.
+**Cost, measured.** Replacing the sixteen-note `sub` in the transfer chain (now `tokenModule::debit_private`) with a two-note budget moved `transfer` from **120,824 to 77,778 gates — 43,046 saved, 36%**, on the proof the sender's device produces. That is the common-case figure. A sender whose balance needs three to eight notes pays a recursive call instead — one extra private kernel iteration, roughly 101,000 gates by the framework's figure — and is worse off than today. So the feature wins if most transfers settle in one or two notes and loses otherwise.
 
 **Prerequisites.**
 
@@ -133,7 +133,7 @@ rule_engine: DelayedPublicMutable<AztecAddress, CHANGE_ROLES_DELAY_SECONDS, Cont
 ```
 
 ```noir
-// in _transfer_internal, after the built-in checks
+// in the transfer chain (tokenModule::transfer_private), after the built-in checks
 let engine = self.storage.rule_engine.get_current_value();
 if !engine.is_zero() {
     self.call(RuleEngine::at(engine).validate_transfer(from, to, amount, self.msg_sender(), selector));

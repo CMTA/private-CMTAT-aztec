@@ -99,6 +99,7 @@ submodules/          Pinned reference repositories: CMTAT, CMTAT-Confidential, t
 - [`doc/auth/README.md`](doc/auth/README.md) — the two authorization contracts: how the ARC-403 hook works, what they enforce and cannot (lists and freeze on the sender only, no recipient or initiator screening, mints unhooked, AIP-721 without a hook), how to deploy and operate them, and how they were verified against the real tokens.
 - [`doc/cmtat-assessment/`](doc/cmtat-assessment/README.md) — the CMTAT equivalency assessment of this implementation, criterion by criterion.
 - [`doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md`](doc/audits/tools/v0.3.0/CLAUDE_ANALYSIS.md) — tool-assisted code-quality review against Aztec 5.2.0, with a measured gate-count baseline and the disposition of every finding.
+- [`doc/design/token-module.md`](doc/design/token-module.md) — design note for moving the value-moving chains into a library module: change, cost, trade-offs, limits.
 - [`LEARN-AZTEC.md`](LEARN-AZTEC.md) — Aztec / Noir notes written while building; background, not kept up to date.
 - [`CLAUDE.md`](CLAUDE.md) — the agent and contributor guide: key concepts, conventions and commands.
 

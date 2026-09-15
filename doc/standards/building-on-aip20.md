@@ -120,7 +120,7 @@ The design would be: deploy a stock AIP-20 token, deploy a CMTAT compliance cont
 
 #### Why the missing recipient is decisive
 
-CMTAT's enforcement module blocks a frozen address from **sending and receiving**. Its whitelist requires **both parties** to be listed; its blacklist rejects if **either** is listed. This implementation follows that: `_transfer_internal` asserts on `is_frozen(from)` *and* `is_frozen(to)`, and `operateOnTransfer(from, to)` screens both.
+CMTAT's enforcement module blocks a frozen address from **sending and receiving**. Its whitelist requires **both parties** to be listed; its blacklist rejects if **either** is listed. This implementation follows that: `tokenModule::transfer_private` (through the variant's `Screening`) asserts on `is_frozen(from)` *and* `is_frozen(to)`, and `operateOnTransfer(from, to)` screens both.
 
 Through the hook, a frozen or blacklisted address can still **receive** tokens. An issuer who has frozen an account to stop it trading would find that the account can still be paid into — and under a whitelist regime, that tokens can be delivered to an address that was never approved to hold them. Whitelisting in particular becomes close to meaningless when only the sending side is checked: the population of addresses that may *hold* the security is exactly what a whitelist exists to control.
 
