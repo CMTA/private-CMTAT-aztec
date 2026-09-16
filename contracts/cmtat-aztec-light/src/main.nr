@@ -31,7 +31,7 @@ pub contract CMTATAztecLight {
         pauseModule::PauseModule,
         tokenModule::{
             bridge_private_to_public, bridge_public_to_private, burn_private, burn_public, FreezeOnly,
-            mint_private, mint_public, open_commitment, pay_commitment, require_batch_shape, require_transfer,
+            mint_private, mint_public, open_commitment, pay_commitment, require_transfer,
             transfer_private, credit_public, debit_public,
         },
     };
@@ -518,7 +518,6 @@ pub contract CMTATAztecLight {
     //everyone can call this function, but will revert in _mint if not minter role
     #[external("private")]
     fn mint_batch(accounts: [AztecAddress; MAX_ADDR_PER_CALL], amount: [u128; MAX_ADDR_PER_CALL]) {
-        require_batch_shape(accounts.len(), amount.len());
         let mut acc: u128 = 0;
         // Loop-invariant: one issuer for the whole call, read once rather than per address.
         let issuer = self.storage.issuer_address.get_current_value();
@@ -580,7 +579,6 @@ pub contract CMTATAztecLight {
         amount: [u128; MAX_TRANSFER_ADDR_PER_CALL],
         authwit_nonce: Field,
     ) {
-        require_batch_shape(accounts.len(), amount.len());
         // Loop-invariant: one issuer for the whole call, read once rather than per recipient.
         let issuer = self.storage.issuer_address.get_current_value();
         for i in 0..MAX_TRANSFER_ADDR_PER_CALL {
@@ -636,7 +634,6 @@ pub contract CMTATAztecLight {
         amount: [u128; MAX_ADDR_PER_CALL],
         authwit_nonce: Field,
     ) {
-        require_batch_shape(amount.len(), amount.len());
         let mut acc: u128 = 0;
         // Loop-invariant: one issuer for the whole call, read once rather than per entry.
         let issuer = self.storage.issuer_address.get_current_value();

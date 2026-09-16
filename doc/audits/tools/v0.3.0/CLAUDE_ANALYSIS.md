@@ -1,3 +1,5 @@
+> **Superseded for the 0.4.0 release by [`../v0.4.0/CLAUDE_ANALYSIS.md`](../v0.4.0/CLAUDE_ANALYSIS.md)**, which carries the open findings forward (B-3, B-4, F-1, H-6), reopens J-2 (the correction below was wrong: `aztec compile` does warn about tests in contract crates; `aztec-nargo compile` does not) and adds a check on the tests themselves.
+
 # private-CMTAT-aztec — Aztec.nr Code Quality Review
 
 | | |

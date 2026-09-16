@@ -22,7 +22,7 @@ unconstrained fn sample_terms() -> DocumentInfo {
 
 #[test]
 unconstrained fn terms_empty_by_default() {
-    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
+    let (env, token_contract_address, _, _) = utils::setup(/* with_account_contracts */ false);
 
     let ret: [Field; 5] = env.view_public(Token::at(token_contract_address).terms());
     for i in 0..5 {

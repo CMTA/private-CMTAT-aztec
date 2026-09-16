@@ -35,8 +35,6 @@ global TEXT_FROZEN_SENDER: str<14> = "Frozen: Sender";
 global TEXT_FROZEN_RECIPIENT: str<17> = "Frozen: Recipient";
 global TEXT_PAUSED: str<31> = "Error: token contract is paused";
 global TEXT_DEACTIVATED: str<36> = "Error: token contract is deactivated";
-global TEXT_EMPTY_BATCH: str<17> = "Mint module empty";
-global TEXT_BATCH_MISMATCH: str<35> = "Accounts and values arrays mismatch";
 
 // ---- screening -----------------------------------------------------------------------------------
 
@@ -159,12 +157,6 @@ where
 {
     screening.burn(account);
     debit_private(balances, account, amount, issuer);
-}
-
-/// The two batch preconditions every batched entry point asserts.
-pub fn require_batch_shape(accounts_len: u32, amounts_len: u32) {
-    assert(accounts_len != 0, TEXT_EMPTY_BATCH);
-    assert(accounts_len == amounts_len, TEXT_BATCH_MISMATCH);
 }
 
 // ---- the bridges, private half -------------------------------------------------------------------

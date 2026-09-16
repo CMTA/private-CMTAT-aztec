@@ -8,4 +8,3 @@ members = [
     "contracts/cmtat-aztec-auth",
     "contracts/cmtat-aztec-auth-multitoken",
 ]
-default-member = "contracts/cmtat-aztec"

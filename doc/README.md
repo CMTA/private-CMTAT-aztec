@@ -130,7 +130,7 @@ You may modify the token code by adding, removing, or modifying features, at you
 
 Three deployment variants compose modules from one shared library. Noir has no inheritance and allows one contract per package, so a variant is a different *composition*, not a subclass.
 
-![Workspace layout: three contract packages over the shared module library](img/architecture.png)
+![Workspace layout: three token variants and two authorization contracts over the shared module library, whose tokenModule holds the value-moving chains](img/architecture.png)
 
 _Diagram source: `doc/img/architecture.puml`._
 
@@ -701,7 +701,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Aztec.nr** | The Noir framework providing the contract macros, state variables and note types. Pinned to **v5.2.0** here. |
 | **TXE** | *Test eXecution Environment* — the harness behind `aztec test` that runs Noir tests against a simulated network. Everything in `src/test/*.nr` targets it. |
 | **`#[external("private" \| "public" \| "utility")]`** | Marks a function callable from outside the contract, and says which environment runs it. |
-| **`#[internal("private" \| "public")]`** | A helper callable only from inside the contract and **inlined** at the call site — reached through `self.internal`. `_mint_internal`, `_transfer_internal` and `_burn_internal` are these. |
+| **`#[internal("private" \| "public")]`** | A helper callable only from inside the contract and **inlined** at the call site — reached through `self.internal`. `_grant_role_internal`, `_emit_listed` and `_open_commitment` are these; the value-moving chains are ordinary library functions in `tokenModule.nr`, inlined the same way. |
 | **`#[only_self]`** | A real (non-inlined) function only the contract itself may call. The enqueued public halves `_mint`, `_transfer` and `_burn` use it. |
 | **`self.enqueue_self`** | Schedules one of this contract's public functions to run after private execution. This is how a private mint updates the public `total_supply`. |
 | **`#[authorize_once("from", "authwit_nonce")]`** | Macro that validates the authwit when the caller is not `from`, and nullifies the nonce so it cannot be replayed. The `from` account itself must pass `authwit_nonce = 0`. |

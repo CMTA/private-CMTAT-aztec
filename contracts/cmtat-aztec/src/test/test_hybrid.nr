@@ -117,7 +117,7 @@ unconstrained fn public_to_private_reverts_for_frozen_sender() {
 
 #[test]
 unconstrained fn recipient_opens_a_commitment_and_the_sender_completes_it() {
-    let (mut env, token, issuer, user) = setup_enabled();
+    let (env, token, issuer, user) = setup_enabled();
     // `user` opens a commitment that only `issuer` may complete, hands the field to the issuer.
     let commitment = env.call_private(user, Token::at(token).initialize_transfer_commitment(user, issuer));
     env.mine_block();
@@ -145,7 +145,7 @@ unconstrained fn unlisted_recipient_cannot_open_a_commitment_under_whitelist() {
 
 #[test(should_fail_with = "Error: token contract is paused")]
 unconstrained fn completing_a_commitment_reverts_when_paused() {
-    let (mut env, token, issuer, user) = setup_enabled();
+    let (env, token, issuer, user) = setup_enabled();
     let commitment = env.call_private(user, Token::at(token).initialize_transfer_commitment(user, issuer));
     env.mine_block();
     env.call_public(issuer, Token::at(token).grant_role(PAUSE_ROLE, issuer));
@@ -155,7 +155,7 @@ unconstrained fn completing_a_commitment_reverts_when_paused() {
 
 #[test]
 unconstrained fn private_to_public_with_commitment_returns_a_completable_commitment() {
-    let (mut env, token, issuer, user) = setup_enabled();
+    let (env, token, issuer, user) = setup_enabled();
     // Sender pays `user` publicly and keeps a commitment for `user` that the sender may complete later.
     let commitment = env.call_private(issuer, Token::at(token).transfer_private_to_public_with_commitment(issuer, user, 1_000, 0));
     env.mine_block();

@@ -11,3 +11,5 @@ mod test_enforcement_module;
 mod test_pause_module;
 mod test_extra_information;mod test_aip20_profile;
 mod test_hybrid;
+mod test_issuer_copies;
+mod test_guards;

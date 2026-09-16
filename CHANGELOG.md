@@ -86,8 +86,22 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - Verified by 57 unit tests and by 10 integration tests against the real fork tokens run in a copy of the fork (`doc/auth/integration-test.md`); `authorize_private` measures 14,650 gates, of which 6,203 are the list check.
   - AIP-721 is not covered: the fork's `NFT` contract has no ARC-403 hook. What it would take is written down in `doc/auth/README.md`.
 
+### Fixed
+
+- `aztec test` (and so `yarn test:nr`) rebuilt only `contracts/cmtat-aztec` before running the tests, because the workspace `Nargo.toml` named it as `default-member` and `aztec test` runs a bare `aztec compile`; the Debt, Light and the two authorization contracts were tested against whatever artifact `target/` held. The `default-member` line is removed, and a bare `aztec compile` now rebuilds all five artifacts. Found when a deliberately broken rule in `authorizationHookModule.nr` left the authorization tests green (0.4.0 review, K-1).
+- Two asserts on the batch entry points (`Mint module empty`, `Accounts and values arrays mismatch`) compared compile-time array lengths and could never fire; removed, with the gate profile of every circuit confirmed unchanged (0.4.0 review, D-3).
+- The architecture diagram and two glossary / guide sentences still described the pre-refactor layout (three variants, `_*_internal` helpers); redrawn and reworded (0.4.0 review, G-7, G-8).
+
+### Testing
+
+- The hard audit invariant — every note written for a holder is also delivered to the issuer — had no test that could fail: removing the issuer's copy left the suite green. `test_issuer_copies.nr` asserts, through the TXE's `offchain_messages()`, that a mint or burn emits one offchain message and a transfer two, all addressed to the issuer, and that they follow a rotated issuer (0.4.0 review, K-2).
+- Twelve tests in `test_guards.nr` cover the guards that had no negative test (zero admin at construction, revoking one's own role, renouncing with the wrong confirmation, freezing twice, unfreezing an unfrozen address), the before-delay twin of the freeze test, a zero-amount transfer, a blacklisted party opening or paying a commitment, and the private getters (0.4.0 review, K-3).
+- `CMTATAztecDebt` and `CMTATAztecLight` pin the selectors of their 14 shared entry points to the base variant's values in `test_selectors.nr`, so a declaration that drifts in one variant fails that variant's suite; the chains themselves are tested once, in the base suite (0.4.0 review, K-4).
+- Four compiler warnings in the base test crate silenced. The Noir suite is now 187 tests (111 base, 12 Debt, 7 Light, 29 and 28 authorization).
+
 ### Documentation
 
+- Added `doc/audits/tools/v0.4.0/CLAUDE_ANALYSIS.md`, the code-quality review of this release: the gate baseline re-measured for every private function including the bridges, the token-module refactor verified gate-neutral circuit by circuit, and a new section on the tests — five mutation spot-checks (two survived, both fixed), an inventory of entry points, asserts and branches against the suite, and an edge-case table with fourteen cases still untested, nine of them mechanical and two design questions. It also corrects the 0.3.0 report: `aztec compile` does warn about tests in contract crates (the earlier check had used `aztec-nargo`), so that finding is reopened; and it records as open that nothing yet shows the issuer's PXE can process the offchain copies it receives.
 - Added `doc/design/token-module.md`, a design note on moving the mint, transfer, burn and bridge chains out of the three `main.nr` files into a library module: what Noir allows, the measured duplication, cost, advantages, disadvantages and remaining limits. Not applied.
 
 ### Removed
