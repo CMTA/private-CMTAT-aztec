@@ -2,9 +2,9 @@
 //! listed as mechanical: a zero amount, a freeze before its delay, a listed commitment party, the
 //! views nothing called. Each `should_fail_with` names the assert it is meant to reach, and the
 //! setup grants every role the path needs before it, so no earlier check can fire first.
-use crate::test::utils;
-use crate::CMTATAztec as Token;
 use crate::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
+use crate::CMTATAztec as Token;
+use crate::test::utils;
 use aztec::test::helpers::test_environment::TestEnvironment;
 use cmtat_aztec_lib::modules::access_controlModule::{
     ADDRESS_LIST_ADD_ROLE, ENFORCEMENT_ROLE, MINTER_ROLE, PAUSE_ROLE,
@@ -113,8 +113,19 @@ unconstrained fn enable_blacklist_with(
     listed: aztec::protocol::address::AztecAddress,
 ) {
     env.call_public(issuer, Token::at(token).grant_role(ADDRESS_LIST_ADD_ROLE, issuer));
-    env.call_public(issuer, Token::at(token).set_operations(SetFlag { operate_blacklist: true, operate_whitelist: false }));
-    env.call_public(issuer, Token::at(token).add_to_list(listed, UserFlags { is_blacklisted: true, is_whitelisted: false }));
+    env.call_public(
+        issuer,
+        Token::at(token).set_operations(
+            SetFlag { operate_blacklist: true, operate_whitelist: false },
+        ),
+    );
+    env.call_public(
+        issuer,
+        Token::at(token).add_to_list(
+            listed,
+            UserFlags { is_blacklisted: true, is_whitelisted: false },
+        ),
+    );
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 }
 
@@ -127,14 +138,18 @@ unconstrained fn a_blacklisted_recipient_cannot_open_a_commitment() {
 
 #[test(should_fail_with = "The sender is in the blacklist")]
 unconstrained fn a_blacklisted_payer_cannot_complete_a_commitment() {
-    let (mut env, token, issuer, user) = utils::setup_with_public_side(false, true);
+    let (env, token, issuer, user) = utils::setup_with_public_side(false, true);
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
     env.call_private(issuer, Token::at(token).mint_to_private(issuer, 1_000));
-    let commitment = env.call_private(user, Token::at(token).initialize_transfer_commitment(user, issuer));
+    let commitment =
+        env.call_private(user, Token::at(token).initialize_transfer_commitment(user, issuer));
     env.mine_block();
     // the payer is listed after the commitment was opened; the payer-side check catches it at completion
     enable_blacklist_with(env, token, issuer, issuer);
-    env.call_private(issuer, Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0));
+    env.call_private(
+        issuer,
+        Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0),
+    );
 }
 
 // --- views nothing called ----------------------------------------------------------------------------

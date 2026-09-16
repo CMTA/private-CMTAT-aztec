@@ -1,9 +1,11 @@
-use crate::test::utils::{self, SOME_TRANSFER_SELECTOR};
 use crate::CMTATAztecAuth as Auth;
+use crate::test::utils::{self, SOME_TRANSFER_SELECTOR};
+use cmtat_aztec_lib::modules::access_controlModule::ENFORCEMENT_ROLE;
 use cmtat_aztec_lib::modules::authorizationHookModule::{
     AIP20_BURN_PRIVATE_SELECTOR, AIP20_BURN_PUBLIC_SELECTOR, ARC1155_BURN_PRIVATE_SELECTOR,
     ARC1155_BURN_PUBLIC_SELECTOR,
 };
+use cmtat_aztec_lib::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
 
 // --- selectors ----------------------------------------------------------------------------------
 
@@ -135,4 +137,31 @@ unconstrained fn other_addresses_are_unaffected_by_a_freeze() {
     utils::freeze(env, auth, admin, user, /* wait */ true);
     let other = env.create_light_account();
     env.call_private(other, Auth::at(auth).authorize_private(other, 10, SOME_TRANSFER_SELECTOR));
+}
+
+// --- unfreeze ------------------------------------------------------------------------------------
+
+/// An unfreeze is scheduled like a freeze: the address stays blocked for one more delay, then sends.
+#[test]
+unconstrained fn an_unfrozen_address_sends_again_after_the_delay() {
+    let (env, auth, admin, user) = utils::setup();
+    utils::freeze(env, auth, admin, user, /* wait */ true);
+    env.call_public(admin, Auth::at(auth).unfreeze(user, FreezableFlag { is_freezed: false }));
+    utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
+    env.call_private(user, Auth::at(auth).authorize_private(user, 10, SOME_TRANSFER_SELECTOR));
+}
+
+#[test(should_fail_with = "Frozen: from address")]
+unconstrained fn an_unfreeze_is_not_effective_before_the_delay() {
+    let (env, auth, admin, user) = utils::setup();
+    utils::freeze(env, auth, admin, user, /* wait */ true);
+    env.call_public(admin, Auth::at(auth).unfreeze(user, FreezableFlag { is_freezed: false }));
+    env.call_private(user, Auth::at(auth).authorize_private(user, 10, SOME_TRANSFER_SELECTOR));
+}
+
+#[test(should_fail_with = "error: address already unfreezed")]
+unconstrained fn unfreezing_an_address_that_is_not_frozen_is_refused() {
+    let (env, auth, admin, user) = utils::setup();
+    env.call_public(admin, Auth::at(auth).grant_role(ENFORCEMENT_ROLE, admin));
+    env.call_public(admin, Auth::at(auth).unfreeze(user, FreezableFlag { is_freezed: false }));
 }

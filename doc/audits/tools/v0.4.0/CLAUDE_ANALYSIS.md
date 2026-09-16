@@ -23,7 +23,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | A-4 | The token-module refactor is gate-neutral | ✅ verified — all 48 private circuits byte-identical before and after |
 | A-5 | The bridges pay the 16-note `sub` the same way `transfer` does | ⬜ decide — same root as F-1 (note budget); `transfer_private_to_public` is 95,941 gates against AIP-20's 38,277 for the same operation |
 | A-6 | `initialize_transfer_commitment` costs 39,820 gates, half of it the constrained issuer event | ⬜ keep — the cheaper delivery modes give up the guarantee the event exists for |
-| B-3 | `CreditEventsStruct` packs two `bool`s into two Fields | ⬜ decide — unchanged since 0.3.0; fold into the next storage break |
+| B-3 | `CreditEventsStruct` packs two `bool`s into two Fields | ✅ fixed — 0.4.0 is the storage break the 0.3.0 verdict said to wait for; hand-packed to `N = 2` with a round-trip test |
 | B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave — unchanged since 0.3.0 |
 | B-5 | The hybrid fields were appended after the existing storage | ✅ verified — no slot moved; the constructor gained a trailing argument only |
 | C-7 | The public `Transfer` event is emitted from two sites | ⬜ keep — `_credit_public` and `_debit_public` are two effects, each with the `PRIVATE_ADDRESS` marker on its private side |
@@ -32,7 +32,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | D-1 | The three `main.nr` were 99–100 % identical | ✅ closed by `tokenModule.nr` — residue measured below |
 | D-3 | `require_batch_shape` asserted two facts that cannot be false | ✅ fixed — removed; gate profile unchanged, confirming the asserts were constant-folded |
 | E-3 | Every enqueued public half is `#[only_self]`; every getter `#[view]`; `screening` is a `#[contract_library_method]` | ✅ verified — see the table in E |
-| F-1 | Should this token implement AIP-20? | ⬜ decide — two of its three parts landed in 0.4.0 (private-profile names, bridges behind a flag); the note budget remains |
+| F-1 | Should this token implement AIP-20? | ⚠️ **re-framed** — the 0.3.0 answer ("no, take three things") is overtaken: 0.4.0 took four of the seven features of `aip20-features-for-cmtat.md` and refused two; what is left is the note budget (A-5), the commitment expiry and the rule-engine hook, each a separate decision — see F |
 | F-2 | The bridge selectors and the `PRIVATE_ADDRESS_MAGIC_VALUE` semantics match the fork | ✅ verified — pinned by tests against `Token::interface()` at fork commit `5433e9c` |
 | G-7 | `doc/img/architecture.puml` still showed three variants and no `tokenModule` | ✅ fixed — re-drawn and re-rendered |
 | G-8 | The glossary and the agent guide named the removed `_*_internal` helpers | ✅ fixed |
@@ -48,20 +48,22 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | K-2 | The issuer-copy invariant had no test that could fail | ✅ fixed — 4 tests over `env.offchain_messages()`; the mutant that survived now dies |
 | K-3 | Six guards had no negative test; no before-delay twin for the freeze; no zero-amount, listed-commitment-party or private-getter test | ✅ fixed — 12 tests in `test_guards.nr` |
 | K-4 | `CMTATAztecDebt` and `CMTATAztecLight` had smoke suites only, and nothing guarded their declarations against drift | ✅ fixed — a selector-set pin per variant; the chains themselves are tested once, in the base suite, by construction |
-| K-5 | Edge cases still without a test | ⬜ decide — listed in K.3 with the test each needs; six are mechanical, three are design questions |
+| K-5 | Edge cases still without a test | ✅ fixed (the mechanical part) — 15 tests in `test_edge_cases.nr`, 6 in each authorization crate; two of them measured behaviour the code did not state (K-6, K-7); two design questions and two e2e-only rows remain in K.3 |
+| K-6 | A second payment into the same commitment is lost to the recipient | ⬜ decide — inherited from `PartialUintNote::complete`; the contract could nullify the commitment at completion |
+| K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded — the side-effect budget is reached first; a limit, not a defect; F1 would lift it |
 
-**Counts:** 29 rows — 16 ✅ (5 verified, 11 fixed), 1 ⚠️ corrected, 12 ⬜ open (6 *decide*: A-5, B-3, F-1, H-6, H-10, K-5 — A-5 and F-1 are one decision; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
+**Counts:** 31 rows — 19 ✅ (6 verified, 13 fixed), 2 ⚠️ (J-2 corrected, F-1 re-framed), 10 ⬜ open (4 *decide*: A-5, H-6, H-10, K-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
 
 ## Outstanding
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| A-5 / F-1 | Note budget with `#[only_self]` recursion | The 0.3.0 measurement stands (−43,046 gates on `transfer`); the bridges inherit the same cost. It is the last AIP-20 feature `aip20-features-for-cmtat.md` recommends for CMTAT-private and the largest single gate saving available. Not done in 0.4.0 because it changes the note-consumption shape of every value-moving path at once. |
-| B-3 | Credit-events packing | A storage break on the Debt variant only; fold into the next one. |
+| A-5 | Note budget with `#[only_self]` recursion (F1 of the features document) | The 0.3.0 measurement stands (−43,046 gates on `transfer`); the bridges inherit the same cost. It is the AIP-20 feature the features document ranks first for CMTAT-private and the largest single gate saving available. Not done in 0.4.0 because it changes the note-consumption shape of every value-moving path at once, and it wants the note-count edge cases of K.3 written first as its acceptance tests. |
+| F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
 | H-6 | The 360 s delay | Unchanged: needs the network's typical delay, real proving times and a compliance call. 0.4.0 raised the stakes slightly — nine private entry points now read a delayed value instead of five. |
 | H-10 | Issuer processing of offchain copies | K-2 proves the messages are emitted with the issuer as recipient. Whether the issuer's PXE can ingest a note it does not own through `offchain_receive` and later read the holder's balance is not shown by any test; the e2e suite checks the issuer's *own* balance. This is the auditability requirement end to end and belongs in `src/test/e2e/`. |
 | J-2 | Tests in contract crates | Reopened by the correction. Moving each variant's tests to a `type = "lib"` test crate (`env.deploy("@cmtat_aztec/CMTATAztec")`, `use cmtat_aztec::CMTATAztec`) is mechanical across five crates and removes the warning and the contract recompile on every test edit. Not done here because it touches 30 test files at once. |
-| K-5 | Remaining edge cases | See K.3. |
+| K-6 | Commitment reuse | Whether to push a nullifier of the commitment in the public half of `transfer_private_to_commitment` / `..._with_commitment` so a second completion reverts, at the price of departing from AIP-20 (which lets a completer waste value the same way). One `push_nullifier`; no layout change. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) stay with it. |
 
 ## Gate-count baseline
 
@@ -107,9 +109,21 @@ Whole-transaction numbers (`aztec-wallet profile`) were not taken; nothing below
 
 ## B. Storage, packing and note reads
 
-### B-3, B-4 — carried forward unchanged
+### B-3. `CreditEventsStruct` spent three Fields where two suffice — fixed, because 0.4.0 is the break
 
-Nothing in 0.4.0 touched `CreditEventsStruct` or `PauseModule`. B-3 remains a storage break to fold into another; B-4 remains a deliberate two-slot layout (the hot `is_paused` read on every transfer's public half should not pay for `is_deactivated`).
+**The finding, restated.** `creditEventsModule.nr` declared `#[derive(Deserialize, Eq, Packable, Serialize)]` on `{ flagDefault: bool, flagRedeemed: bool, rating: FieldCompressedString }`. A derived `Packable` spends one Field per member, so the struct took three public-storage slots — one per `SLOAD` on read and `SSTORE` on write — of which two held a single bit each. CMTAT Solidity's identical `CreditEvents` struct takes **two** slots, because the Solidity storage packer puts adjacent sub-word members in one slot and the compiler does it for free; Noir has no packer, so parity means writing `pack`/`unpack` by hand. The project already does exactly that for `UserFlags` in the validation module (B-2, 0.3.0).
+
+**Why the 0.3.0 verdict was "decide", and what changed.** The change moves every state variable declared after `credit_event_module` — in `CMTATAztecDebt`'s storage struct that is `debt_module`, `issuer_address`, `private_balances`, `total_supply` and the rest — so on a *deployed* token it is a redeployment and a holder migration, and the 0.3.0 report said: correct, but fold it into a storage break that is happening anyway rather than causing one. **0.4.0 is that break.** The release is already MAJOR under the project's own policy (five renamed entry points, a constructor with a new argument, two storage fields appended), no 0.4.0 instance is deployed, and the debt realignment of 0.3.0 — the break the earlier verdict said it "would have cost nothing" to ride — has a successor now. Waiting for the *next* break after this one would be the mistake the 0.3.0 verdict warned against.
+
+**What was done.** `CreditEventsStruct` keeps its derived `Serialize` / `Deserialize` — the ABI is unchanged, `get_credit_events` still returns `[Field; 3]` and `set_credit_events` still takes the three-member struct — and gains a hand-written `Packable` with `N = 2`: Field 0 holds the two flags as bits (`FLAG_DEFAULT_BIT = 1`, `FLAG_REDEEMED_BIT = 2`), Field 1 holds the rating's single Field. The module's `StateVariable` impl now declares the **packed** length (`T_PACKED_LEN = 2`) instead of the serialized one, which is what allocates the slots. Two tests in the module itself keep the packing honest: `unpack(pack(x)) == x` for all four flag combinations, and the two flags land in distinct bits with the rating untouched. `cmtat_aztec_lib` therefore reports its first two tests.
+
+**What it cost and saved.** Public functions only: one `SLOAD` fewer on `get_credit_events`, one `SSTORE` fewer on `set_credit_events`. No private circuit reads the struct, so — unlike B-1, where hand-packing `SetFlag` cost 7 gates on the private transfer path — there is no circuit penalty; the Debt variant's private gate profile is identical before and after (checked). One slot saved on one variant. The value is parity with the reference layout and a second worked example, next to `UserFlags`, of how this project packs flags.
+
+**Hazard, stated once more.** This is a storage-layout change on `CMTATAztecDebt`. It must ship in 0.4.0 or not at all; anyone deploying from the 0.3.0 tag and then upgrading their source to 0.4.0 has a different layout, and the private-balance slot feeds every note hash. The changelog entry carries the `BREAKING CHANGE` line.
+
+### B-4 — carried forward, unchanged
+
+`PauseModule`'s two one-`bool` slots stay separate: `is_paused` is read on every transfer's public half, `is_deactivated` only by `unpause_contract`, its getter and the mint/burn halves; sharing a Field would make the hot read pay for unpacking the cold flag. The same Solidity comparison applies (one slot there), and the same answer: **leave**.
 
 ### B-5. The hybrid fields were appended, not inserted — verified
 
@@ -156,9 +170,32 @@ No `#[noinitcheck]`, no second `#[initializer]`, no `#[allow_phase_change]` anyw
 
 ## F. Standard conformance
 
-### F-1. AIP-20 — decide (the remaining third)
+### F-1. AIP-20 — ⚠️ re-framed: the question answered in 0.3.0 is not the question 0.4.0 faced
 
-The 0.3.0 answer was "do not adopt it, but take three things". Two landed in 0.4.0: the **private-profile names** (`transfer_private_to_private`, `mint_to_private`, `name`, `symbol`, `decimals` answer the standard's selectors, pinned in `test_aip20_profile.nr`; `burn` deliberately does not) and the **four bridges plus `initialize_transfer_commitment` and `balance_of_public`** behind `public_side_enabled`. The third — the two-note budget with `#[only_self]` recursion — is A-5. `doc/README.md` states the profile is partial and lists what is absent (`transfer_public_to_public`, `mint_to_public`, `burn_public`, `get_auth_contract`, commitment expiry).
+**What F-1 asked in 0.3.0, and what it answered.** "Should this token implement AIP-20?" The answer was *no* — two design conflicts (public balances expose holdings; partial notes cannot be screened at completion) made conformance incompatible with a restricted token — *but take three things from it*: the note budget, and two items that were then only sketched. The disposition row read "answered: no, but take its note budget".
+
+**What 0.4.0 actually did** is wider than that row suggests, and it did not follow from "no". Between the two reviews, `doc/standards/aip20-features-for-cmtat.md` broke AIP-20 into seven features (F1–F7) and scored each against the 61 equivalency criteria and the assessment's privacy table. 0.4.0 then took the features one by one. Measured against that list:
+
+| Feature | Decision | State in 0.4.0 |
+|---|---|---|
+| F1 — note budget with `#[only_self]` recursion | recommended | **not done** → A-5 |
+| F2 — commitment transfers, screened at initialization | recommended for the AIP20 variant only, with three additions | **done in the token variants themselves**, behind `public_side_enabled`: `initialize_transfer_commitment` screens `to` (addition 3), the issuer receives a constrained `CommitmentInitialized` event (addition 2, in event form); the **expiry (addition 1) is not done** and is recorded as a limitation |
+| F3 — rule-engine hook with recipient and caller | recommended | **not done**; the ARC-403-shaped hook exists on the *authorization contracts* side (`CMTATAztecAuth`) but the token has no settable hook |
+| F4 — AIP-20 entry-point names | recommended | **done**: five renames; the seven-function private profile answers the standard's selectors, pinned in `test_aip20_profile.nr` and, since K-4, in every variant |
+| F5 — `PRIVATE_ADDRESS_MAGIC_VALUE` in public events | recommended with F6 | **done** on the two public `Transfer` emissions of the bridges |
+| F6 — public balances | "in neither product" | **done in a narrower form than the one refused**: a public balance exists as the landing and departure point of the four bridges, holder-initiated and issuer-enabled by a deployment flag; the refused part — `transfer_public_to_public`, `mint_to_public`, `burn_public`, a transparent second ledger — stays refused |
+| F7 — named constructors | optional | **not done**; the one constructor gained `public_side_enabled` instead |
+| holder self-burn (`burn_private`), single immutable minter | rejected in the features document | **stay rejected**: `burn` keeps `BURNER_ROLE` and its own selector, minting keeps `MINTER_ROLE`; `doc/README.md` says why (an identical selector with different authorisation misleads wallets) |
+
+So the token is now, deliberately, **a CMTAT that speaks AIP-20's private profile and offers AIP-20's private/public bridges at the issuer's option**, without being AIP-20 — the README's "partial profile, not conformance". The 0.3.0 "no" holds for conformance and for the three refusals; it does not describe the release, which is why this row is marked re-framed rather than left as "decide".
+
+**What remains, as three separate decisions rather than one:**
+
+1. **F1 — the note budget** (A-5). Purely a cost decision: −43,046 gates on `transfer` measured in 0.3.0, and every bridge and burn pays the same 16-note `sub` today. No storage or note-layout change. Wants the note-count edge cases of K.3 as its acceptance tests.
+2. **F2's expiry.** A recipient frozen or delisted after opening a commitment can still be paid into it, indefinitely; the token contracts have no bounded window here where they have one (the 360 s delay) everywhere else. A design pass: an expiry stored with the commitment, or re-screening at completion by carrying `to` — the fork's hook does not, and neither does the partial note.
+3. **F3 — the rule-engine hook.** A settable hook in the ARC-403 shape but passed `(from, to, amount, caller, selector)`, so an issuer can add a rule without a redeployment. The authorization-contract work has already built the receiving side twice; the missing piece is the call from the token's private chain, and its cost (one private call, ~101k gates by the documentation's figure, to be measured).
+
+**Verdict:** re-framed. Nothing in the 0.3.0 analysis was wrong about the conflicts; the release simply found a smaller, issuer-gated form of the features the conflicts ruled out, and the remaining three are named above so the next decision is about them and not about "AIP-20".
 
 ### F-2. Bridge semantics — verified against the fork
 
@@ -292,56 +329,61 @@ Per family; ✓ has a test, ✚ added in this review, ✗ missing with the test 
 | | `from == to` | ✓ `transfer_private_to_self` |
 | | zero address as mint recipient or commitment completer | ✗ — *design question*: a note owned by the zero address is unspendable (a de-facto burn that leaves `total_supply` unchanged); a zero completer makes a commitment uncompletable but locks nothing. Decide whether to refuse; record under K-5 |
 | Note budget | one more than the balance | ✓ 4 `Balance too low` tests |
-| | a balance spread over more than 16 notes (`BalanceSet::sub` hard-codes `max_notes = 16`) | ✗ — mechanical: 17 mints of 1 to one holder, then a transfer of 17; expected today: `Balance too low` from `sub`; the test documents the F-1 limit |
-| | exactly the balance | ✗ — mechanical: transfer `mint_amount`; expect a zero change note and a zero balance |
+| | a balance spread over more than 16 notes (`BalanceSet::sub` hard-codes `max_notes = 16`) | ✚ `a_balance_spread_over_more_than_sixteen_notes_cannot_be_spent_at_once` (17 notes → `Balance too low`), and the ceiling turned out lower: `twelve_notes_can_be_spent_in_one_transfer` / `thirteen_notes_exceed_the_per_call_budget` (`push out of bounds`) — K-7 |
+| | exactly the balance | ✚ `transferring_exactly_the_balance_leaves_zero` |
 | Batches | the cap | ✓ every batch test |
 | | the cap plus one | ✓ measured, recorded in the cap comment (a compile-time size, not a runtime test) |
-| | the same address twice in a batch | ✗ — mechanical: `mint_batch([user, user, …])`; expected: two notes, balance is the sum |
+| | the same address twice in a batch | ✚ `the_same_address_twice_in_a_batch_receives_the_sum` |
 | | `u128` overflow across the loop | ✓ `mint_private_failure_overflow` |
 | Delays | before / after | ✚ before-delay twin; ✓ after |
-| | two changes scheduled before the first lands | ✗ — mechanical on `set_issuer`: schedule A, then B before the delay; after one delay the value is B and copies go to B |
+| | two changes scheduled before the first lands | ✚ `a_second_scheduled_issuer_replaces_the_first` (value is B, copies go to B, none to A) |
 | | expiration honoured | not testable in the TXE (no mempool); the e2e suite would need a deliberately slow inclusion |
 | Lifecycle | paused / unpaused / deactivated, each operation; deactivate without pause; unpause after deactivate; pause twice | ✓ `test_pause_module.nr`, 17 tests |
 | Authwits | self with nonce 0 | ✓ |
-| | self with a non-zero nonce | ✗ — mechanical: `transfer_private_to_private(from = caller, …, 1)`; the macro must reject it |
+| | self with a non-zero nonce | ✚ `the_account_itself_must_pass_a_zero_nonce` (`Invalid authwit nonce`) |
 | | third party valid / without approval / wrong caller | ✓ |
-| | a consumed authwit replayed | ✗ — mechanical: reuse the same call and nonce; expected `Nullifier already exists` or the authwit error |
-| | `cancel_authwit` then use | ✗ — mechanical; `cancel_authwit` is the last entry point of the base contract with no test |
+| | a consumed authwit replayed | ✚ `a_consumed_authwit_cannot_be_replayed` (`Nullifier collision`) |
+| | `cancel_authwit` then use | ✚ `a_cancelled_authwit_cannot_be_used` (`Nullifier collision`; the inner hash is `[from, selector, hash_args(args)]`) |
 | Roles | grant / use / revoke / renounce | ✓ and ✚ |
 | | the last admin renouncing | ✗ — *design question*: OpenZeppelin and CMTAT allow it; the contract then has no admin forever. Decide whether to refuse; record under K-5 |
 | Delivery | note copies to the issuer | ✚ K-2 (count and recipient) |
 | | `Transfer` event read by the recipient and by the issuer | ✗ — **not testable in the TXE at 5.2.0**: `get_private_events` / `discover_event` are `pub(crate)`; belongs in the e2e suite with `getPrivateEvents`, alongside H-10 |
 | | issuer *processing* of the copies | ✗ — H-10 |
 | Partial notes | open by recipient, complete by the completer | ✓ |
-| | completion by a party that is not the completer | ✗ — **must cover**: it is the validity-commitment check; expected a revert from `assert_nullifier_exists` |
-| | complete twice | ✗ — must cover: second completion has no notes to spend or completes a second note; the expected behaviour needs stating |
-| | complete before the opening is mined | ✗ — mechanical: skip `mine_block()`; expected revert (the validity commitment is not settled) |
-| | recipient frozen or delisted between opening and completion | ✗ — records the documented gap ("no commitment expiry"): the completion succeeds today; a test that says so keeps the gap visible |
-| Public halves | `_transfer` takes no arguments | ✗ — mechanical and compile-time: `Token::interface()._transfer()` in a test compiles only while the signature is empty |
+| | completion by a party that is not the completer | ✚ `only_the_designated_completer_can_pay_a_commitment` (`reading an unknown nullifier`: the validity commitment for the other completer was never pushed) |
+| | complete twice | ✚ `a_second_payment_into_the_same_commitment_is_lost` — the sender is debited twice, the recipient holds one payment, `total_supply` is unchanged; K-6 |
+| | complete before the opening is mined | **not observable in the TXE**: every `call_private` mines a block, so the opening is always settled before the next call (tried: the completion passes without `mine_block()`) |
+| | recipient frozen or delisted between opening and completion | ✚ `a_recipient_frozen_after_opening_a_commitment_is_still_paid` — records the gap (no expiry, F-1) |
+| Public halves | `_transfer` takes no arguments | ✚ `the_public_half_of_a_transfer_takes_no_arguments` (compile-time pin) |
 | | a public revert discards private effects | not observable after `should_fail_with` in the TXE (the test ends at the revert); the e2e suite can assert balances after a failed send |
-| Constructors and views | re-calling the initializer | ✗ — mechanical: a second `with_public_initializer` on the same address; expected `Initializer` revert |
+| Constructors and views | re-calling the initializer | ✚ `the_initializer_cannot_be_called_a_second_time` (`duplicate nullifier`: the initialization nullifier) |
 | | `view_public` on every `#[view]` | ✓ (typed; a dropped attribute fails to compile) |
 | | selectors pinned to the standard | ✓ and ✚ K-4 |
-| Storage | private-balance slot unchanged against a baseline | ✗ — mechanical: the `#[aztec]` macro generates a `storage_layout()` getter; pin `storage_layout().private_balances.slot` in a test so a re-slot (which would orphan every note) fails a test rather than a deployment |
+| Storage | private-balance slot unchanged against a baseline | ✚ `the_private_balance_slot_is_pinned` — `STORAGE_LAYOUT_CMTATAztec.fields.private_balances.slot == 22` (the `storage_layout()` getter is not callable from a test; the global is) |
 
-### K-5. Remaining edge cases — decide
+### K-5. Remaining edge cases — fixed for the mechanical rows
 
-Fourteen ✗ rows above. Nine are mechanical and can be written without a decision (over-16-notes, exact balance, duplicate batch address, two scheduled issuer changes, self with non-zero nonce, replayed authwit, `cancel_authwit`, non-completer completion, completion before settlement, re-initialization, `_transfer` signature pin, storage-slot pin — twelve, two of them requiring an expected-behaviour statement first: complete-twice and frozen-after-opening). Two are design questions the project should answer before a test encodes them: whether a zero-address mint recipient / commitment completer is refused, and whether the last admin may renounce. Two are e2e-only (event reads, issuer processing — H-10).
+Of the fourteen ✗ rows, twelve mechanical ones are now tests in `contracts/cmtat-aztec/src/test/test_edge_cases.nr` (15 tests: the note-ceiling row needed three), and the two untested asserts of the authorization crates got theirs (`unfreeze`: sends again after the delay, not before, refused on an unfrozen address; `remove_from_list`: sends again after the delay, not before, requires `ADDRESS_LIST_REMOVE_ROLE` — 6 tests per crate). One row moved to "not observable in the TXE" after trying it. Two rows are design questions and stay open under K-6 alongside the finding below; two are e2e-only (H-10).
+
+Two of the new tests measured behaviour the code did not state, and both are recorded rather than changed:
+
+- **K-7 — the note ceiling of one transfer is 12, not 16.** `BalanceSet::sub` offers 16, but the per-call side-effect budget is exhausted first: 12 notes pass, 13 to 16 abort with `push out of bounds`, 17 and more fail in `sub` with `Balance too low`. A holder paid in many small notes consolidates with transfers to self, twelve notes at a time; the README's *Batching limits* now says so. F1 (A-5) is the fix, and this test is its acceptance criterion.
+- **K-6 — a second payment into the same commitment is lost.** `PartialUintNote::complete` is documented as not single-use ("the recipient only discovers the first completion, so anything carried by further ones is lost"). Two `transfer_private_to_commitment` of 100 into one commitment leave the sender down 200, the recipient with 100 and `total_supply` at 1,000: 100 units are no one's, yet still counted in supply. AIP-20 has the same behaviour. The contract could refuse it — the public half pushes a nullifier of the commitment, so a second completion reverts with a duplicate nullifier — at the cost of one nullifier per completion and a departure from the standard's semantics. Left open as a decision; the README documents the wallet rule meanwhile (one commitment per expected payment).
 
 ## Summary table for K
 
 | Contract | Entry points tested | Asserts with a negative test (library + contract) | Branches both sides | Mutants survived → after fixes |
 |---|---|---|---|---|
-| `CMTATAztec` | 52 / 53 (`cancel_authwit`) | 21 / 29 (8 remaining: 1 acceptable, 2 removed, 5 auth-surface or e2e) | 16 / 16 | 2 / 5 → 0 / 5 |
+| `CMTATAztec` | 53 / 53 | 22 / 29 (7 remaining: 1 acceptable, 2 removed, 4 auth-surface or e2e) | 16 / 16 | 2 / 5 → 0 / 5 |
 | `CMTATAztecDebt` | 19 / 58 direct + 14 selectors pinned; chains tested in base | shared | shared | — |
 | `CMTATAztecLight` | 14 / 49 direct + 14 selectors pinned; chains tested in base | shared | shared | — |
-| `CMTATAztecAuth` / `…MultiToken` | 15 / 22 each | 7 / 9 (`unfreeze`, `remove_from_list` untested) | 1 / 1 | 1 / 1 (stale artifact) → 0 |
+| `CMTATAztecAuth` / `…MultiToken` | 17 / 22 each | 9 / 9 | 1 / 1 | 1 / 1 (stale artifact) → 0 |
 
 ---
 
 ## What was run, and what was not
 
-**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **187 tests passed** (111 base, 12 Debt, 7 Light, 29 + 28 auth) after the additions; five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
+**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions; five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
 
 **Not run.** `aztec-wallet profile` (needs a sandbox); `yarn test:js`; any test of the issuer's PXE processing offchain messages (H-10).
 

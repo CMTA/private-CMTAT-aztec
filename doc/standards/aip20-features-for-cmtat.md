@@ -64,6 +64,8 @@ Read as a product map: **CMTAT-private gains F1 and F3 and nothing else; CMTAT-p
 
 ## F1 — Note budget with recursive subtraction
 
+> **Status (2026-09-16):** not done in 0.4.0; open as A-5 in [`doc/audits/tools/v0.4.0/CLAUDE_ANALYSIS.md`](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). The bridges pay the same 16-note `sub` (`transfer_private_to_public` 95,941 gates against AIP-20's 38,277).
+
 **What AIP-20 does.** A transfer first tries to settle with at most `INITIAL_TRANSFER_CALL_MAX_NOTES = 2` notes. If the sender's balance is more fragmented than that, the contract recurses into itself through an `#[only_self]` function at `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8` per level until the amount is covered.
 
 **What this token does.** `BalanceSet::sub` hardcodes its budget to `MAX_NOTE_HASH_READ_REQUESTS_PER_CALL` (16), so every transfer and burn sizes its circuit for sixteen notes regardless of how many the sender holds.
