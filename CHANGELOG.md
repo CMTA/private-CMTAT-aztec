@@ -74,7 +74,7 @@ yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec star
 
 ## Unreleased
 
-Target: **0.4.0**. Not released yet; everything below is on the development branch.
+Target: **0.4.0**. Not released yet; everything below is on the development branch. `version()` already returns `0.4.0` in all five contracts.
 
 ### Added
 
@@ -104,6 +104,7 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Changed
 
+- `VERSION` bumped to `0.4.0` in the three token contracts and the two authorization contracts; `version()` returns it, and the authorization-contract tests pin the new value.
 - The mint, transfer, burn and bridge chains moved out of the three `main.nr` files into `lib/src/modules/tokenModule.nr`, so the compliance chain exists once (`doc/design/token-module.md`).
   - Each variant's entry points now call `mint_private` / `transfer_private` / `burn_private` / `bridge_*` / `open_commitment` / `pay_commitment` with a `Screening` value built from its own storage (`FreezeAndLists` for the base and Debt variants, `FreezeOnly` for Light); the enqueued public halves call `mint_public` / `require_transfer` / `burn_public` / `credit_public` / `debit_public`. Noir keeps the declarations, attributes, enqueues and event emissions in the contract module, so those remain per variant.
   - No storage, ABI, selector or note-layout change; the gate profile of every private circuit is identical before and after (both `#[internal]` helpers and library functions are inlined). The three `main.nr` lost 105, 105 and 97 lines.

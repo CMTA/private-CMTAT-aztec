@@ -38,5 +38,5 @@ unconstrained fn version_matches_the_constant() {
     let (env, auth, _, _) = utils::setup();
     let result = env.view_public(Auth::at(auth).version());
     assert(result == FieldCompressedString::from_string(crate::CMTATAztecAuth::VERSION));
-    assert(result == FieldCompressedString::from_string("0.3.0                          "));
+    assert(result == FieldCompressedString::from_string("0.4.0                          "));
 }

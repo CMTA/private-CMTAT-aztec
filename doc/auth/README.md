@@ -100,7 +100,7 @@ What that call publishes is a single boolean, `is_burn`. A burn is already publi
 | One deployment serves | One token | Any number of tokens: every token constructed with the same `auth_contract` shares its pause, deactivation and freeze state |
 | Replaceable | Not upgradeable | Not upgradeable, and the token's `auth_contract` is `PublicImmutable`: changing policy means redeploying the token |
 | Cost per private transfer | `transfer_private_to_private` 161,493 gates, one circuit | Token's `transfer_private_to_private` 63,310 + `authorize_private` 14,650 + the cross-contract kernel iteration (~101,000 by the framework's figure, not measured here) |
-| `version()` | `0.3.0` | `0.3.0`, kept equal by hand — see [Version](#version) |
+| `version()` | `0.4.0` | `0.4.0`, kept equal by hand — see [Version](#version) |
 
 [CMTAT equivalency of the pair](#cmtat-equivalency-of-the-pair) scores the design against the CMTAT mandatory criteria; the partials there are the ones the *hook* cannot close.
 
@@ -196,7 +196,7 @@ The audit-trail gap (criterion 8) is the one thing no hook change fixes: only th
 
 ## Version
 
-`version()` returns the constant `VERSION` of the contract, `0.3.0` today. It is **kept equal to the CMTAT token contracts' `VERSION`** for now: the authorization contracts ship with the token release they are built and tested against, and the pre-release checklist in `CHANGELOG.md` bumps the five constants together. Should the authorization contracts start to evolve on their own cadence, give them their own line in the checklist and their own number.
+`version()` returns the constant `VERSION` of the contract, `0.4.0` today. It is **kept equal to the CMTAT token contracts' `VERSION`** for now: the authorization contracts ship with the token release they are built and tested against, and the pre-release checklist in `CHANGELOG.md` bumps the five constants together. Should the authorization contracts start to evolve on their own cadence, give them their own line in the checklist and their own number.
 
 ## How it was verified
 
