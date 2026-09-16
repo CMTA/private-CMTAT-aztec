@@ -1,6 +1,6 @@
 # A second payment into the same commitment (K-6)
 
-> **Status (2026-09-16): open, documented.** Finding `K-6` of the [0.4.0 review](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). The behaviour is measured by `a_second_payment_into_the_same_commitment_is_lost` in `contracts/cmtat-aztec/src/test/test_edge_cases.nr`; the README states the wallet rule. Nothing in the contracts has changed.
+> **Status (2026-09-16): open, documented.** Finding `K-6` of the [0.4.0 review](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). The behaviour is measured by `a_second_payment_into_the_same_commitment_is_lost` in `tests/cmtat-aztec/src/test_edge_cases.nr`; the README states the wallet rule. Nothing in the contracts has changed.
 
 A design note on one property of the commitment flow that the private/public bridges inherited from AIP-20: a commitment can be paid into more than once, and the recipient's wallet sees only the first payment. What happens, exactly, in CMTAT-Aztec and in the AIP-20 reference; what the earlier assessment got right and what it did not; and the ways the project could respond, from doing nothing to a one-line contract change.
 

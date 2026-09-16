@@ -249,7 +249,7 @@ Three things are worth drawing out of those tables.
 
 Raising either cap means repeating the measurement, not re-reading the protocol constants. It is also an ABI change: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the generated interface. The transfer cap in particular was **lowered** from 4 to 2 by the decision to deliver the `Transfer` event constrained — see [Events](#events) for why that trade was taken.
 
-**A single transfer has a note ceiling too.** `BalanceSet::sub` spends at most 16 notes per call, but the per-call side-effect budget is reached first: a `transfer_private_to_private` that has to consume **12 notes passes, 13 aborts** with `push out of bounds`, and from 17 the library itself reports `Balance too low`. A holder whose balance has been paid in many small notes — twenty mints of 1, say — cannot spend it in one transfer even though the total suffices; the wallet consolidates first with transfers to self, twelve notes at a time. Both figures are measured (`test_edge_cases.nr`) and both would move with the note budget with recursion discussed in [`doc/standards/aip20-features-for-cmtat.md`](standards/aip20-features-for-cmtat.md) (F1).
+**A single transfer has a note ceiling too.** `BalanceSet::sub` spends at most 16 notes per call, but the per-call side-effect budget is reached first: a `transfer_private_to_private` that has to consume **12 notes passes, 13 aborts** with `push out of bounds`, and from 17 the library itself reports `Balance too low`. A holder whose balance has been paid in many small notes — twenty mints of 1, say — cannot spend it in one transfer even though the total suffices; the wallet consolidates first with transfers to self, twelve notes at a time. Both figures are measured (`tests/cmtat-aztec/src/test_edge_cases.nr`) and both would move with the note budget with recursion discussed in [`doc/standards/aip20-features-for-cmtat.md`](standards/aip20-features-for-cmtat.md) (F1).
 
 ### Events
 
@@ -435,7 +435,7 @@ Seven entry points carry the exact names and parameter types of the AIP-20 `Toke
 | `name()`, `symbol()`, `decimals()` | `0x5c5c9c42`, `0x62cc9647`, `0x6bff8f59` | The `private_get_*` variants remain as this project's extras |
 | `balance_of_private(owner)`, `total_supply()` | `0x4375727c`, `0x8dd382ec` | |
 
-`contracts/cmtat-aztec/src/test/test_aip20_profile.nr` pins these values, read from the fork's compiled `Token::interface()`.
+`tests/cmtat-aztec/src/test_aip20_profile.nr` pins these values, read from the fork's compiled `Token::interface()`.
 
 This is a **partial profile, not conformance**. Aztec has no interface detection, so the gaps show up at the first call rather than at discovery:
 
@@ -479,7 +479,7 @@ yarn codegen
 yarn test
 ```
 
-The contract is deployed on the sandbox, by the [setup function](https://github.com/CMTA/private-CMTAT-aztec/blob/master/contracts/cmtat-aztec/src/test/utils.nr), and all the tests are run.
+The contract is deployed on the sandbox, by the [setup function](https://github.com/CMTA/private-CMTAT-aztec/blob/master/tests/cmtat-aztec/src/utils.nr), and all the tests are run.
 
 ### Testnet
 
@@ -703,7 +703,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 |---|---|
 | **Noir** | The language Aztec contracts are written in. Rust-like syntax, but it compiles to zero-knowledge circuits, which is why there is no inheritance and no early `return`. |
 | **Aztec.nr** | The Noir framework providing the contract macros, state variables and note types. Pinned to **v5.2.0** here. |
-| **TXE** | *Test eXecution Environment* — the harness behind `aztec test` that runs Noir tests against a simulated network. Everything in `src/test/*.nr` targets it. |
+| **TXE** | *Test eXecution Environment* — the harness behind `aztec test` that runs Noir tests against a simulated network. Everything under `tests/*/src/` targets it. |
 | **`#[external("private" \| "public" \| "utility")]`** | Marks a function callable from outside the contract, and says which environment runs it. |
 | **`#[internal("private" \| "public")]`** | A helper callable only from inside the contract and **inlined** at the call site — reached through `self.internal`. `_grant_role_internal`, `_emit_listed` and `_open_commitment` are these; the value-moving chains are ordinary library functions in `tokenModule.nr`, inlined the same way. |
 | **`#[only_self]`** | A real (non-inlined) function only the contract itself may call. The enqueued public halves `_mint`, `_transfer` and `_burn` use it. |
