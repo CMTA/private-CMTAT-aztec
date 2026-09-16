@@ -15,6 +15,7 @@ A design note on one property of the commitment flow that the private/public bri
 - [Comparison](#comparison)
 - [Recommendation](#recommendation)
 - [Verification plan](#verification-plan)
+- [FAQ](#faq)
 
 ## The commitment flow in one page
 
@@ -40,7 +41,7 @@ The shared code is `open_commitment` / `pay_commitment` in `lib/src/modules/toke
 
 Nothing in the library or in either contract records that a commitment has been completed. The completion check is *existence* of `V`, and `V` stays in the nullifier tree forever. So a second `transfer_private_to_commitment(from, C, amount', nonce')` by the same completer is a perfectly valid transaction:
 
-- the completer's notes are spent again — `from` is debited `amount'`;
+- `from` is debited `amount'` a second time — other notes than the first payment's, so no note is spent twice (see the FAQ);
 - a second completion log with the **same tag** `T` is emitted, payload `[slot, amount']`;
 - a second note hash `H(slot, [C, amount'])` is inserted — a distinct leaf even for `amount' = amount`, because the protocol makes leaves unique with a per-transaction nonce;
 - `total_supply` does not move — it is a transfer, not a mint or burn.
@@ -83,7 +84,7 @@ The behaviours are identical on the transfer paths because the code is: `pay_com
 For a payment token the loss is the payer's problem and the docs' one-shot rule is the answer. CMTAT is a security token with an issuer that audits every movement, and two further things go wrong:
 
 1. **The audit trail and the holder's wallet disagree.** The issuer knows `C` from `CommitmentInitialized`, derives `T`, and reads *both* completion logs — it books 200 for the recipient. The recipient's wallet holds 100. `total_supply` says 1,000; the sum of what every wallet can spend is 900. Nothing on chain is inconsistent — the second note exists — but every off-chain view is, and an issuer reconciling positions (a register of holders, a corporate action, a redemption) has a discrepancy it cannot resolve from chain data alone.
-2. **The loss is not the payer's alone.** With `transfer_private_to_public_with_commitment` the *sender* opens the commitment and is its completer: a sender that later pays into it twice loses its own funds — acceptable. With `initialize_transfer_commitment` the *recipient* opens the commitment and hands `C` to a payer; a careless or malicious payer who pays twice hurts the recipient's reconciliation (and the second amount is still the payer's loss). A frozen or blacklisted recipient cannot be reached this way — the recipient was screened at opening, and a second completion changes nothing about who owns the note — so this is an operational hazard, not a compliance bypass.
+2. **The loss is not the payer's alone.** With `transfer_private_to_public_with_commitment` the *sender* opens the commitment and is its completer: a sender that later pays into it twice is out of pocket for a payment no wallet received — its own mistake, its own loss (how that happens: see the FAQ). With `initialize_transfer_commitment` the *recipient* opens the commitment and hands `C` to a payer; a careless or malicious payer who pays twice hurts the recipient's reconciliation (and the second amount is still the payer's loss). A frozen or blacklisted recipient cannot be reached this way — the recipient was screened at opening, and a second completion changes nothing about who owns the note — so this is an operational hazard, not a compliance bypass.
 
 There is also a small privacy point: a security-token issuer that publishes nothing about its holders still leaks, on a reuse, that two payments went to one holder (shared tag `T`). The first payment already leaks that *a* completion happened; the reuse adds the link.
 
@@ -184,3 +185,33 @@ For option 2:
 3. Re-run the gate profile for `transfer_private_to_commitment` in the three variants (0.4.0 baseline: 93,011 / 93,011 / 86,812) and re-probe its note ceiling the way K-7 was measured (`spend_n_notes`-style helper against the commitment path).
 4. Break the change on purpose — remove the `push_nullifier_unsafe` — and watch test 1 fail, per the project's rule for chain changes.
 5. Update the README bridge section, `doc/standards/building-on-aip20.md` (behavioural difference from the standard) and the review's K-6 row.
+
+## FAQ
+
+### "`from` is debited a second time" — is that a double spend? Can the completer spend the same tokens twice?
+
+No. A double spend would be one note spent in two transactions, and the protocol excludes it: spending a note pushes its nullifier, and a nullifier can enter the tree once. What the second payment spends is *other* notes — the change note left by the first payment, or any other note `from` holds. The balances in the measured case make it visible: the sender starts with 1,000, pays 100 twice and ends with **800**; each payment took 100 real units out of its balance. Value is conserved on chain — 800 + 100 (the recipient's discovered note) + 100 (the undiscovered one) = 1,000 = `total_supply`. The completer gains nothing from the reuse; it pays twice and the recipient can spend once. The word "again" in the body means "a second time", not "the same notes again".
+
+The one thing that *is* replayable is the call itself. When the caller is `from`, `authwit_nonce` is `0` and the `#[authorize_once]` machinery pushes no nullifier — replay protection exists for third-party authorisations, not for an account acting on its own. So nothing in the contract makes `transfer_private_to_commitment(from, C, amount, 0)` idempotent; option 2's nullifier is exactly that missing idempotency, keyed on `C`.
+
+### "CMTAT-Aztec did not import AIP-20's public completion paths" — why not, and how could they be imported?
+
+The two paths are `transfer_public_to_commitment(from, C, amount, nonce)` (public balance → the commitment's note) and `mint_to_commitment(C, amount)` (new supply → the commitment's note). Both are `#[external("public")]` in AIP-20 and complete the partial note **in public** through `PartialUintNote::complete`, which means `C` is an argument of a public call and the completion happens in the AVM.
+
+They were left out in 0.4.0 for three reasons, one per path and one common:
+
+- **Common — the bridge selection was "what a holder needs to enter and leave the public side".** The four bridges imported are the ones a holder with a private balance uses (`transfer_private_to_public`, `transfer_private_to_commitment`, `transfer_private_to_public_with_commitment`) plus the way back (`transfer_public_to_private`). `transfer_public_to_public`, `mint_to_public` and `burn_public` were rejected because a public balance is a landing and departure point, not a second ledger (README, *Private/public bridges*). `transfer_public_to_commitment` sits at the border: a departure from the public side, which the principle allows, into a recipient the sender does not know by address, which is the commitment's purpose. It was not needed for the holder journeys the release covered, and it was not decided against — it simply was not in the set.
+- **`mint_to_commitment` — the mint should not be imported.** CMTAT's issuance names its recipient: `mint_to_private(to, amount)` screens `to` and the issuer's copy of the note says who was issued what. A mint into a commitment issues to an address the minter does not see at mint time (only the opening screened it, and only the `CommitmentInitialized` event tells the issuer who it was). For a security token, whose issuer knows every holder, that indirection buys nothing. And it is the path where reuse is worst: a second `mint_to_commitment` on the same `C` **inflates `total_supply`** by an amount no wallet can spend — a supply-integrity error an issuer could commit by a retried transaction. Not before a reuse guard exists, and probably not after.
+- **`transfer_public_to_commitment` — could be imported, but not in AIP-20's shape.** CMTAT's `transfer_public_to_private` is already *not* a public function: it is `#[external("private")]`, screens both parties in private, and enqueues `_debit_public(from, amount)`. A CMTAT `transfer_public_to_commitment` would follow the same shape — a private entry point that screens `from` through the `Screening` value, enqueues `_debit_public(from, amount)` and completes the commitment **from private** with `complete_from_private`, exactly as `pay_commitment` does. That keeps `C` out of public arguments (the AIP-20 form publishes it), keeps the completion log private-channel, and lets option 2's nullifier be pushed in the same private context. Cost: one library function in `tokenModule.nr` (`pay_commitment_from_public`, ~10 lines: `screening.sender(from)` then `complete_commitment`), one `#[external("private")]` declaration per variant with the `enqueue_self._debit_public` call, the K-6 nullifier if option 2 is adopted, tests, and a gate profile — the private half would be small (no notes spent) since the debit is public. The only thing it does not get for free is the note-count ceiling question (none: no notes are consumed). Worth importing when a holder with a public balance needs to pay a recipient known only by commitment; until then it is a documented absence.
+
+### "A sender that later pays into it twice" — how would a sender end up paying twice?
+
+The flow in question is `transfer_private_to_public_with_commitment(from, to, amount, nonce) -> C`: the sender moves `amount` to `to`'s **public** balance now and, in the same transaction, opens a commitment for `to` of which the *sender* is the completer. The AIP-20 intent is "deposit now, receive the private output later": the sender interacts with something public (a contract, a venue) and, once the outcome is known, calls `transfer_private_to_commitment(from, C, result, 0)` once so that `to` receives `result` privately. In a plain CMTAT setting `to` is a holder and the second leg is the sender delivering a private amount to `to` without learning anything more about `to` than `C`.
+
+"Twice" is not a deliberate second payment; it is the second leg being executed a second time against the same `C`. Realistic ways:
+
+- **A retry.** The wallet or script sends the completion, does not observe inclusion (timeout, dropped connection, a node behind), and re-sends. With the caller as `from` the nonce is `0` both times, so nothing rejects the second transaction; both are included; `from` is debited twice.
+- **A stored commitment reused by habit.** The sender keeps `C` as "the endpoint for `to`" and pays into it on the next occasion, the way one would reuse a bank account number. Every partial note is one-shot; a `C` is not an account.
+- **Automation without a completion record.** A contract or a batch job that computes "pay the outcome to `C`" from state that can be re-evaluated (a re-run of the job, a second call to the same contract function) completes once per run.
+
+In each case the sender's second `amount` leaves its balance and lands in a note that is the recipient's by construction (owner and randomness are the recipient's) but that the recipient's wallet never finds. From the sender's point of view it paid for nothing; from the recipient's, nothing arrived; from the issuer's, two payments were made. That is what "out of pocket for a payment no wallet received" means, and why the body treats the `initialize_transfer_commitment` variant as the harder case: there the payer is a third party and the recipient inherits a reconciliation discrepancy it did not cause.
