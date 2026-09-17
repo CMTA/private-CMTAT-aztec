@@ -1,6 +1,6 @@
 # A second payment into the same commitment (K-6)
 
-> **Status (2026-09-16): open, documented.** Finding `K-6` of the [0.4.0 review](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). The behaviour is measured by `a_second_payment_into_the_same_commitment_is_lost` in `tests/cmtat-aztec/src/test_edge_cases.nr`; the README states the wallet rule. Nothing in the contracts has changed.
+> **Status (2026-09-17): option 2 applied.** Finding `K-6` of the [0.4.0 review](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). `pay_commitment` in `lib/src/modules/tokenModule.nr` now pushes `commitment_paid_nullifier(C) = H(C, DOM_SEP__CMTAT_COMMITMENT_PAID)` after the completion, in all three variants; a second payment into the same commitment is a duplicate nullifier and never lands. Verified: `a_second_payment_into_the_same_commitment_is_refused` and `a_sender_opened_commitment_cannot_be_paid_twice_either` (`Nullifier collision`), `the_first_payment_into_a_commitment_is_received` (balances unchanged for the happy path); both refusal tests fail when the `push_nullifier_unsafe` line is removed; gates +52 on `transfer_private_to_commitment` (93,011 → 93,063 base and Debt, 86,812 → 86,864 Light); suite 218/218. The text below is the analysis as it stood before the change, kept as the record of the decision; the measured "lost" behaviour it describes is what the contract did **before** this commit and what AIP-20 still does.
 
 A design note on one property of the commitment flow that the private/public bridges inherited from AIP-20: a commitment can be paid into more than once, and the recipient's wallet sees only the first payment. What happens, exactly, in CMTAT-Aztec and in the AIP-20 reference; what the earlier assessment got right and what it did not; and the ways the project could respond, from doing nothing to a one-line contract change.
 
@@ -11,6 +11,7 @@ A design note on one property of the commitment flow that the private/public bri
 - [CMTAT-Aztec and AIP-20 side by side](#cmtat-aztec-and-aip-20-side-by-side)
 - [Consequences specific to a security token](#consequences-specific-to-a-security-token)
 - [Checking the earlier assessment](#checking-the-earlier-assessment)
+- [Upstream status](#upstream-status)
 - [Options](#options)
 - [Comparison](#comparison)
 - [Recommendation](#recommendation)
@@ -68,9 +69,9 @@ The AIP-20 `Token` of the [CMTA fork of `aztec-standards`](https://github.com/CM
 | | CMTAT-Aztec 0.4.0 | AIP-20 `Token` (fork) |
 |---|---|---|
 | Completion context | private only (`complete_from_private`) | private (`transfer_private_to_commitment`) and public (`transfer_public_to_commitment`, `mint_to_commitment`) |
-| Reuse guard | none | none |
+| Reuse guard | none — **now: `commitment_paid_nullifier(C)` pushed at completion** | none |
 | Second payment: sender | debited | debited |
-| Second payment: recipient | first payment only (PXE) | first payment only (PXE) |
+| Second payment: recipient | first payment only (PXE) — **now: the second payment is refused (option 2)** | first payment only (PXE) |
 | Second payment: supply | unchanged | unchanged for transfers; **`mint_to_commitment` twice inflates `total_supply` by an amount no one can spend** |
 | Log tag | `T = H(C, …)`, identical on both completions | same |
 | Who knows `C` | recipient, completer, and the **issuer** (`CommitmentInitialized`) | recipient and completer |
@@ -101,6 +102,22 @@ The review recorded K-6 with three claims. Checked against the library and the f
 
 One thing the review did not say and should have: `initialize_transfer_commitment` lets *anyone* open a commitment for any `to` (the recipient is screened, the caller is not, exactly as in AIP-20). Combined with reuse this does not create a new attack — the opener chooses the completer, and only the completer can pay — but it is why option 5 below (letting the recipient close a commitment) has to be authorised by `to`, not by the opener.
 
+## Upstream status
+
+Checked on 2026-09-17 against the public repositories, to answer whether AIP-20 or the library has since closed the gap. Neither has, and the library's tracker says why.
+
+| Where | What was found |
+|---|---|
+| `aztec-nr`, default branch (`ac66bffc6e47a97843b0a2d854294b8560d8c1a7`) | `PartialUintNote::complete` and `complete_from_private` still push no nullifier at completion. The docstring still reads: "WARNING: completion is not single-use. Nothing prevents the completer from completing the same partial note multiple times, inserting a new note hash each time." Same behaviour as the v5.2.0 this repository pins. |
+| `aztec-packages` issue [#14363](https://github.com/AztecProtocol/aztec-packages/issues/14363), *Restrict sender that can complete partial note* | **Closed.** This is the validity commitment `H(C, completer)`: only the designated completer can complete. It bounds *who*, not *how many times*. |
+| `aztec-packages` issue [#14364](https://github.com/AztecProtocol/aztec-packages/issues/14364), *Assume partial notes will get a single completion log* | **Open** since 2025-05-16, milestone "Fairies Q2", no linked PR. The proposal is the opposite of a library fix: rely on #14363 *plus* "senders enforc[ing] logic that prevents ever doing multiple completion", so that the PXE can stop tracking a partial note after its first completion log **and the library never has to emit a completion nullifier** ("if the combination of #14363 and proper contract logic prevent multi-completion, then we don't need to emit a note completion nullifier (saving DA)"). |
+| `defi-wonderland/aztec-standards`, `main` (`token_contract/src/main.nr` last changed 2026-07-06, commit `08fe2371ea6ee518f9b9680ba8727c89965366bf`, the ARC-403 work) | `transfer_private_to_commitment`, `transfer_public_to_commitment` and `mint_to_commitment` complete through the same two library calls with no nullifier, no map and no comment on single use. The CMTA fork this repository builds against is the same token code, so nothing was missed by pinning it. |
+
+Two conclusions for the options below:
+
+- **Option 4 is not going to happen in the library, by design.** The framework's position, on record in #14364, is that the PXE will assume one completion per partial note and that *the contract* is responsible for making that true; the DA saved by not emitting a completion nullifier is the stated reason. An upstream issue asking for `complete_once` would be asking the maintainers to reverse that decision.
+- **Option 2 is what upstream expects a contract to do.** "Contract logic that prevents multi-completion" is exactly one nullifier derived from the commitment, pushed where the completion happens. AIP-20 has not written it; a token that does is ahead of the standard, not at odds with it, and stays compatible with whatever the PXE does once #14364 lands (a wallet that stops watching after the first completion loses nothing if a second one cannot exist).
+
 ## Options
 
 ### 1. Keep the behaviour; state the rule
@@ -118,7 +135,7 @@ In `pay_commitment`, after `complete_commitment`, push one nullifier derived fro
 - **Cost:** one nullifier per completion (`MAX_NULLIFIERS_PER_CALL = 16`, and the review's K-7 shows the side-effect budget is what binds a transfer — the ceiling of `transfer_private_to_commitment` may drop by one note; to be measured). No storage change, no ABI change, no public argument.
 - **Privacy:** the nullifier is `H(C, sep)`; without `C` it is unlinkable to the tag `T = H(C, sep')`. Nothing new is published.
 - **Failure mode:** a duplicate nullifier is not a revert with a message. The payer's PXE simulation passes (it does not check the nullifier tree for the *new* nullifier) and the node drops the transaction; in the TXE this surfaces as `Nullifier collision`, the same signature as an authwit replay. A wallet gets "transaction rejected" rather than "commitment already paid". A `#[utility] fn is_commitment_paid(C) -> bool` reading the nullifier through the PXE oracle would let a wallet pre-check.
-- **Departure from AIP-20:** a second payment fails instead of vanishing. `transfer_private_to_commitment` keeps AIP-20's name and parameter types (the bridges are outside the *pinned* private profile, but the selector is the same by construction), so a caller written for the standard meets a stricter contract, never a laxer one.
+- **Departure from AIP-20:** a second payment fails instead of vanishing. `transfer_private_to_commitment` keeps AIP-20's name and parameter types (the bridges are outside the *pinned* private profile, but the selector is the same by construction), so a caller written for the standard meets a stricter contract, never a laxer one. It is also the behaviour the framework asks contracts for (#14364), so the departure is from the standard's *code*, not from the protocol's intent.
 - **Does not fix:** a completion that already happened twice on an existing deployment — there is none; the bridges are new in 0.4.0.
 
 ### 3. Record completed commitments in public state
@@ -134,8 +151,8 @@ Give the enqueued half the commitment — `_transfer_commitment(C)` — and keep
 `PartialUintNote::complete` / `complete_from_private` could push the completion nullifier themselves — a `complete_once` pair, or a flag — so every AIP-20 token gets the guard. aztec-nr already pushes `V` at creation; pushing `H(C, sep)` at completion is the symmetric operation.
 
 - **Cost to this repository:** nothing until it lands; then option 2 collapses into a library call.
-- **Fits:** the ecosystem — the docs describe the hazard as a rule for wallets, which suggests the library authors have not wanted to spend the nullifier; an issue with the measured loss (this document) is the way to find out.
-- **Timing:** unknown. Not a substitute for a decision here.
+- **Status:** declined in advance. Issue #14364 (see [Upstream status](#upstream-status)) places the single-completion guarantee on contract logic precisely so the library does not spend a nullifier per completion. An issue would be a request to reverse that, with the DA cost as the counter-argument.
+- **What remains useful upstream:** a request to AIP-20 (`aztec-standards`), not to the library, to add the guard in the token; and, once #14364 is implemented, a PXE that stops tracking after the first completion will make the second payment *silently* lost rather than merely undiscovered, which raises the stakes for tokens that have not added it.
 
 ### 5. Let the recipient close a commitment
 
@@ -172,7 +189,7 @@ Option **2**, with **7** as the operating practice until it ships and after.
 
 The behaviour is a loss of a holder's funds that the contract can prevent for one nullifier, without publishing anything, without touching a storage slot, and without changing the selector or the parameters of any entry point. The price is a failure that surfaces as an invalid transaction rather than a named revert — the same way a replayed authwit fails today, which wallets already handle — and a divergence from AIP-20 in the direction of refusing something the standard lets a payer lose. The K-7 note ceiling of `transfer_private_to_commitment` must be re-measured after the change, because the nullifier budget is the one that binds.
 
-Option 3 buys a better error message with a public commitment and a storage-layout change; the trade is the wrong way round for a token whose whole design keeps the parties out of public state. Option 4 is worth an upstream issue regardless, quoting the measurement. Option 5 is a separate feature — the expiry the F-1 discussion asks for, from the recipient's side — and should be decided with F-1, not here.
+Option 3 buys a better error message with a public commitment and a storage-layout change; the trade is the wrong way round for a token whose whole design keeps the parties out of public state. Option 4 is closed by the framework's own decision (#14364); the useful upstream contribution is to AIP-20, proposing the same nullifier in the standard's token, with this repository's measurement and implementation as the reference. Option 5 is a separate feature — the expiry the F-1 discussion asks for, from the recipient's side — and should be decided with F-1, not here.
 
 If the decision is *not* to change the contract, option 1 stays as it is now, and option 7 becomes a documented issuer duty in the operations section of the README rather than a footnote.
 

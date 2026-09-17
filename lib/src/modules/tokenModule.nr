@@ -18,6 +18,7 @@
 use aztec::context::{PrivateContext, PublicContext};
 use aztec::messages::delivery::MessageDelivery;
 use aztec::protocol::address::AztecAddress;
+use aztec::protocol::hash::poseidon2_hash_with_separator;
 use aztec::protocol::traits::ToField;
 use aztec::state_vars::{Owned, PublicMutable, StateVariable};
 use balance_set::BalanceSet;
@@ -206,8 +207,27 @@ where
     initialize_commitment(context, to, completer).to_field()
 }
 
-/// `transfer_private_to_commitment`: the sender is screened, its notes spent, and the commitment
-/// completed with `amount` by `completer` (the caller).
+/// Domain separator of the nullifier that marks a commitment as paid. It only has to differ from
+/// every separator the protocol derives from a commitment (the partial-note validity commitment and
+/// the completion log tag); checked against every `DOM_SEP__*` constant of protocol-circuits 5.2.0.
+pub global DOM_SEP__CMTAT_COMMITMENT_PAID: u32 = 0x434d5441; // "CMTA" in ASCII
+
+/// The nullifier that records a commitment as paid: `H(commitment, DOM_SEP__CMTAT_COMMITMENT_PAID)`.
+/// Without the commitment it is unlinkable to the completion log tag, which is a different hash of
+/// the same value.
+pub fn commitment_paid_nullifier(commitment: Field) -> Field {
+    poseidon2_hash_with_separator([commitment], DOM_SEP__CMTAT_COMMITMENT_PAID)
+}
+
+/// `transfer_private_to_commitment`: the sender is screened, its notes spent, the commitment
+/// completed with `amount` by `completer` (the caller), and the commitment marked as paid.
+///
+/// The last step is this project's addition to the AIP-20 flow (K-6). `PartialUintNote::complete`
+/// is not single-use: a second payment into the same commitment debits the sender again while the
+/// recipient's PXE, having matched the first completion, never discovers the second (aztec-nr
+/// documents it; aztec-packages #14364 leaves the single-completion guarantee to contract logic).
+/// Pushing `commitment_paid_nullifier` makes a second payment an invalid transaction - a duplicate
+/// nullifier - so the payer's funds never move. Cost: one nullifier per completion.
 pub fn pay_commitment<S>(
     context: &mut PrivateContext,
     balances: PrivateBalances,
@@ -224,6 +244,9 @@ where
     screening.sender(from);
     debit_private(balances, from, amount, issuer);
     complete_commitment(context, commitment, completer, balances.get_storage_slot(), amount);
+    // Safety: the value is a hash of a public argument under a fixed separator; there is nothing to
+    // constrain beyond what the hash already binds, and a duplicate is rejected by the protocol.
+    context.push_nullifier_unsafe(commitment_paid_nullifier(commitment));
 }
 
 // ---- public halves -------------------------------------------------------------------------------

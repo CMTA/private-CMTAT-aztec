@@ -104,7 +104,8 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - Why: `aztec compile` warned `Found tests in contract crate(s)` for all five contracts, and a contract artifact depends on everything in its crate, so every test-only edit recompiled the contract. Verified after the move: the warning is gone, and a test edit leaves the five `target/*.json` untouched.
   - How: thirty files moved with `git mv`, no test body changed; a test crate imports its contract by package name (`use cmtat_aztec::CMTATAztec`) and deploys it with `env.deploy("@cmtat_aztec/CMTATAztec")`; `mod test;` and the `cmtat_aztec_test_helpers` dependency left the contract crates.
   - Running one crate is now `aztec test --package cmtat_aztec_test` (was `cmtat_aztec`); `yarn test:nr` (`aztec test --workspace`) is unchanged.
-- Four compiler warnings in the base test crate silenced. The Noir suite is now 214 tests (126 base, 12 Debt, 7 Light, 35 and 34 authorization) plus 2 library tests.
+- Three tests pin the single-payment rule of commitments: a second payment is refused, both for a commitment the recipient opened and for one the sender opened with `transfer_private_to_public_with_commitment`, and the first payment is received unchanged; both refusal tests were confirmed to fail with the guard removed.
+- Four compiler warnings in the base test crate silenced. The Noir suite is now 218 tests (128 base, 12 Debt, 7 Light, 35 and 34 authorization) plus 2 library tests.
 
 ### Documentation
 
@@ -126,6 +127,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Changed
 
+- A commitment can be paid exactly once: `pay_commitment` (behind `transfer_private_to_commitment` in the three token variants) pushes a nullifier derived from the commitment, `H(commitment, DOM_SEP__CMTAT_COMMITMENT_PAID)`, so a second payment into the same commitment is a duplicate nullifier and never lands (review finding K-6).
+  - Why: the library's `PartialUintNote::complete` is not single-use, and a second payment debits the payer for a note the recipient's wallet never discovers; measured before the fix at payer −200, recipient +100, `total_supply` unchanged. The framework leaves the single-completion guarantee to contract logic (aztec-packages #14364); the AIP-20 token has not added one, so this is a deliberate difference from the standard's code, in the stricter direction only.
+  - Cost: +52 gates on `transfer_private_to_commitment` (93,011 → 93,063 base and Debt, 86,812 → 86,864 Light); no storage or ABI change; nothing new is published, the nullifier being unlinkable to the completion log tag without the commitment.
+  - Behaviour change: the refusal is an invalid transaction (a duplicate nullifier, `Nullifier collision` in the TXE), not a named revert; a wallet can pre-check by deriving the nullifier. Design note and the options considered: `doc/design/commitment-reuse.md`.
 - BREAKING CHANGE: `CreditEventsStruct` is now packed into two storage Fields instead of three on `CMTATAztecDebt` — the two flags share one Field as bits, the rating keeps the other — matching the two slots CMTAT Solidity's `CreditEvents` occupies (0.3.0 review, B-3, deferred then to "the next storage break", which this release is).
   - Every state variable declared after `credit_event_module` moves one slot, including `private_balances`, so a Debt instance deployed from 0.3.0 cannot be upgraded in place; 0.4.0 is a redeployment for every variant anyway.
   - The ABI is unchanged: `get_credit_events` still returns `[Field; 3]`. Round-trip tests in the library module keep the hand-written packing honest.

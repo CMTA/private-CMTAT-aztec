@@ -150,13 +150,14 @@ unconstrained fn only_the_designated_completer_can_pay_a_commitment() {
     );
 }
 
-/// Recorded behaviour, inherited from `PartialUintNote::complete` (aztec-nr v5.2.0): completion is
-/// not single-use, and "the recipient only discovers the first completion, so anything carried by
-/// further ones is lost". The sender is debited on every completion, `total_supply` is unchanged,
-/// and only the first payment is spendable by the recipient - the second 100 here are unreachable.
-/// A wallet must never reuse a commitment; the README lists this under the bridge limitations.
-#[test]
-unconstrained fn a_second_payment_into_the_same_commitment_is_lost() {
+/// K-6. `PartialUintNote::complete` is not single-use: without a guard a second payment into the same
+/// commitment debits the payer again and the recipient's PXE, having matched the first completion,
+/// never discovers the second (measured before the fix: payer 800, recipient 100, supply 1,000).
+/// `pay_commitment` now pushes `commitment_paid_nullifier(C)`, so the second payment is a duplicate
+/// nullifier and never lands. AIP-20 has no such guard; the framework asks contracts for one
+/// (aztec-packages #14364).
+#[test(should_fail_with = "Nullifier collision")]
+unconstrained fn a_second_payment_into_the_same_commitment_is_refused() {
     let (env, token, issuer, user) = utils::setup_with_public_side(false, true);
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
     env.call_private(issuer, Token::at(token).mint_to_private(issuer, 1_000));
@@ -171,9 +172,46 @@ unconstrained fn a_second_payment_into_the_same_commitment_is_lost() {
         issuer,
         Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0),
     );
-    utils::check_private_balance(env, token, issuer, 800);
+}
+
+/// The first payment is unaffected by the guard: the recipient holds it, the payer is debited once.
+#[test]
+unconstrained fn the_first_payment_into_a_commitment_is_received() {
+    let (env, token, issuer, user) = utils::setup_with_public_side(false, true);
+    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
+    env.call_private(issuer, Token::at(token).mint_to_private(issuer, 1_000));
+    let commitment =
+        env.call_private(user, Token::at(token).initialize_transfer_commitment(user, issuer));
+    env.mine_block();
+    env.call_private(
+        issuer,
+        Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0),
+    );
+    utils::check_private_balance(env, token, issuer, 900);
     utils::check_private_balance(env, token, user, 100);
     assert_eq(env.view_public(Token::at(token).total_supply()), 1_000 as u128);
+}
+
+/// Same guard on the commitment a sender opens for itself with
+/// `transfer_private_to_public_with_commitment`: paid once, then refused.
+#[test(should_fail_with = "Nullifier collision")]
+unconstrained fn a_sender_opened_commitment_cannot_be_paid_twice_either() {
+    let (env, token, issuer, user) = utils::setup_with_public_side(false, true);
+    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
+    env.call_private(issuer, Token::at(token).mint_to_private(issuer, 1_000));
+    let commitment = env.call_private(
+        issuer,
+        Token::at(token).transfer_private_to_public_with_commitment(issuer, user, 100, 0),
+    );
+    env.mine_block();
+    env.call_private(
+        issuer,
+        Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0),
+    );
+    env.call_private(
+        issuer,
+        Token::at(token).transfer_private_to_commitment(issuer, commitment, 100, 0),
+    );
 }
 
 /// The documented gap: the recipient is screened when the commitment opens and not again at

@@ -49,10 +49,10 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | K-3 | Six guards had no negative test; no before-delay twin for the freeze; no zero-amount, listed-commitment-party or private-getter test | ✅ fixed — 12 tests in `test_guards.nr` |
 | K-4 | `CMTATAztecDebt` and `CMTATAztecLight` had smoke suites only, and nothing guarded their declarations against drift | ✅ fixed — a selector-set pin per variant; the chains themselves are tested once, in the base suite, by construction |
 | K-5 | Edge cases still without a test | ✅ fixed (the mechanical part) — 15 tests in `test_edge_cases.nr`, 6 in each authorization crate; two of them measured behaviour the code did not state (K-6, K-7); two design questions and two e2e-only rows remain in K.3 |
-| K-6 | A second payment into the same commitment is lost to the recipient | ⬜ decide — inherited from `PartialUintNote::complete`; the contract could nullify the commitment at completion, in the private half; options in `doc/design/commitment-reuse.md` |
+| K-6 | A second payment into the same commitment is lost to the recipient | ✅ fixed after the review — `pay_commitment` pushes `commitment_paid_nullifier(C)`; a second payment is a duplicate nullifier; +52 gates on `transfer_private_to_commitment`; 3 tests, mutant killed; options and the upstream check in `doc/design/commitment-reuse.md` |
 | K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded — the side-effect budget is reached first; a limit, not a defect; F1 would lift it |
 
-**Counts:** 31 rows — 20 ✅ (6 verified, 14 fixed), 1 ⚠️ (F-1 re-framed), 10 ⬜ open (4 *decide*: A-5, H-6, H-10, K-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
+**Counts:** 31 rows — 21 ✅ (6 verified, 15 fixed), 1 ⚠️ (F-1 re-framed), 9 ⬜ open (3 *decide*: A-5, H-6, H-10; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
 
 ## Outstanding
 
@@ -62,7 +62,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
 | H-6 | The 360 s delay | Unchanged: needs the network's typical delay, real proving times and a compliance call. 0.4.0 raised the stakes slightly — nine private entry points now read a delayed value instead of five. |
 | H-10 | Issuer processing of offchain copies | K-2 proves the messages are emitted with the issuer as recipient. Whether the issuer's PXE can ingest a note it does not own through `offchain_receive` and later read the holder's balance is not shown by any test; the e2e suite checks the issuer's *own* balance. This is the auditability requirement end to end and belongs in `src/test/e2e/`. |
-| K-6 | Commitment reuse | Whether to push a nullifier derived from the commitment in `pay_commitment` (the **private** half — the completion is `complete_from_private`, and giving the public half the commitment would publish it) so a second payment is an invalid transaction, at the price of departing from AIP-20 (which lets a completer lose value the same way). One `push_nullifier_unsafe`; no layout change; the K-7 ceiling of that path to re-measure. Seven options compared in `doc/design/commitment-reuse.md`, recommendation: do it. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) stay open here too. |
+| K-6 | Commitment reuse | **Closed**: option 2 of `doc/design/commitment-reuse.md` applied — one nullifier `H(C, DOM_SEP__CMTAT_COMMITMENT_PAID)` pushed in `pay_commitment` (private half; nothing published, no layout change), +52 gates on `transfer_private_to_commitment`, three tests, mutant killed. Upstream checked 2026-09-17: aztec-nr `main` and aztec-standards `main` unchanged; aztec-packages #14364 (open) puts single-completion on *contract logic* so the library never spends a completion nullifier, i.e. the framework expects exactly this fix from the token. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) remain open. |
 
 ## Gate-count baseline
 
@@ -78,7 +78,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | `burn_batch` | 81,736 | 331,362 | 331,362 | 306,820 | cap raised 1 → 4 |
 | `transfer_private_to_public` | — | 95,941 | 95,941 | 85,534 | new; see A-5 |
 | `transfer_public_to_private` | — | 46,833 | 46,833 | 36,425 | new |
-| `transfer_private_to_commitment` | — | 93,011 | 93,011 | 86,812 | new |
+| `transfer_private_to_commitment` | — | 93,011 → 93,063 | 93,011 → 93,063 | 86,812 → 86,864 | new; +52 after the review for the K-6 commitment-paid nullifier |
 | `transfer_private_to_public_with_commitment` | — | 129,874 | 129,874 | 113,352 | new |
 | `initialize_transfer_commitment` | — | 39,820 | 39,820 | 33,621 | new; see A-6 |
 | `cancel_authwit` | 6,436 | 6,436 | 6,436 | 6,436 | |
@@ -350,7 +350,7 @@ Per family; ✓ has a test, ✚ added in this review, ✗ missing with the test 
 | | issuer *processing* of the copies | ✗ — H-10 |
 | Partial notes | open by recipient, complete by the completer | ✓ |
 | | completion by a party that is not the completer | ✚ `only_the_designated_completer_can_pay_a_commitment` (`reading an unknown nullifier`: the validity commitment for the other completer was never pushed) |
-| | complete twice | ✚ `a_second_payment_into_the_same_commitment_is_lost` — the sender is debited twice, the recipient holds one payment, `total_supply` is unchanged; K-6 |
+| | complete twice | ✚ measured first as a loss (sender debited twice, recipient holds one payment), then fixed: `a_second_payment_into_the_same_commitment_is_refused`, `a_sender_opened_commitment_cannot_be_paid_twice_either` (`Nullifier collision`), `the_first_payment_into_a_commitment_is_received`; K-6 |
 | | complete before the opening is mined | **not observable in the TXE**: every `call_private` mines a block, so the opening is always settled before the next call (tried: the completion passes without `mine_block()`) |
 | | recipient frozen or delisted between opening and completion | ✚ `a_recipient_frozen_after_opening_a_commitment_is_still_paid` — records the gap (no expiry, F-1) |
 | Public halves | `_transfer` takes no arguments | ✚ `the_public_half_of_a_transfer_takes_no_arguments` (compile-time pin) |
@@ -367,7 +367,7 @@ Of the fourteen ✗ rows, twelve mechanical ones are now tests in `tests/cmtat-a
 Two of the new tests measured behaviour the code did not state, and both are recorded rather than changed:
 
 - **K-7 — the note ceiling of one transfer is 12, not 16.** `BalanceSet::sub` offers 16, but the per-call side-effect budget is exhausted first: 12 notes pass, 13 to 16 abort with `push out of bounds`, 17 and more fail in `sub` with `Balance too low`. A holder paid in many small notes consolidates with transfers to self, twelve notes at a time; the README's *Batching limits* now says so. F1 (A-5) is the fix, and this test is its acceptance criterion.
-- **K-6 — a second payment into the same commitment is lost.** `PartialUintNote::complete` is documented as not single-use ("the recipient only discovers the first completion, so anything carried by further ones is lost"). Two `transfer_private_to_commitment` of 100 into one commitment leave the sender down 200, the recipient with 100 and `total_supply` at 1,000: 100 units are no one's, yet still counted in supply. AIP-20 has the same behaviour. The contract could refuse it — the private half pushes a nullifier derived from the commitment next to the completion, so a second payment is an invalid transaction — at the cost of one nullifier per completion and a departure from the standard's semantics (an earlier draft of this row placed the nullifier in the public half; that would publish the commitment — see `doc/design/commitment-reuse.md`). Left open as a decision; the README documents the wallet rule meanwhile (one commitment per expected payment).
+- **K-6 — a second payment into the same commitment is lost.** `PartialUintNote::complete` is documented as not single-use ("the recipient only discovers the first completion, so anything carried by further ones is lost"). Two `transfer_private_to_commitment` of 100 into one commitment leave the sender down 200, the recipient with 100 and `total_supply` at 1,000: 100 units are no one's, yet still counted in supply. AIP-20 has the same behaviour. The contract could refuse it — the private half pushes a nullifier derived from the commitment next to the completion, so a second payment is an invalid transaction — at the cost of one nullifier per completion and a departure from the standard's semantics (an earlier draft of this row placed the nullifier in the public half; that would publish the commitment — see `doc/design/commitment-reuse.md`). Decided and applied the same day: see the K-6 row above and the design note.
 
 ## Summary table for K
 
@@ -382,7 +382,7 @@ Two of the new tests measured behaviour the code did not state, and both are rec
 
 ## What was run, and what was not
 
-**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, and again 216/216 from the `tests/` crates after the J-2 move; five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
+**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, and 218/218 after the K-6 fix (128 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
 
 **Not run.** `aztec-wallet profile` (needs a sandbox); `yarn test:js`; any test of the issuer's PXE processing offchain messages (H-10).
 
