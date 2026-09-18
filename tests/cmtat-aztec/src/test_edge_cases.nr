@@ -12,20 +12,14 @@ use cmtat_aztec_lib::modules::enforcementModule::FreezableFlag;
 
 // --- note budget -----------------------------------------------------------------------------------
 
-/// `BalanceSet::sub` consumes at most 16 notes in one call. A balance spread over 17 one-unit notes
-/// cannot be spent in one transfer even though the total suffices; the library reports it as a
-/// shortfall. Records the limit the note-budget feature (A-5 / F1) would lift.
-#[test(should_fail_with = "Balance too low")]
-unconstrained fn a_balance_spread_over_more_than_sixteen_notes_cannot_be_spent_at_once() {
-    let (env, token, issuer, user) = utils::setup(false);
-    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
-    for _ in 0..17 {
-        env.call_private(issuer, Token::at(token).mint_to_private(user, 1));
-    }
-    utils::check_private_balance(env, token, user, 17);
-    env.call_private(user, Token::at(token).transfer_private_to_private(user, issuer, 17, 0));
-}
-
+/// Note budget (review A-5, the AIP-20 scheme). A debit spends `DEBIT_INITIAL_MAX_NOTES` (2) notes
+/// first; a balance spread over more is covered by the contract calling its own `_recurse_debit`,
+/// `DEBIT_RECURSIVE_MAX_NOTES` (8) notes per call. Before A-5 the debit was sized for 16 notes and
+/// one transfer could spend at most 12 (the per-call side-effect budget) and never 17 (`Balance too
+/// low` from `sub`); both limits are gone, each recursive call has its own side-effect budget. Fifty
+/// notes in one transfer were measured to pass (2 + 6 x 8); the remaining bound is the protocol's
+/// nested-call limit, and the cost of a fragmented balance is one recursive call per eight notes.
+/// Mints `n` notes of 1 to `user` and spends them all in one transfer.
 unconstrained fn spend_n_notes(n: u32) {
     let (env, token, issuer, user) = utils::setup(false);
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
@@ -37,18 +31,46 @@ unconstrained fn spend_n_notes(n: u32) {
     utils::check_private_balance(env, token, issuer, n as u128);
 }
 
-/// Measured ceiling: one `transfer_private_to_private` can spend twelve notes. Thirteen to sixteen
-/// abort with the per-call side-effect budget (`push out of bounds`) before `BalanceSet::sub`'s own
-/// sixteen-note limit is reached; seventeen and more fail in `sub` with `Balance too low`. A holder
-/// whose balance is fragmented past twelve notes must consolidate in several transfers to self.
+#[test]
+unconstrained fn two_notes_are_spent_without_recursion() {
+    spend_n_notes(2);
+}
+
+/// Three notes need one recursive call: the case that was as cheap as one note before A-5 and now
+/// pays a second private call. Recorded so the trade-off stays visible.
+#[test]
+unconstrained fn three_notes_take_one_recursive_debit() {
+    spend_n_notes(3);
+}
+
+/// Twelve was the ceiling before A-5, seventeen was impossible; both pass through the recursion.
 #[test]
 unconstrained fn twelve_notes_can_be_spent_in_one_transfer() {
     spend_n_notes(12);
 }
 
-#[test(should_fail_with = "push out of bounds")]
-unconstrained fn thirteen_notes_exceed_the_per_call_budget() {
-    spend_n_notes(13);
+#[test]
+unconstrained fn seventeen_notes_can_be_spent_in_one_transfer() {
+    spend_n_notes(17);
+}
+
+/// `Balance too low` still fires at every depth: the first attempt spends what it finds, the
+/// recursion spends the rest, and when nothing is left to spend the debit fails.
+#[test(should_fail_with = "Balance too low")]
+unconstrained fn a_fragmented_balance_that_is_still_too_low_fails() {
+    let (env, token, issuer, user) = utils::setup(false);
+    env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
+    for _ in 0..5 {
+        env.call_private(issuer, Token::at(token).mint_to_private(user, 1));
+    }
+    env.call_private(user, Token::at(token).transfer_private_to_private(user, issuer, 6, 0));
+}
+
+/// Only the contract may run the recursive half: a caller cannot spend a holder's notes through it.
+#[test(should_fail_with = "can only be called by the same contract")]
+unconstrained fn the_recursive_debit_is_only_self() {
+    let (env, token, issuer, user, _) = utils::setup_and_mint(false);
+    env.call_private(user, Token::at(token)._recurse_debit(issuer, 1));
 }
 
 #[test]

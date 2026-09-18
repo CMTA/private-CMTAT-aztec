@@ -64,7 +64,7 @@ Read as a product map: **CMTAT-private gains F1 and F3 and nothing else; CMTAT-p
 
 ## F1 — Note budget with recursive subtraction
 
-> **Status (2026-09-16):** not done in 0.4.0; open as A-5 in [`doc/audits/tools/v0.4.0/CLAUDE_ANALYSIS.md`](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md). The bridges pay the same 16-note `sub` (`transfer_private_to_public` 95,941 gates against AIP-20's 38,277).
+> **Status (2026-09-18): done** in 0.4.0 under review finding A-5 ([`doc/audits/tools/v0.4.0/CLAUDE_ANALYSIS.md`](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md)): `tokenModule::debit_private` tries 2 notes and the contract recurses through `_recurse_debit` at 8 per call, with AIP-20's constants and scheme credited in the code. `transfer_private_to_private` 161,493 → 119,290 gates, `transfer_private_to_public` 95,941 → 53,737 (AIP-20: 38,277; the rest is the compliance screening).
 
 **What AIP-20 does.** A transfer first tries to settle with at most `INITIAL_TRANSFER_CALL_MAX_NOTES = 2` notes. If the sender's balance is more fragmented than that, the contract recurses into itself through an `#[only_self]` function at `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8` per level until the amount is covered.
 

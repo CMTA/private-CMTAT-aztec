@@ -170,7 +170,7 @@ What it costs:
 
 The valuable, portable ideas are:
 
-- **The note budget with recursion** (`INITIAL_TRANSFER_CALL_MAX_NOTES = 2`, `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8`). Measured worth: 43,046 gates per transfer, with the caveat that the recursion has to be built to make it safe.
+- **The note budget with recursion** (`INITIAL_TRANSFER_CALL_MAX_NOTES = 2`, `RECURSIVE_TRANSFER_CALL_MAX_NOTES = 8`). Measured worth: 43,046 gates per transfer, with the caveat that the recursion has to be built to make it safe. *Taken in 0.4.0 (review A-5): `tokenModule::debit_private` with `DEBIT_INITIAL_MAX_NOTES` / `DEBIT_RECURSIVE_MAX_NOTES` and a `_recurse_debit` entry point per variant, −42,203 gates on a transfer.*
 - **A named sentinel for "this party is private" in public events** rather than overloading the zero address.
 - **The hook shape itself** — now that ARC-403 exists, a CMTAT-on-Aztec that wants to be hook-compatible could adopt the same signature *plus* the recipient, and propose the addition upstream.
 

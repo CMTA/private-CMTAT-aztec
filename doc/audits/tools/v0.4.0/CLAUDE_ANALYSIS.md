@@ -21,7 +21,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | ID | Finding | Outcome |
 |---|---|---|
 | A-4 | The token-module refactor is gate-neutral | ✅ verified — all 48 private circuits byte-identical before and after |
-| A-5 | The bridges pay the 16-note `sub` the same way `transfer` does | ⬜ decide — same root as F-1 (note budget); `transfer_private_to_public` is 95,941 gates against AIP-20's 38,277 for the same operation |
+| A-5 | The bridges pay the 16-note `sub` the same way `transfer` does | ✅ applied after the review — AIP-20's scheme: budget 2, then `_recurse_debit` at 8 per call; −42,203 on a transfer, −42,204 on a bridge and a burn; the 12-note ceiling and the 16-note failure are gone (50 notes measured); 6 tests; see A-5 |
 | A-6 | `initialize_transfer_commitment` costs 39,820 gates, half of it the constrained issuer event | ⬜ keep — the cheaper delivery modes give up the guarantee the event exists for |
 | B-3 | `CreditEventsStruct` packs two `bool`s into two Fields | ✅ fixed — 0.4.0 is the storage break the 0.3.0 verdict said to wait for; hand-packed to `N = 2` with a round-trip test |
 | B-4 | `PauseModule` uses two one-`bool` slots | ⬜ leave — unchanged since 0.3.0 |
@@ -50,15 +50,14 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | K-4 | `CMTATAztecDebt` and `CMTATAztecLight` had smoke suites only, and nothing guarded their declarations against drift | ✅ fixed — a selector-set pin per variant; the chains themselves are tested once, in the base suite, by construction |
 | K-5 | Edge cases still without a test | ✅ fixed (the mechanical part) — 15 tests in `test_edge_cases.nr`, 6 in each authorization crate; two of them measured behaviour the code did not state (K-6, K-7); two design questions and two e2e-only rows remain in K.3 |
 | K-6 | A second payment into the same commitment is lost to the recipient | ✅ fixed after the review — `pay_commitment` pushes `commitment_paid_nullifier(C)`; a second payment is a duplicate nullifier; +52 gates on `transfer_private_to_commitment`; 3 tests, mutant killed; options and the upstream check in `doc/design/commitment-reuse.md` |
-| K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded — the side-effect budget is reached first; a limit, not a defect; F1 would lift it |
+| K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded, then lifted by A-5 — each recursive call has its own side-effect budget; 50 notes measured in one transfer |
 
-**Counts:** 31 rows — 22 ✅ (6 verified, 16 fixed), 1 ⚠️ (F-1 re-framed), 8 ⬜ open (2 *decide*: A-5, H-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
+**Counts:** 31 rows — 23 ✅ (6 verified, 17 fixed), 1 ⚠️ (F-1 re-framed), 7 ⬜ open (1 *decide*: H-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
 
 ## Outstanding
 
 | ID | Item | Why it is still open |
 |---|---|---|
-| A-5 | Note budget with `#[only_self]` recursion (F1 of the features document) | The 0.3.0 measurement stands (−43,046 gates on `transfer`); the bridges inherit the same cost. It is the AIP-20 feature the features document ranks first for CMTAT-private and the largest single gate saving available. Not done in 0.4.0 because it changes the note-consumption shape of every value-moving path at once, and it wants the note-count edge cases of K.3 written first as its acceptance tests. |
 | F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
 | H-6 | The 360 s delay | Unchanged: needs the network's typical delay, real proving times and a compliance call. 0.4.0 raised the stakes slightly — nine private entry points now read a delayed value instead of five. |
 | H-10 | Issuer processing of offchain copies | **Closed by route A** (constrained mint / burn events to the issuer; the `Transfer` stream is now a complete ledger). Remaining: the two-PXE e2e test that shows a real PXE dropping the note copy and processing the events (H-10 lays it out); route B (custom audit message + capsule ledger) if note-level corroboration is wanted. |
@@ -70,16 +69,17 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 
 | Function | `CMTATAztec` 0.3.0 | `CMTATAztec` 0.4.0 | `CMTATAztecDebt` | `CMTATAztecLight` | Note |
 |---|---:|---:|---:|---:|---|
-| `transfer_private_to_private` (was `transfer`) | 120,824 | 161,493 | 161,493 | 151,085 | +40,669: the `Transfer` event now constrained to both parties (H-4, 0.3.0) |
-| `transfer_batch` | 119,145 | 312,909 | 312,909 | 292,178 | cap lowered 4 → 2; per-recipient cost is what grew |
+| `transfer_private_to_private` (was `transfer`) | 120,824 | 161,493 → 119,290 | 161,493 → 119,290 | 151,085 → 108,882 | +40,669: the `Transfer` event now constrained to both parties (H-4, 0.3.0); then −42,203 after the review: note budget 2 + recursion (A-5) |
+| `transfer_batch` | 119,145 | 312,909 → 228,274 | 312,909 → 228,274 | 292,178 → 207,543 | cap lowered 4 → 2; per-recipient cost is what grew; then A-5 |
 | `mint_to_private` (was `mint`) | 30,776 | 36,976 → 61,062 | 36,976 → 61,062 | 30,776 → 54,862 | +6,200: recipient list screening (G-1, 0.3.0); Light has no lists. Then +24,086 after the review: the issuer's constrained mint event (H-10, route A) |
 | `mint_batch` | 30,776 | 132,584 → 218,669 | 132,584 → 218,669 | 107,871 → 193,956 | cap raised 1 → 4; then one issuer event per recipient (H-10) |
-| `burn` | 83,656 | 87,935 → 111,638 | 87,935 → 111,638 | 81,736 → 105,439 | +4,279: account list screening (G-1); then +23,703: the issuer's constrained burn event (H-10) |
-| `burn_batch` | 81,736 | 331,362 → 352,719 | 331,362 → 352,719 | 306,820 → 328,177 | cap raised 1 → 4; then one issuer event for the batch total (H-10) |
-| `transfer_private_to_public` | — | 95,941 | 95,941 | 85,534 | new; see A-5 |
+| `burn` | 83,656 | 87,935 → 111,638 → 69,434 | same | 81,736 → 105,439 → 63,235 | +4,279: account list screening (G-1); then +23,703: the issuer's constrained burn event (H-10); then −42,204 (A-5) |
+| `burn_batch` | 81,736 | 331,362 → 352,719 → 183,691 | same | 306,820 → 328,177 → 159,149 | cap raised 1 → 4; then one issuer event for the batch total (H-10); then A-5, four debits each 42k lighter |
+| `transfer_private_to_public` | — | 95,941 → 53,737 | 95,941 → 53,737 | 85,534 → 43,330 | new; then A-5 (AIP-20 does it in 38,277; the rest is screening) |
 | `transfer_public_to_private` | — | 46,833 | 46,833 | 36,425 | new |
-| `transfer_private_to_commitment` | — | 93,011 → 93,063 | 93,011 → 93,063 | 86,812 → 86,864 | new; +52 after the review for the K-6 commitment-paid nullifier |
-| `transfer_private_to_public_with_commitment` | — | 129,874 | 129,874 | 113,352 | new |
+| `transfer_private_to_commitment` | — | 93,011 → 93,063 → 50,857 | same | 86,812 → 86,864 → 44,658 | new; +52 after the review for the K-6 commitment-paid nullifier; then A-5 |
+| `transfer_private_to_public_with_commitment` | — | 129,874 → 87,671 | 129,874 → 87,671 | 113,352 → 71,149 | new; then A-5 |
+| `_recurse_debit` | — | 30,138 | 30,138 | 30,138 | new with A-5: the `#[only_self]` recursive half of a debit, 8-note budget |
 | `initialize_transfer_commitment` | — | 39,820 | 39,820 | 33,621 | new; see A-6 |
 | `cancel_authwit` | 6,436 | 6,436 | 6,436 | 6,436 | |
 | `private_get_*` | 8,229–8,347 | 8,229–8,347 | same | same | |
@@ -100,7 +100,91 @@ Whole-transaction numbers (`aztec-wallet profile`) were not taken; nothing below
 
 ### A-5. The bridges inherit the 16-note `sub` — decide (same decision as F-1)
 
-`transfer_private_to_public` in `CMTATAztec` is **95,941** gates. The AIP-20 `Token` at fork commit `5433e9c` does the same operation in **38,277**. The difference decomposes into: five `DelayedPublicMutable` reads for screening and the issuer (~20k, by the documented ~4k each — measured indirectly: the Light variant, which skips the two list reads and the operations flag, is 10,407 lower), the `public_side_enabled` read (~3.5k), and the remainder — roughly 34k — in `debit_private`, which calls `BalanceSet::sub` with the library's hard-coded 16-note budget where AIP-20 tries two notes and recurses. That is the F-1 measurement from 0.3.0 (−43,046 on `transfer`) showing up again on a new path. Every bridge and every burn pays it. **Decide**, with F-1: it is the single largest saving available and it does not change the storage layout or the note layout, only how many notes one call may consume.
+**In one sentence.** Every function that spends notes is compiled as if it might spend sixteen of them, whatever the holder actually has, and that fixed sizing costs about 3,000 gates per unused slot; AIP-20 sizes for two and grows on demand, and this project has not decided whether to do the same.
+
+#### What a "note budget" is, and why it is paid whether or not it is used
+
+A private balance is a set of notes, and a debit spends some of them: `BalanceSet::sub(amount)` picks notes (largest first) until their sum covers `amount`, nullifies them, and creates one change note for the difference. That happens inside a zero-knowledge circuit, and a circuit has no loops of variable length: the number of notes a call *may* read is fixed when the contract is compiled, and every one of those slots is paid for in the proof — a note-hash read request, a membership proof, a nullifier — even when the slot goes unused because the holder's balance was one note. That fixed number is the **note budget**. The library's own comment on `try_sub` states the trade: "the gate count scales relatively linearly with `max_notes`, but a lower `max_notes` parameter increases the likelihood of `try_sub` subtracting an amount smaller than `target_amount`", i.e. of the call failing for a holder whose balance is fragmented into more notes than the budget.
+
+`BalanceSet::sub`, which `debit_private` in `tokenModule.nr` calls for every transfer, bridge and burn, hard-codes the budget to the protocol maximum, `MAX_NOTE_HASH_READ_REQUESTS_PER_CALL = 16`:
+
+```noir
+pub fn sub(self: Self, amount: u128) -> MaybeNoteMessage<UintNote> {
+    let subtracted = self.try_sub(amount, MAX_NOTE_HASH_READ_REQUESTS_PER_CALL);  // 16
+    assert(subtracted >= amount, "Balance too low");
+    self.add(subtracted - amount)
+}
+```
+
+So a `transfer_private_to_private` of a holder who owns a single note proves sixteen note reads, fifteen of them empty. (K-7 adds a twist: the *side-effect* budget of a call runs out before the sixteen are reachable — twelve notes is the measured ceiling — so today's circuit pays for slots the call could never fill.)
+
+#### What AIP-20 does instead
+
+The reference `Token` never calls `sub`. It calls `try_sub(amount, 2)`: a budget of **two** notes, which covers a holder whose balance is one note plus at most one more. If two notes do not reach `amount`, it does not fail; it computes the remainder and calls **itself**, through an `#[only_self]` private entry point, with a budget of **eight** for that inner call, and again if needed:
+
+```noir
+global INITIAL_TRANSFER_CALL_MAX_NOTES: u32 = 2;
+global RECURSIVE_TRANSFER_CALL_MAX_NOTES: u32 = 8;
+
+fn _subtract_balance(account, amount, max_notes) -> u128 {
+    let subtracted = self.storage.private_balances.at(account).try_sub(amount, max_notes);
+    if subtracted >= amount {
+        subtracted - amount                                   // done: the change
+    } else {
+        assert(subtracted > 0, "Balance too low");
+        self.call_self.recurse_subtract_balance_internal(account, amount - subtracted)
+    }
+}
+```
+
+The effect is that the *common* case, a holder with one or two notes, proves a small circuit, and the *rare* case, a fragmented balance, pays for an extra private call, which is an extra kernel iteration in the proof (on the order of 101,000 gates by the framework's own figure). The circuit is sized for what usually happens rather than for what could happen.
+
+#### Measured on this contract, 2026-09-18
+
+`debit_private` was probed with `try_sub(amount, N)` in place of `sub` (the probe was reverted and the baseline artifact rebuilt; `transfer_private_to_private` is back at 161,493):
+
+| Note budget `N` | `transfer_private_to_private` | `transfer_private_to_public` | `transfer_private_to_commitment` | `burn` | `transfer_batch` (2) | `burn_batch` (4) |
+|---:|---:|---:|---:|---:|---:|---:|
+| **16** (today, `sub`) | **161,493** | **95,941** | **93,063** | **111,638** | **312,909** | **352,719** |
+| 8 (AIP-20's recursive budget) | 136,709 | 71,157 | 68,250 | 86,854 | 263,341 | 253,583 |
+| 4 | 124,500 | 58,948 | 56,070 | 74,645 | 238,923 | 204,747 |
+| 2 (AIP-20's initial budget) | 118,447 | 52,895 | 50,015 | 68,592 | 226,852 | 180,605 |
+
+Three things to read off it. The cost is linear, **about 3,050 gates per note slot**, on every path (2 → 4: +6,053; 4 → 8: +12,209; 8 → 16: +24,784). The 0.3.0 measurement is reproduced exactly: budget 2 saves **43,046** gates on a transfer, 27% of today's circuit (36% of the 0.3.0 one, which had no constrained event deliveries yet). And the bridges, which were the reason this row was opened, are where the share is largest: `transfer_private_to_public` drops from 95,941 to 52,895, which puts it within 15,000 gates of AIP-20's 38,277 — the remainder being the screening reads (five `DelayedPublicMutable` reads, ~20k; the Light variant, which skips two of them, is 10,407 lower) and the `public_side_enabled` read (~3.5k), all of which are the compliance the project chose.
+
+#### The trade-off, per holder
+
+The saving is not free; it moves cost from the common case to the fragmented one:
+
+| Notes the debit has to spend | Today (16, no recursion) | With 2 + recursion of 8 (AIP-20's scheme) |
+|---|---|---|
+| 1 or 2 | 161,493 | **118,447** |
+| 3 to 10 | 161,493 | 118,447 **plus one recursive call** (~101k more) — worse than today |
+| 11 or 12 | 161,493 | plus two recursive calls |
+| 13 to 16 | fails (`push out of bounds`, K-7) | plus two calls; the side-effect budget per *call* resets, so this **works** |
+| more than 16 | fails (`Balance too low`) | keeps recursing; the ceiling becomes the nested-call limit, not the note count |
+
+So the scheme is a win only if most debits settle in one or two notes. For a security token that is plausible — a holder's notes are its incoming transfers and mints, and a transfer consolidates the sender's spent notes into one change note — but it is **unmeasured**: the number that decides A-5 is the note-count distribution of real holders, not a gate count, and this project has no such data yet. A budget of 4 without recursion (124,500 gates, −37k) is a middle position that would need no new entry point and would still fail above four notes, i.e. more often than today.
+
+#### What implementing it involves
+
+- `debit_private` in `tokenModule.nr` takes a `max_notes` parameter and returns the remainder instead of asserting; the recursion itself cannot live in the library, because calling the contract from inside itself (`self.call_self`) needs the contract context, so each variant's `main.nr` gains one `#[external("private")] #[only_self] fn _recurse_debit(account, remaining) -> u128` and the loop that AIP-20 has. Three variants, one new selector each (an ABI *addition*, not a break); no storage or note-layout change.
+- Every value-moving path changes at once, which is why the report's hazards paragraph asks for the gate profile *and* the note-count edge cases of K.3 as acceptance: the 12-note ceiling test of K-7 is precisely the case whose outcome flips (from a failure to a success with two recursive calls), and `Balance too low` must still fire for a genuinely insufficient balance at every recursion depth.
+- The issuer's offchain copies and the constrained deliveries are unaffected: they are per note created, and the change note is still one.
+
+**Applied after the review (2026-09-18).** `tokenModule.nr` gained `DEBIT_INITIAL_MAX_NOTES = 2`, `DEBIT_RECURSIVE_MAX_NOTES = 8`, `try_debit` (one attempt, returns `(covered, change-or-remaining)`), `debit_recursive`, and `debit_private` now takes the recursion as a closure so that the four chains stay in the library; each variant's `main.nr` gained `#[external("private")] #[only_self] fn _recurse_debit(account, remaining) -> u128`, which calls `debit_recursive` with itself as the closure. Scheme and constants are AIP-20's, credited in the code; the implementation is this project's. Measured:
+
+| | before | after |
+|---|---:|---:|
+| `transfer_private_to_private` | 161,493 | **119,290** (−42,203) |
+| `burn` | 111,638 | **69,434** |
+| `transfer_private_to_public` | 95,941 | **53,737** |
+| `transfer_private_to_commitment` | 93,063 | **50,857** |
+| `transfer_private_to_public_with_commitment` | 129,874 | **87,671** |
+| `transfer_batch` (2) / `burn_batch` (4) | 312,909 / 352,719 | **228,274 / 183,691** |
+| `_recurse_debit` (new) | — | 30,138 per recursive call, plus the nested-call kernel iteration |
+
+Light is about 10,400 lower on each, as before. Tests (`test_edge_cases.nr`): 2 notes without recursion, 3 notes through one recursive call (the case that got dearer), 12 and 17 notes in one transfer (the K-7 ceiling and the 16-note failure, both gone; 50 was measured to pass and the probe removed), `Balance too low` still firing on a fragmented balance that is genuinely short, and `_recurse_debit` refused to a caller that is not the contract. The open input — how fragmented real balances are — is unchanged, and the decision taken is the standard's: optimise the one-or-two-note case and let a fragmented balance pay per eight notes rather than fail.
 
 ### A-6. `initialize_transfer_commitment` — keep
 
@@ -192,7 +276,7 @@ No `#[noinitcheck]`, no second `#[initializer]`, no `#[allow_phase_change]` anyw
 
 | Feature | Decision | State in 0.4.0 |
 |---|---|---|
-| F1 — note budget with `#[only_self]` recursion | recommended | **not done** → A-5 |
+| F1 — note budget with `#[only_self]` recursion | recommended | **done after the review** (A-5, 2026-09-18) |
 | F2 — commitment transfers, screened at initialization | recommended for the AIP20 variant only, with three additions | **done in the token variants themselves**, behind `public_side_enabled`: `initialize_transfer_commitment` screens `to` (addition 3), the issuer receives a constrained `CommitmentInitialized` event (addition 2, in event form); the **expiry (addition 1) is not done** and is recorded as a limitation |
 | F3 — rule-engine hook with recipient and caller | recommended | **not done**; the ARC-403-shaped hook exists on the *authorization contracts* side (`CMTATAztecAuth`) but the token has no settable hook |
 | F4 — AIP-20 entry-point names | recommended | **done**: five renames; the seven-function private profile answers the standard's selectors, pinned in `test_aip20_profile.nr` and, since K-4, in every variant |
@@ -205,7 +289,7 @@ So the token is now, deliberately, **a CMTAT that speaks AIP-20's private profil
 
 **What remains, as three separate decisions rather than one:**
 
-1. **F1 — the note budget** (A-5). Purely a cost decision: −43,046 gates on `transfer` measured in 0.3.0, and every bridge and burn pays the same 16-note `sub` today. No storage or note-layout change. Wants the note-count edge cases of K.3 as its acceptance tests.
+1. **F1 — the note budget** (A-5). Purely a cost decision: −43,046 gates on `transfer` measured in 0.3.0, and every bridge and burn pays the same 16-note `sub` today. No storage or note-layout change. Wants the note-count edge cases of K.3 as its acceptance tests. *Done after the review: −42,203 measured, the K.3 note-count tests rewritten as the acceptance (see A-5).*
 2. **F2's expiry.** A recipient frozen or delisted after opening a commitment can still be paid into it, indefinitely; the token contracts have no bounded window here where they have one (the 360 s delay) everywhere else. A design pass: an expiry stored with the commitment, or re-screening at completion by carrying `to` — the fork's hook does not, and neither does the partial note.
 3. **F3 — the rule-engine hook.** A settable hook in the ARC-403 shape but passed `(from, to, amount, caller, selector)`, so an issuer can add a rule without a redeployment. The authorization-contract work has already built the receiving side twice; the missing piece is the call from the token's private chain, and its cost (one private call, ~101k gates by the documentation's figure, to be measured).
 
@@ -452,7 +536,7 @@ Two of the new tests measured behaviour the code did not state, and both are rec
 
 ## What was run, and what was not
 
-**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, 218/218 after the K-6 fix (128 base), and 222/222 after route A of H-10 (132 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
+**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, 218/218 after the K-6 fix (128 base), 222/222 after route A of H-10 (132 base), and 225/225 after A-5 (135 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
 
 **Not run.** `aztec-wallet profile` (needs a sandbox); `yarn test:js`; any test of the issuer's PXE processing offchain messages (H-10).
 

@@ -227,15 +227,15 @@ Both numbers are measured, not derived from the protocol constants. Every value 
 |---:|---:|---:|---|
 | 1 | 30,776 | 81,736 | all tests pass (measured before the issuer's mint / burn events) |
 | 2 | 60,169 | 160,189 | all tests pass (same) |
-| **4** | **218,669** | **352,719** | **all tests pass** |
+| **4** | **218,669** | **183,691** | **all tests pass** |
 | 5 | — | — | batched mint and burn end with a wrong total supply |
 
 **Transfer** — two notes and, since the `Transfer` event is delivered constrained to both the recipient and the issuer, **four constrained deliveries per recipient**:
 
 | `MAX_TRANSFER_ADDR_PER_CALL` | `transfer_batch` | Result |
 |---:|---:|---|
-| 1 | 161,493 (= `transfer_private_to_private`) | all tests pass |
-| **2** | **312,909** | **all tests pass** |
+| 1 | 119,290 (= `transfer_private_to_private`) | all tests pass |
+| **2** | **228,274** | **all tests pass** |
 | 3 | — | aborts: `Assertion failed: push out of bounds` |
 | 4 | — | aborts: `Assertion failed: push out of bounds` |
 
@@ -245,11 +245,15 @@ Three things are worth drawing out of those tables.
 
 - **Transfer's cap is set by its deliveries, not its notes.** With the `Transfer` event delivered constrained to two parties, a recipient costs four constrained deliveries where a mint costs one. Before the event was constrained, a 4-recipient batch passed; with it, 3 already fails. A model consistent with every measurement is that each constrained delivery consumes two of the sixteen key-validation requests a call may make — 4 × 2 × 2 = 16 fitted, 3 × 4 × 2 = 24 does not — but the cap is the measurement, not the model.
 - **The number of nested private calls is irrelevant.** The chains (`tokenModule::mint_private` / `transfer_private` / `burn_private`) are ordinary library functions, inlined by the compiler exactly as the former `#[internal("private")]` helpers were: a batch makes no nested private calls at all, whatever the cap is. Earlier revisions of this document cited the 8-private-call limit as a constraint on batching; it never was one.
-- **Batching moves work, it does not remove it.** A 2-recipient transfer is a 312,909-gate circuit against 161,493 for a single transfer — and that proof is produced on the *user's own device*. What batching saves is the fixed per-transaction protocol overhead, which two separate transfers would pay twice. Batch because you want one transaction, not because you want a cheaper circuit.
+- **Batching moves work, it does not remove it.** A 2-recipient transfer is a 228,274-gate circuit against 119,290 for a single transfer — and that proof is produced on the *user's own device*. What batching saves is the fixed per-transaction protocol overhead, which two separate transfers would pay twice. Batch because you want one transaction, not because you want a cheaper circuit.
 
 Raising either cap means repeating the measurement, not re-reading the protocol constants. It is also an ABI change: the array lengths in `mint_batch`, `transfer_batch` and `burn_batch` are part of the generated interface. The transfer cap in particular was **lowered** from 4 to 2 by the decision to deliver the `Transfer` event constrained — see [Events](#events) for why that trade was taken.
 
-**A single transfer has a note ceiling too.** `BalanceSet::sub` spends at most 16 notes per call, but the per-call side-effect budget is reached first: a `transfer_private_to_private` that has to consume **12 notes passes, 13 aborts** with `push out of bounds`, and from 17 the library itself reports `Balance too low`. A holder whose balance has been paid in many small notes — twenty mints of 1, say — cannot spend it in one transfer even though the total suffices; the wallet consolidates first with transfers to self, twelve notes at a time. Both figures are measured (`tests/cmtat-aztec/src/test_edge_cases.nr`) and both would move with the note budget with recursion discussed in [`doc/standards/aip20-features-for-cmtat.md`](standards/aip20-features-for-cmtat.md) (F1).
+**How many notes a transfer spends, and what it costs.** A debit does not size its circuit for every note a holder could have. It tries `DEBIT_INITIAL_MAX_NOTES` (2) notes first; if the holder's balance is spread over more, the contract calls its own `#[only_self]` entry point `_recurse_debit`, which spends up to `DEBIT_RECURSIVE_MAX_NOTES` (8) more and calls itself again if needed, each call with its own side-effect budget. The scheme and both values are AIP-20's (`_subtract_balance` / `recurse_subtract_balance_internal` in the `aztec-standards` token); the code is in `tokenModule.nr` (`try_debit`, `debit_private`, `debit_recursive`). What it changes, measured (review A-5):
+
+- **A holder with one or two notes pays a smaller circuit**: `transfer_private_to_private` 161,493 → **119,290** gates (−26%), `burn` 111,638 → 69,434, `transfer_private_to_public` 95,941 → 53,737, `transfer_private_to_commitment` 93,063 → 50,857, `transfer_batch` 312,909 → 228,274, `burn_batch` 352,719 → 183,691 (base and Debt; Light about 10,000 lower on each). Before, every debit was compiled for 16 notes at about 3,050 gates per slot, used or not.
+- **A fragmented balance pays a recursive call instead of failing.** Three to ten notes cost one `_recurse_debit` (30,138 gates for its own circuit, plus a kernel iteration for the nested call); every further eight notes cost one more. The ceiling of twelve notes per transfer, and the failure past sixteen, are gone: fifty notes in one transfer were measured to pass; the remaining bound is the protocol's nested-call limit.
+- **A wallet can still consolidate** with transfers to self when it wants a holder's next transfer to be the cheap case, but it no longer has to.
 
 ### Events
 
@@ -294,7 +298,7 @@ This one is worth explaining, because both choices — who receives it, and how 
 
 **What the mint and burn records cost.** One constrained delivery each: `mint_to_private` 36,976 → 61,062 gates, `burn` 87,935 → 111,638, `mint_batch` 132,584 → 218,669 (one event per recipient), `burn_batch` 331,362 → 352,719 (one event for the total) on the base and Debt variants; Light: 30,776 → 54,862, 81,736 → 105,439, 107,871 → 193,956, 306,820 → 328,177. The batch caps are unchanged: `mint_batch` at 4 recipients carries eight constrained deliveries, the same count `transfer_batch` at 2 already carries.
 
-**What it cost.** `transfer_private_to_private` went from 120,824 to **161,493 gates** (+34%), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
+**What it cost.** `transfer_private_to_private` went from 120,824 to **161,493 gates** (+34%; 119,290 since the note budget of A-5 took 43,046 back), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
 
 **What is not public.** The event is encrypted to its two recipients. An outside observer sees that private logs exist, padded like every other private log, and learns nothing about the parties or the amount — see [What each operation publishes](#what-each-operation-publishes).
 
