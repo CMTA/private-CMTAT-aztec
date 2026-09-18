@@ -34,8 +34,8 @@ An AIP-20 `Token` (and an ARC-1155 `MultiToken`) from `aztec-standards` takes an
 
 - **Pause** (`PAUSE_ROLE`): stops every transfer of every token wired to the contract. Immediate. Burns continue, as in CMTAT Solidity.
 - **Deactivation** (`DEFAULT_ADMIN_ROLE`): requires an existing pause, is permanent, and additionally stops burns. The token can never move again.
-- **Freeze** (`ENFORCEMENT_ROLE`): stops a given address from sending or burning. Takes effect `CHANGE_ROLES_DELAY_SECONDS` (360 s) after it is scheduled, because the flag is a `DelayedPublicMutable` so that the private hook can read it.
-- **Blacklist / whitelist** (`VALIDATION_ROLE` to pick the mode, `ADDRESS_LIST_ADD_ROLE` / `ADDRESS_LIST_REMOVE_ROLE` to edit entries): in blacklist mode a listed address cannot send or burn; in whitelist mode only listed addresses can. **Sender-side only** — the hook is never told the recipient, so a listed address can still receive. Same 360 s delay.
+- **Freeze** (`ENFORCEMENT_ROLE`): stops a given address from sending or burning. Takes effect after the contract's delay setting (`roles_delay()`, one hour initially, adjustable by the admin with `set_roles_delay`), because the flag is a `DelayedPublicMutable` so that the private hook can read it.
+- **Blacklist / whitelist** (`VALIDATION_ROLE` to pick the mode, `ADDRESS_LIST_ADD_ROLE` / `ADDRESS_LIST_REMOVE_ROLE` to edit entries): in blacklist mode a listed address cannot send or burn; in whitelist mode only listed addresses can. **Sender-side only** — the hook is never told the recipient, so a listed address can still receive. Same delay setting.
 
 It holds no balances, moves no value, and receives no notes. It only refuses.
 
@@ -94,7 +94,7 @@ What that call publishes is a single boolean, `is_burn`. A burn is already publi
 | Issuer audit copies of notes | Every note also delivered to the issuer, plus a constrained `Transfer` event | **None** — the token delivers its notes to holders only; the issuer sees what the standard token publishes |
 | Terms, token ID, debt, credit events | Yes | No — metadata modules were left out; the contract is a policy, not a registry |
 | Pause / deactivation | Immediate, `PublicMutable`, checked in the enqueued public half | Same modules, same semantics, same enqueued check |
-| Freeze | `DelayedPublicMutable`, 360 s delay, both parties of a transfer | Same module and delay, `from` only |
+| Freeze | `DelayedPublicMutable`, one-hour initial delay adjustable at runtime, both parties of a transfer | Same module and delay, `from` only |
 | Roles | 11 roles | The 6 it uses: `DEFAULT_ADMIN_ROLE`, `PAUSE_ROLE`, `ENFORCEMENT_ROLE`, `VALIDATION_ROLE`, `ADDRESS_LIST_ADD_ROLE`, `ADDRESS_LIST_REMOVE_ROLE` (the constants are shared, so the numbers match) |
 | Events | `Transfer` (private) plus public administrative events | The same public administrative events: `NewRole`, `RoleRevoked`, `Paused`, `Unpaused`, `Deactivated`, `AddressFrozen`, `AddressListed`, `OperationsSet` |
 | One deployment serves | One token | Any number of tokens: every token constructed with the same `auth_contract` shares its pause, deactivation and freeze state |
@@ -122,10 +122,10 @@ The pointer is immutable. Decide the authorization contract's address before dep
 | Pause | `pause_contract()` | `PAUSE_ROLE` | Next block: every transfer of every wired token reverts; burns continue |
 | Unpause | `unpause_contract()` | `PAUSE_ROLE` | Next block, unless deactivated |
 | Deactivate | `deactivate_contract()` | `DEFAULT_ADMIN_ROLE`, contract already paused | Permanent; burns revert too; `unpause_contract` refuses forever |
-| Freeze | `freeze(account, FreezableFlag { is_freezed: true })` | `ENFORCEMENT_ROLE` | After 360 s: `account` can neither send nor burn. Emits `AddressFrozen` with `effective_at` |
-| Unfreeze | `unfreeze(account, FreezableFlag { is_freezed: false })` | `ENFORCEMENT_ROLE` | After 360 s |
-| Choose the list mode | `set_operations(SetFlag { operate_blacklist, operate_whitelist })` | `VALIDATION_ROLE` | After 360 s; blacklist wins if both are set; neither set means no list check |
-| List an address | `add_to_list(account, UserFlags { is_blacklisted, is_whitelisted })` / `remove_from_list(...)` | `ADDRESS_LIST_ADD_ROLE` / `ADDRESS_LIST_REMOVE_ROLE` | After 360 s: in blacklist mode a blacklisted `account` cannot send or burn; in whitelist mode only whitelisted accounts can. Emits `AddressListed` with `effective_at` |
+| Freeze | `freeze(account, FreezableFlag { is_freezed: true })` | `ENFORCEMENT_ROLE` | After the delay (one hour initially): `account` can neither send nor burn. Emits `AddressFrozen` with `effective_at` |
+| Unfreeze | `unfreeze(account, FreezableFlag { is_freezed: false })` | `ENFORCEMENT_ROLE` | After the delay |
+| Choose the list mode | `set_operations(SetFlag { operate_blacklist, operate_whitelist })` | `VALIDATION_ROLE` | After the delay; blacklist wins if both are set; neither set means no list check |
+| List an address | `add_to_list(account, UserFlags { is_blacklisted, is_whitelisted })` / `remove_from_list(...)` | `ADDRESS_LIST_ADD_ROLE` / `ADDRESS_LIST_REMOVE_ROLE` | After the delay: in blacklist mode a blacklisted `account` cannot send or burn; in whitelist mode only whitelisted accounts can. Emits `AddressListed` with `effective_at` |
 | Read | `public_get_pause()`, `public_get_deactivated()`, `get_frozen(account)`, `get_operations()`, `has_role(role, account)`, `version()` | none (`#[view]`) | |
 
 Every state change emits the corresponding public event, so an indexer built for the CMTAT token contracts reads the authorization contract unchanged.
@@ -149,7 +149,7 @@ The fork's token cannot be compiled from inside this repository (see Trap 3 in [
 - **The initiator is not screened.** A transfer executed by a third party under an authwit is judged on `from` only; CMTAT Solidity also checks the `spender`.
 - **Mints are unrestricted by the hook.** The `aztec-standards` mint paths do not call it. Who may mint is decided by the token's single `minter`; a frozen recipient can be minted to, and minting continues after deactivation.
 - **AIP-721 is out of reach** until the fork's `NFT` contract gains a hook — see [Adding AIP-721](#adding-aip-721).
-- **Freeze and list changes take 360 seconds to bite.** Between the scheduling call and `effective_at` the account can still send. That is the `DelayedPublicMutable` trade-off the CMTAT token contracts make for the same flags, and the same one: a private hook can only read public state that is guaranteed not to change for the transaction's lifetime. It also means every private transfer of a wired token expires 360 s after its anchor block (analysis finding `H-6`).
+- **Freeze and list changes take the delay to bite**, one hour initially (`roles_delay()`; the admin can change it with `set_roles_delay`, up to the protocol's 24-hour transaction lifetime). Between the scheduling call and `effective_at` the account can still send, and it can see the change coming, since the scheduled flag and the event are public. That is the `DelayedPublicMutable` trade-off the CMTAT token contracts make for the same flags, and the same one: a private hook can only read public state that is guaranteed not to change for the transaction's lifetime. It also means every private transfer of a wired token expires one delay after its anchor block (analysis finding `H-6`).
 - **The list is sender-side.** In blacklist mode a listed address is stopped from sending and burning, not from receiving; in whitelist mode the recipient is not required to be listed. An assessment that reads "blacklisted addresses cannot receive" is therefore not met by these contracts, only by the token contracts. One test, `blacklisted_recipient_is_not_screened`, pins this so it is never mistaken for a bug.
 - **No issuer audit trail.** The token delivers notes to holders only, and the authorization contract never sees the notes. The issuer's view is the standard token's public surface: total supply, public balances, public transfer events. This is the largest gap against the CMTAT token contracts, whose issuer receives every note.
 - **One pause for every wired token.** The state is per authorization contract, not per token. Tokens that must be paused independently need separate deployments.

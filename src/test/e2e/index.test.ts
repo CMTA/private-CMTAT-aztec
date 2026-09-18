@@ -16,7 +16,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // The issuer address is a DelayedPublicMutable, so the value the constructor schedules only becomes
 // current after this many seconds - and every mint, transfer and burn reads it. Keep in sync with
 // CHANGE_ROLES_DELAY_SECONDS in src/main.nr.
-const CHANGE_ROLES_DELAY_SECONDS = 360;
+const CHANGE_ROLES_DELAY_SECONDS = 3600; // the contract's initial delay; a sandbox clock cannot be fast-forwarded, so this suite waits an hour once
 const DELAY_MS = (CHANGE_ROLES_DELAY_SECONDS + 12) * 1000;
 
 // Waiting out a real delay dominates the runtime of this suite, so allow for it generously.

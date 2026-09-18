@@ -29,6 +29,7 @@ This repository contains a functional private CMTAT prototype, where transaction
   - [Events](#events)
   - [Security and confidentiality properties](#security-and-confidentiality-properties)
   - [Modules](#modules)
+  - [Delay of the delayed values](#delay-of-the-delayed-values)
   - [Issuer's view of transactions and notes](#issuers-view-of-transactions-and-notes)
 - [Private/public bridges](#privatepublic-bridges)
 - [AIP-20 private profile](#aip-20-private-profile)
@@ -274,6 +275,7 @@ Events must be declared inside the contract module, not in the shared library, w
 | `AddressListed` | `account`, `is_blacklisted`, `is_whitelisted`, `operator`, `effective_at` | `add_to_list`, `remove_from_list` | — (CMTAT's is allowlist-specific) |
 | `OperationsSet` | `operate_blacklist`, `operate_whitelist`, `operator`, `effective_at` | `set_operations` | ≈ CMTAT `AllowlistEnableStatus` |
 | `IssuerChanged` | `issuer`, `operator`, `effective_at` | `set_issuer` | — |
+| `RolesDelayChanged` | `new_delay`, `operator`, `effective_at` | `set_roles_delay` | — |
 | `Terms` | `name`, `uri`, `documentHashHigh`, `documentHashLow`, `lastModified` | `set_terms` | CMTAT `Terms` |
 | `TokenId` | `tokenId` | `set_token_id` | CMTAT `TokenId` |
 | `DebtLogEvent`, `DebtInstrumentLogEvent`, `CreditEventsLogEvent` | `account` | `set_debt`, `set_debt_instrument`, `set_credit_events` (`CMTATAztecDebt` only) | CMTAT, which emits them payload-free; these carry the caller |
@@ -400,9 +402,21 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 
 - This module is called in `mint_to_private`, `transfer_private_to_private`, and `burn` to check if an address has been frozen.
 - Unlike the validation module, this module is mandatory.
-- Changing an address to frozen has a delay, as the value is a `DelayedPublicMutable`.
+- Changing an address to frozen has a delay, as the value is a `DelayedPublicMutable`; see [Delay of the delayed values](#delay-of-the-delayed-values) for the value and how it is changed.
 
 > **"Freeze Address" Note**: The enforcement has a delay, similar to the validation module, and the target can see the freeze coming during it (see [FAQ](#faq)). One approach is to pause the contract before freezing some accounts for the delay time, then unpause it. This requires manual pause/unpause.
+
+### Delay of the delayed values
+
+Four things are `DelayedPublicMutable`, so that a private function can read them: the freeze flag of each address, the list flags of each address, the list mode (`operationsFlag`) and the issuer address. A write to any of them is *scheduled* and becomes current only after a delay, and that one number has three effects: a freeze or a listing bites only after it; every transaction that read one of these values in private must be included within the delay of its anchor block (the read sets the transaction's `expiration_timestamp`); and that expiration is public, so it says which delay the transaction's contract uses. Every value-moving entry point reads the issuer address and at least one flag, so the token's delay is the minimum over its variables, which is why they all carry the same one (review finding H-6 explains the trade in full).
+
+**The value is one hour initially** (`CHANGE_ROLES_DELAY_SECONDS = 3600`), a middle position: the framework's own compliance token uses 24 hours, its authorisation example 360 seconds, and the library recommends "at least a couple hours". One hour leaves a proving-and-inclusion budget a phone can meet, keeps the freeze window to an hour, and can be moved without redeploying:
+
+- **`set_roles_delay(new_delay)`** (`DEFAULT_ADMIN_ROLE`, `1 ≤ new_delay ≤ 86400`, the protocol's transaction lifetime) changes the setting and emits `RolesDelayChanged { new_delay, operator, effective_at }`. The library makes an **increase effective at once** and a **decrease effective only after the difference** between the old and new delay has elapsed, so nothing already scheduled can land earlier than it promised.
+- The issuer address and the list mode are single variables and adopt the new setting in that call. The **per-address entries** (freeze and list flags) each carry their own delay, which the contract cannot change from outside: `freeze`, `unfreeze`, `add_to_list` and `remove_from_list` apply the current setting to the entry they write before scheduling the value, so entries converge to the setting as they are touched. Until an entry has been written again it keeps its previous delay, and the `effective_at` in every event is the timestamp the library actually scheduled, not `now + setting`.
+- **`roles_delay()`** returns the setting new writes adopt.
+
+The pause is deliberately **not** delayed: it is a `PublicMutable` checked in the enqueued public half, so it takes effect at once and has no delay to adjust (see *Pause module*). The e2e suite waits the delay once after deployment before the first mint, since a sandbox clock cannot be fast-forwarded; the Noir suite advances time. At 24 hours the token's transactions would be indistinguishable from those of a contract that reads no delayed value at all, the largest privacy set; the hour is the compliance side's price for a shorter freeze window, and the setting exists so that the issuer can move it in either direction once it knows how its holders prove and what its neighbours use.
 
 ### Issuer's view of transactions and notes
 
@@ -768,7 +782,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Total supply** | Deliberately **public**. Balances are private, but the number of tokens in circulation is not, and it moves visibly on every mint and burn. |
 | **Force transfer** | The CMTAT power to move a holder's tokens without their consent. **Not possible here**, because the issuer cannot compute another holder's nullifiers. Freezing the account is the workaround — see *Limitations*. |
 | **Batch functions** | `mint_batch` and `burn_batch`, capped by `MAX_ADDR_PER_CALL` (currently `4`), and `transfer_batch`, capped by `MAX_TRANSFER_ADDR_PER_CALL` (currently `2`) because each recipient costs four constrained deliveries. Both caps are measured, not derived — see [Batching limits](#batching-limits). |
-| **`CHANGE_ROLES_DELAY_SECONDS`** | The delay, in seconds (`360`), before a scheduled change to a freeze flag, a list entry or the operations switch becomes current. Nothing that reads those values sees the new one before it elapses. It also gates the issuer address — set by the constructor, which is why no mint, transfer or burn works until the delay has passed after deployment, and rescheduled by `set_issuer`. |
+| **`CHANGE_ROLES_DELAY_SECONDS`** | The *initial* delay, in seconds (`3600`, one hour), before a scheduled change to a freeze flag, a list entry, the operations switch or the issuer address becomes current; the admin can change it at runtime with `set_roles_delay` (see *Delay of the delayed values*). Nothing that reads those values sees the new one before it elapses. It also gates the issuer address — set by the constructor, which is why no mint, transfer or burn works until the delay has passed after deployment, and rescheduled by `set_issuer`. |
 
 ## Intellectual property
 

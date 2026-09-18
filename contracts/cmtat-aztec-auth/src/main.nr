@@ -25,6 +25,7 @@ pub contract CMTATAztecAuth {
         },
         protocol::address::AztecAddress,
         protocol::traits::ToField,
+        state_vars::PublicMutable,
     };
 
     use cmtat_aztec_lib::modules::{
@@ -38,7 +39,7 @@ pub contract CMTATAztecAuth {
         enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
         pauseModule::PauseModule,
         validationModule::{
-            CHANGE_ROLES_DELAY_SECONDS as LIST_DELAY_SECONDS, SetFlag, UserFlags, ValidationModule,
+            SetFlag, UserFlags, ValidationModule,
         },
     };
 
@@ -56,6 +57,8 @@ pub contract CMTATAztecAuth {
         pause_module: PauseModule<Context>,
         enforcement_module: Freezable<FreezableFlag, Context>,
         validation_module: ValidationModule<UserFlags, Context>,
+        // The delay setting new freeze / list writes adopt; appended last so no existing slot moves.
+        roles_delay: PublicMutable<u64, Context>,
     }
 
     // Same events as the CMTAT token contracts, so one indexer serves both.
@@ -104,6 +107,15 @@ pub contract CMTATAztecAuth {
         effective_at: u64,
     }
 
+    /// Same event as the token contracts (review H-6): the delay setting changed; per-address entries
+    /// adopt it when next written, the list mode at `effective_at`.
+    #[event]
+    struct RolesDelayChanged {
+        new_delay: u64,
+        operator: AztecAddress,
+        effective_at: u64,
+    }
+
     #[event]
     struct OperationsSet {
         operate_blacklist: bool,
@@ -118,6 +130,7 @@ pub contract CMTATAztecAuth {
         assert(!admin.is_zero(), "invalid admin");
         self.internal._grant_role_internal(DEFAULT_ADMIN_ROLE, admin);
         self.internal._grant_role_internal(VALIDATION_ROLE, admin);
+        self.storage.roles_delay.write(FREEZE_DELAY_SECONDS);
     }
 
     /** ==========================================================
@@ -218,37 +231,40 @@ pub contract CMTATAztecAuth {
     #[external("public")]
     fn set_operations(operations: SetFlag) {
         let operator = self.msg_sender();
-        self.storage.validation_module.set_operations(operator, operations, self.storage.access_control);
+        let effective_at =
+            self.storage.validation_module.set_operations(operator, operations, self.storage.access_control);
         self.emit(OperationsSet {
             operate_blacklist: operations.operate_blacklist,
             operate_whitelist: operations.operate_whitelist,
             operator,
-            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+            effective_at,
         });
     }
 
     #[external("public")]
     fn add_to_list(newListAddress: AztecAddress, userFlag: UserFlags) {
         let operator = self.msg_sender();
-        self.storage.validation_module.add_to_list(
+        let effective_at = self.storage.validation_module.add_to_list(
             operator,
             newListAddress,
             userFlag,
             self.storage.access_control,
+            self.storage.roles_delay.read(),
         );
-        self.internal._emit_listed(newListAddress, userFlag, operator);
+        self.internal._emit_listed(newListAddress, userFlag, operator, effective_at);
     }
 
     #[external("public")]
     fn remove_from_list(removeListAddress: AztecAddress, userFlag: UserFlags) {
         let operator = self.msg_sender();
-        self.storage.validation_module.remove_from_list(
+        let effective_at = self.storage.validation_module.remove_from_list(
             operator,
             removeListAddress,
             userFlag,
             self.storage.access_control,
+            self.storage.roles_delay.read(),
         );
-        self.internal._emit_listed(removeListAddress, userFlag, operator);
+        self.internal._emit_listed(removeListAddress, userFlag, operator, effective_at);
     }
 
     /** ==========================================================
@@ -318,30 +334,53 @@ pub contract CMTATAztecAuth {
     #[external("public")]
     fn freeze(user: AztecAddress, value: FreezableFlag) {
         let enforcer = self.msg_sender();
-        self.storage.enforcement_module.freeze(enforcer, user, value, self.storage.access_control);
-        self.emit(AddressFrozen {
-            account: user,
-            is_frozen: value.is_freezed,
+        let effective_at = self.storage.enforcement_module.freeze(
             enforcer,
-            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
-        });
+            user,
+            value,
+            self.storage.access_control,
+            self.storage.roles_delay.read(),
+        );
+        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
     }
 
     #[external("public")]
     fn unfreeze(user: AztecAddress, value: FreezableFlag) {
         let enforcer = self.msg_sender();
-        self.storage.enforcement_module.unfreeze(enforcer, user, value, self.storage.access_control);
-        self.emit(AddressFrozen {
-            account: user,
-            is_frozen: value.is_freezed,
+        let effective_at = self.storage.enforcement_module.unfreeze(
             enforcer,
-            effective_at: self.context.timestamp() + FREEZE_DELAY_SECONDS,
-        });
+            user,
+            value,
+            self.storage.access_control,
+            self.storage.roles_delay.read(),
+        );
+        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
     }
 
     /** ==========================================================
      * ===================== VERSION =============================
      * ======================================================== */
+
+    /// Changes the delay setting of the freeze and list flags (review H-6): the list mode adopts it at
+    /// once for an increase and after the difference for a decrease; per-address entries adopt it when
+    /// next written. Bounded by the protocol's 24 h transaction lifetime. DEFAULT_ADMIN_ROLE.
+    #[external("public")]
+    fn set_roles_delay(new_delay: u64) {
+        assert(new_delay > 0, "invalid delay");
+        assert(new_delay <= 86400, "delay above the transaction lifetime");
+        let operator = self.msg_sender();
+        self.storage.access_control.only_role(DEFAULT_ADMIN_ROLE, operator);
+        self.storage.roles_delay.write(new_delay);
+        self.storage.validation_module.operationsFlag.schedule_delay_change(new_delay);
+        let (_, effective_at) = self.storage.validation_module.operationsFlag.get_scheduled_delay();
+        self.emit(RolesDelayChanged { new_delay, operator, effective_at });
+    }
+
+    #[external("public")]
+    #[view]
+    fn roles_delay() -> pub u64 {
+        self.storage.roles_delay.read()
+    }
 
     #[external("public")]
     #[view]
@@ -360,13 +399,13 @@ pub contract CMTATAztecAuth {
     }
 
     #[internal("public")]
-    fn _emit_listed(account: AztecAddress, flags: UserFlags, operator: AztecAddress) {
+    fn _emit_listed(account: AztecAddress, flags: UserFlags, operator: AztecAddress, effective_at: u64) {
         self.emit(AddressListed {
             account,
             is_blacklisted: flags.is_blacklisted,
             is_whitelisted: flags.is_whitelisted,
             operator,
-            effective_at: self.context.timestamp() + LIST_DELAY_SECONDS,
+            effective_at,
         });
     }
 }

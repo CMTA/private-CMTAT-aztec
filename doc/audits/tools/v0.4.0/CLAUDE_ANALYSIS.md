@@ -37,7 +37,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | G-7 | `doc/img/architecture.puml` still showed three variants and no `tokenModule` | ✅ fixed — re-drawn and re-rendered |
 | G-8 | The glossary and the agent guide named the removed `_*_internal` helpers | ✅ fixed |
 | G-9 | A stale `cmtat_aztec_aip20` artifact from the reverted crate sat in `target/` | ✅ fixed — removed; `yarn clean` before profiling |
-| H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ⬜ decide — detailed: every value-moving tx expires 6 min after its anchor and is fingerprinted against a 24 h neighbourhood (`token_blacklist_contract`, AIP-20, `MAX_TX_LIFETIME` all sit at 86,400); five options and two coherent positions set out in H-6 |
+| H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ✅ decided and applied after the review — initial delay raised to **one hour** (options 1 and 3 of H-6): `CHANGE_ROLES_DELAY_SECONDS = 3600`, plus `set_roles_delay` / `roles_delay()` in the five contracts, bounded by the 24 h transaction lifetime; per-address entries adopt the setting when written; 8 + 3 + 3 tests |
 | H-7 | Public-call-count fingerprint, extended to the bridges | ⬜ keep — every value-moving entry point enqueues exactly one public call; the two that enqueue none move no value |
 | H-8 | What the bridges publish | ✅ verified — exactly the mover's own side, as the design states; `PRIVACY:` comments at every public half |
 | H-9 | The commitment completion log carries the amount unencrypted | ⬜ keep — inherent to partial notes; disclosed in `doc/README.md` and the assessment |
@@ -52,14 +52,14 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | K-6 | A second payment into the same commitment is lost to the recipient | ✅ fixed after the review — `pay_commitment` pushes `commitment_paid_nullifier(C)`; a second payment is a duplicate nullifier; +52 gates on `transfer_private_to_commitment`; 3 tests, mutant killed; options and the upstream check in `doc/design/commitment-reuse.md` |
 | K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded, then lifted by A-5 — each recursive call has its own side-effect budget; 50 notes measured in one transfer |
 
-**Counts:** 31 rows — 23 ✅ (6 verified, 17 fixed), 1 ⚠️ (F-1 re-framed), 7 ⬜ open (1 *decide*: H-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
+**Counts:** 31 rows — 24 ✅ (6 verified, 18 fixed), 1 ⚠️ (F-1 re-framed), 6 ⬜ open (0 *decide*; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
 
 ## Outstanding
 
 | ID | Item | Why it is still open |
 |---|---|---|
 | F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
-| H-6 | The 360 s delay | Choose between 86,400 s (the protocol maximum and the largest privacy set; freeze window covered by the immediate pause) and 360 s documented as a compliance choice with its six-minute proving budget; an intermediate value only if the target network's contracts cluster there. Add `set_delay` for `issuer_address` either way. Still missing: proving time on holders' devices. |
+| H-6 | The 360 s delay | **Decided: one hour, adjustable.** The intermediate value the section argued against on privacy-set grounds was chosen for the freeze window, with the runtime setter as the way to move once the two missing inputs (holders' proving times, the neighbours' delays) are known. What remains open is the measurement, not the mechanism. |
 | H-10 | Issuer processing of offchain copies | **Closed by route A** (constrained mint / burn events to the issuer; the `Transfer` stream is now a complete ledger). Remaining: the two-PXE e2e test that shows a real PXE dropping the note copy and processing the events (H-10 lays it out); route B (custom audit message + capsule ledger) if note-level corroboration is wanted. |
 | K-6 | Commitment reuse | **Closed**: option 2 of `doc/design/commitment-reuse.md` applied — one nullifier `H(C, DOM_SEP__CMTAT_COMMITMENT_PAID)` pushed in `pay_commitment` (private half; nothing published, no layout change), +52 gates on `transfer_private_to_commitment`, three tests, mutant killed. Upstream checked 2026-09-17: aztec-nr `main` and aztec-standards `main` unchanged; aztec-packages #14364 (open) puts single-completion on *contract logic* so the library never spends a completion nullifier, i.e. the framework expects exactly this fix from the token. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) remain open. |
 
@@ -387,6 +387,18 @@ Five options, from the cheapest to the most structural.
 
 An intermediate value (an hour, six hours) buys a shorter freeze window at the price of a privacy set that has to be shared with someone, and nothing known shares it; it should be chosen only if a measured population of contracts on the target network clusters there. Either way, add `set_delay` for `issuer_address` (option 3, the single-instance case) so that the one variable that can be tuned after deployment can be, and keep a single value across the four variables. The number that would settle the choice is still the one the 0.3.0 report asked for and nobody has: how long a transfer takes to prove on the devices the token's holders will use.
 
+#### Applied after the review (2026-09-18): one hour, adjustable
+
+The project chose the intermediate position, **3,600 s**, with the runtime setter, i.e. options 1 and 3 together:
+
+- `CHANGE_ROLES_DELAY_SECONDS = 3600` in `enforcementModule.nr` and `validationModule.nr`; the three tokens re-export the library's constant instead of carrying a third copy, so there is one value. The comment on the constant records the reasoning (the 360 s example it replaced, the 24 h reference token, the library's guidance).
+- A `roles_delay: PublicMutable<u64>` setting, appended **last** in every storage struct so no existing slot moves (the private-balance slot stays 22, pinned), initialised by the constructor to the constant; `set_roles_delay(new_delay)` (`DEFAULT_ADMIN_ROLE`, `1..=86400`) writes it, calls `schedule_delay_change` on the single instances (`issuer_address`, and `operationsFlag` where the variant has lists) and emits `RolesDelayChanged { new_delay, operator, effective_at }`; `roles_delay()` reads it. The upper bound is `MAX_ROLES_DELAY_SECONDS = 86400`, the protocol's transaction lifetime: a longer delay widens no validity window.
+- The per-address maps are handled as the section proposed: `freeze`, `unfreeze`, `add_to_list` and `remove_from_list` take the setting as a `delay` argument, call `schedule_delay_change(delay)` on the entry and then `schedule_value_change`, through one library helper `schedule_with_delay`, and **return the scheduled `effective_at`**, which the events now carry instead of `now + constant`. Cost: `2N + 2` extra `SSTORE`s per write, in public. Entries converge to the setting as they are written; an untouched entry keeps its previous delay.
+- The library's asymmetry holds and is tested: an increase applies at once (`a_longer_delay_applies_at_once_to_the_issuer`, `a_freeze_adopts_the_current_setting`), a decrease only after the difference (`a_shorter_delay_takes_effect_after_the_difference`, `once_current_the_shorter_delay_governs_the_next_write`), plus the role, the bound and zero refused; three tests per authorization crate for the same surface. The pause has no delay to adjust: it is a `PublicMutable` and immediate by the H-3 decision, which is what makes the *pause → freeze → wait → unpause* playbook work at any delay.
+- The e2e suite's wait moved from 360 s to 3,600 s (one wait after deployment; a sandbox clock cannot be fast-forwarded). Two authorization events and one token event changed shape only in the source of `effective_at`, not in their fields; the ABI gains `set_roles_delay`, `roles_delay` and `RolesDelayChanged` in the five contracts.
+
+What the change does **not** settle is the privacy-set question: at one hour the token's transactions expire an hour after their anchor, a value nothing known on the network shares. The setter is the answer to that: the day the neighbours' delays and the holders' proving times are known, the issuer moves the setting (upwards, at once) without a redeployment.
+
 ### H-7. Public-call fingerprint, extended — keep
 
 | Private entry point | Public calls enqueued | Public arguments |
@@ -604,7 +616,7 @@ Two of the new tests measured behaviour the code did not state, and both are rec
 
 ## What was run, and what was not
 
-**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, 218/218 after the K-6 fix (128 base), 222/222 after route A of H-10 (132 base), and 225/225 after A-5 (135 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
+**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, 218/218 after the K-6 fix (128 base), 222/222 after route A of H-10 (132 base), and 225/225 after A-5 (135 base), and 237/237 after H-6 (143 base, 38 + 37 authorization); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
 
 **Not run.** `aztec-wallet profile` (needs a sandbox); `yarn test:js`; any test of the issuer's PXE processing offchain messages (H-10).
 

@@ -16,3 +16,4 @@ mod test_issuer_copies;
 mod test_guards;
 mod test_edge_cases;
 mod test_issuer_records;
+mod test_roles_delay;

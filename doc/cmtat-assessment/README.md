@@ -277,7 +277,7 @@ Restrictions live **inside the token**, in the validation module, rather than be
 
 A rejected transfer **reverts** with a message (`The sender is in the blacklist`, `The recipient is not in the whitelist`, and so on). There is no ERC-1404 restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it — a wallet has to simulate the call and interpret the failure.
 
-Both the per-address flags and the operations switch are `DelayedPublicMutable`, so adding an address to a blacklist, or turning a mode on, only bites after `CHANGE_ROLES_DELAY_SECONDS`. This is the same delay as freeze and it has the same cause; see [Enforcement](#enforcement).
+Both the per-address flags and the operations switch are `DelayedPublicMutable`, so adding an address to a blacklist, or turning a mode on, only bites after the contract's delay setting (`CHANGE_ROLES_DELAY_SECONDS`, one hour initially, adjustable by the admin). This is the same delay as freeze and it has the same cause; see [Enforcement](#enforcement).
 
 **There is no sanction-list mode.** Earlier revisions declared a third mode whose handler was `panic("not implemented.")`, so enabling it blocked every transfer; the flag has been removed rather than left as a trap. Screening against a sanctions register would need an on-chain list to read, and Aztec has no equivalent of the Chainalysis oracle used on Ethereum.
 

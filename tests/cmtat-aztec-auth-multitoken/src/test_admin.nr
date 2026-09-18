@@ -1,4 +1,4 @@
-use crate::utils;
+use crate::utils::{self, SOME_ID, SOME_TRANSFER_SELECTOR};
 use cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken as Auth;
 use cmtat_aztec_lib::modules::access_controlModule::{DEFAULT_ADMIN_ROLE, PAUSE_ROLE};
 use compressed_string::FieldCompressedString;
@@ -39,4 +39,32 @@ unconstrained fn version_matches_the_constant() {
     let result = env.view_public(Auth::at(auth).version());
     assert(result == FieldCompressedString::from_string(cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken::VERSION));
     assert(result == FieldCompressedString::from_string("0.4.0                          "));
+}
+
+// --- delay setting (H-6) ------------------------------------------------------------------------
+
+/// The delay is one hour initially, readable, adjustable by the admin and bounded by the protocol's
+/// transaction lifetime. The library makes a longer delay effective at once: a freeze scheduled right
+/// after the increase is not current after the old hour, and is after two.
+#[test]
+unconstrained fn the_roles_delay_is_one_hour_and_a_longer_one_applies_to_the_next_freeze() {
+    let (env, auth, admin, user) = utils::setup();
+    assert_eq(env.view_public(Auth::at(auth).roles_delay()), 3600);
+    env.call_public(admin, Auth::at(auth).set_roles_delay(7200));
+    assert_eq(env.view_public(Auth::at(auth).roles_delay()), 7200);
+    utils::freeze(env, auth, admin, user, /* wait */ false);
+    utils::advance_past_delay(env, 3600);
+    env.call_private(user, Auth::at(auth).authorize_private(user, SOME_ID, 10, SOME_TRANSFER_SELECTOR)); // still allowed
+}
+
+#[test(should_fail_with = "AccessControlUnauthorizedAccount")]
+unconstrained fn set_roles_delay_requires_the_admin_role() {
+    let (env, auth, _, user) = utils::setup();
+    env.call_public(user, Auth::at(auth).set_roles_delay(7200));
+}
+
+#[test(should_fail_with = "delay above the transaction lifetime")]
+unconstrained fn set_roles_delay_is_bounded() {
+    let (env, auth, admin, _) = utils::setup();
+    env.call_public(admin, Auth::at(auth).set_roles_delay(86401));
 }

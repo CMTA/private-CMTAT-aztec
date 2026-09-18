@@ -4,6 +4,7 @@ use aztec::protocol::delayed_public_mutable::DelayedPublicMutableValues;
 use aztec::protocol::traits::{Deserialize, FromField, Packable, Serialize, ToField};
 use aztec::state_vars::{DelayedPublicMutable, Map, StateVariable};
 
+use crate::modules::enforcementModule::schedule_with_delay;
 use crate::modules::access_controlModule::{
     AccessControlModule, ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, VALIDATION_ROLE,
 };
@@ -11,9 +12,9 @@ use crate::modules::access_controlModule::{
 pub global BLACKLIST_FLAG: u64 = 1;
 pub global WHITELIST_FLAG: u64 = 2;
 
-// Changing a user's flags or the enabled operations takes effect only after this delay. Expressed in
-// seconds: since Aztec v3 a DelayedPublicMutable's delay is a duration, not a number of blocks.
-pub global CHANGE_ROLES_DELAY_SECONDS: u64 = 360;
+// Same value and same reasoning as `enforcementModule::CHANGE_ROLES_DELAY_SECONDS`; keep the two equal,
+// a mix would fingerprint a transaction by which flags it read (H-6).
+pub global CHANGE_ROLES_DELAY_SECONDS: u64 = 3600;
 
 global TEXT_ADDRESS_FROM_IS_BLACKLISTED: str<30> = "The sender is in the blacklist";
 global TEXT_ADDRESS_TO_IS_BLACKLISTED: str<33> = "The recipient is in the blacklist";
@@ -86,9 +87,11 @@ where
         caller: AztecAddress,
         operations: SetFlag,
         access_control: AccessControlModule<bool, PublicContext>,
-    ) {
+    ) -> u64 {
         access_control.only_role(VALIDATION_ROLE, caller);
         self.operationsFlag.schedule_value_change(operations);
+        let (_, effective_at) = self.operationsFlag.get_scheduled_value();
+        effective_at
     }
 
     //problem: here the one that has the ADDRESS_LIST_ADD_ROLE can also remove from list by overwritting userFlag
@@ -98,9 +101,10 @@ where
         newListAddress: AztecAddress,
         userFlag: T,
         access_control: AccessControlModule<bool, PublicContext>,
-    ) {
+        delay: u64,
+    ) -> u64 {
         access_control.only_role(ADDRESS_LIST_ADD_ROLE, caller);
-        self.map.at(newListAddress).schedule_value_change(userFlag);
+        schedule_with_delay(self.map.at(newListAddress), userFlag, delay)
     }
 
     pub fn remove_from_list(
@@ -109,9 +113,10 @@ where
         removeListAddress: AztecAddress,
         userFlag: T,
         access_control: AccessControlModule<bool, PublicContext>,
-    ) {
+        delay: u64,
+    ) -> u64 {
         access_control.only_role(ADDRESS_LIST_REMOVE_ROLE, caller);
-        self.map.at(removeListAddress).schedule_value_change(userFlag);
+        schedule_with_delay(self.map.at(removeListAddress), userFlag, delay)
     }
 
     /// Public-context twin of the private `operateOnFrom`, for hooks that run in public.
