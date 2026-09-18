@@ -595,6 +595,14 @@ pub contract CMTATAztec {
         let issuer = self.storage.issuer_address.get_current_value();
         mint_private(self.storage.private_balances, screening(self.storage), to, amount, issuer);
         self.enqueue_self._mint(self.msg_sender(), amount);
+        // The issuer's on-chain record of the issuance (H-10, route A): the note copy it receives
+        // offchain cannot be processed by a stock PXE (it does not own the note), the event can.
+        // `from` is the zero address, the ERC-20 / AIP-20 convention for a mint, so one `Transfer`
+        // stream replays every movement. Constrained, so the minter cannot forge it.
+        self.emit(Transfer { from: AztecAddress::zero(), to, amount }).deliver_to(
+            issuer,
+            MessageDelivery::onchain_constrained(),
+        );
     }
 
     //everyone can call this function, but will revert in _mint if not minter role
@@ -606,6 +614,11 @@ pub contract CMTATAztec {
         for i in 0..MAX_ADDR_PER_CALL {
             mint_private(self.storage.private_balances, screening(self.storage), accounts[i], amount[i], issuer);
             acc += amount[i];
+            // One issuance record per recipient, as in `mint_to_private` (H-10, route A).
+            self.emit(Transfer { from: AztecAddress::zero(), to: accounts[i], amount: amount[i] }).deliver_to(
+                issuer,
+                MessageDelivery::onchain_constrained(),
+            );
         }
         self.enqueue_self._mint(self.msg_sender(), acc);
     }
@@ -703,6 +716,12 @@ pub contract CMTATAztec {
         let issuer = self.storage.issuer_address.get_current_value();
         burn_private(self.storage.private_balances, screening(self.storage), account, amount, issuer);
         self.enqueue_self._burn(self.msg_sender(), amount);
+        // The issuer's on-chain record of the redemption (H-10, route A); `to` is the zero address,
+        // the ERC-20 / AIP-20 convention for a burn. Constrained, so the burner cannot forge it.
+        self.emit(Transfer { from: account, to: AztecAddress::zero(), amount }).deliver_to(
+            issuer,
+            MessageDelivery::onchain_constrained(),
+        );
     }
 
     /*
@@ -724,6 +743,11 @@ pub contract CMTATAztec {
             acc += amount[i];
         }
         self.enqueue_self._burn(self.msg_sender(), acc);
+        // One holder, one record for the total: the batch debits a single account (H-10, route A).
+        self.emit(Transfer { from: account, to: AztecAddress::zero(), amount: acc }).deliver_to(
+            issuer,
+            MessageDelivery::onchain_constrained(),
+        );
     }
 
     /** ==========================================================

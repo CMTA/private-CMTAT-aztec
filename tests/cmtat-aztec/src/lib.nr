@@ -15,3 +15,4 @@ mod test_hybrid;
 mod test_issuer_copies;
 mod test_guards;
 mod test_edge_cases;
+mod test_issuer_records;

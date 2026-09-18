@@ -41,7 +41,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | H-7 | Public-call-count fingerprint, extended to the bridges | ⬜ keep — every value-moving entry point enqueues exactly one public call; the two that enqueue none move no value |
 | H-8 | What the bridges publish | ✅ verified — exactly the mover's own side, as the design states; `PRIVACY:` comments at every public half |
 | H-9 | The commitment completion log carries the amount unencrypted | ⬜ keep — inherent to partial notes; disclosed in `doc/README.md` and the assessment |
-| H-10 | Nothing demonstrates that the issuer's PXE can *process* the offchain copies it receives | ⬜ decide — the Noir suite now proves delivery (K-2); processing needs an e2e test with `offchain_receive` |
+| H-10 | Nothing demonstrates that the issuer's PXE can *process* the offchain copies it receives | ✅ route A applied after the review — root cause found (a stock PXE drops, or crashes on, any note it does not own, by either delivery mode); mints and burns now deliver a constrained `Transfer` event to the issuer, so the event stream is a complete, processable ledger; 4 tests, mutants killed; the two-PXE e2e test remains to be run |
 | J-2 | Tests live in the contract crates | ✅ **corrected, then fixed** — `aztec compile` *does* warn at 5.2.0 (the 0.3.0 correction had run `aztec-nargo compile`, which does not); the tests moved to five `type = "lib"` crates under `tests/`, the warning is gone and a test-only edit leaves the artifacts untouched |
 | J-4 | `default-member` made `aztec test` compile one contract of five | ✅ fixed — see K-1 |
 | K-1 | `aztec test` ran four of five contracts against stale artifacts after any library edit | ✅ fixed — `default-member` removed from the workspace `Nargo.toml`; proven by a mutant that survived, then died |
@@ -52,7 +52,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | K-6 | A second payment into the same commitment is lost to the recipient | ✅ fixed after the review — `pay_commitment` pushes `commitment_paid_nullifier(C)`; a second payment is a duplicate nullifier; +52 gates on `transfer_private_to_commitment`; 3 tests, mutant killed; options and the upstream check in `doc/design/commitment-reuse.md` |
 | K-7 | One transfer spends at most 12 notes, not the 16 `BalanceSet::sub` allows | ✅ verified and recorded — the side-effect budget is reached first; a limit, not a defect; F1 would lift it |
 
-**Counts:** 31 rows — 21 ✅ (6 verified, 15 fixed), 1 ⚠️ (F-1 re-framed), 9 ⬜ open (3 *decide*: A-5, H-6, H-10; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
+**Counts:** 31 rows — 22 ✅ (6 verified, 16 fixed), 1 ⚠️ (F-1 re-framed), 8 ⬜ open (2 *decide*: A-5, H-6; 6 *keep / leave*: A-6, B-4, C-7, C-8, H-7, H-9). *Counted from the table.*
 
 ## Outstanding
 
@@ -61,7 +61,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | A-5 | Note budget with `#[only_self]` recursion (F1 of the features document) | The 0.3.0 measurement stands (−43,046 gates on `transfer`); the bridges inherit the same cost. It is the AIP-20 feature the features document ranks first for CMTAT-private and the largest single gate saving available. Not done in 0.4.0 because it changes the note-consumption shape of every value-moving path at once, and it wants the note-count edge cases of K.3 written first as its acceptance tests. |
 | F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
 | H-6 | The 360 s delay | Unchanged: needs the network's typical delay, real proving times and a compliance call. 0.4.0 raised the stakes slightly — nine private entry points now read a delayed value instead of five. |
-| H-10 | Issuer processing of offchain copies | K-2 proves the messages are emitted with the issuer as recipient. Whether the issuer's PXE can ingest a note it does not own through `offchain_receive` and later read the holder's balance is not shown by any test; the e2e suite checks the issuer's *own* balance. This is the auditability requirement end to end and belongs in `src/test/e2e/`. |
+| H-10 | Issuer processing of offchain copies | **Closed by route A** (constrained mint / burn events to the issuer; the `Transfer` stream is now a complete ledger). Remaining: the two-PXE e2e test that shows a real PXE dropping the note copy and processing the events (H-10 lays it out); route B (custom audit message + capsule ledger) if note-level corroboration is wanted. |
 | K-6 | Commitment reuse | **Closed**: option 2 of `doc/design/commitment-reuse.md` applied — one nullifier `H(C, DOM_SEP__CMTAT_COMMITMENT_PAID)` pushed in `pay_commitment` (private half; nothing published, no layout change), +52 gates on `transfer_private_to_commitment`, three tests, mutant killed. Upstream checked 2026-09-17: aztec-nr `main` and aztec-standards `main` unchanged; aztec-packages #14364 (open) puts single-completion on *contract logic* so the library never spends a completion nullifier, i.e. the framework expects exactly this fix from the token. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) remain open. |
 
 ## Gate-count baseline
@@ -72,10 +72,10 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 |---|---:|---:|---:|---:|---|
 | `transfer_private_to_private` (was `transfer`) | 120,824 | 161,493 | 161,493 | 151,085 | +40,669: the `Transfer` event now constrained to both parties (H-4, 0.3.0) |
 | `transfer_batch` | 119,145 | 312,909 | 312,909 | 292,178 | cap lowered 4 → 2; per-recipient cost is what grew |
-| `mint_to_private` (was `mint`) | 30,776 | 36,976 | 36,976 | 30,776 | +6,200: recipient list screening (G-1, 0.3.0); Light has no lists |
-| `mint_batch` | 30,776 | 132,584 | 132,584 | 107,871 | cap raised 1 → 4 |
-| `burn` | 83,656 | 87,935 | 87,935 | 81,736 | +4,279: account list screening (G-1) |
-| `burn_batch` | 81,736 | 331,362 | 331,362 | 306,820 | cap raised 1 → 4 |
+| `mint_to_private` (was `mint`) | 30,776 | 36,976 → 61,062 | 36,976 → 61,062 | 30,776 → 54,862 | +6,200: recipient list screening (G-1, 0.3.0); Light has no lists. Then +24,086 after the review: the issuer's constrained mint event (H-10, route A) |
+| `mint_batch` | 30,776 | 132,584 → 218,669 | 132,584 → 218,669 | 107,871 → 193,956 | cap raised 1 → 4; then one issuer event per recipient (H-10) |
+| `burn` | 83,656 | 87,935 → 111,638 | 87,935 → 111,638 | 81,736 → 105,439 | +4,279: account list screening (G-1); then +23,703: the issuer's constrained burn event (H-10) |
+| `burn_batch` | 81,736 | 331,362 → 352,719 | 331,362 → 352,719 | 306,820 → 328,177 | cap raised 1 → 4; then one issuer event for the batch total (H-10) |
 | `transfer_private_to_public` | — | 95,941 | 95,941 | 85,534 | new; see A-5 |
 | `transfer_public_to_private` | — | 46,833 | 46,833 | 36,425 | new |
 | `transfer_private_to_commitment` | — | 93,011 → 93,063 | 93,011 → 93,063 | 86,812 → 86,864 | new; +52 after the review for the K-6 commitment-paid nullifier |
@@ -132,7 +132,22 @@ Whole-transaction numbers (`aztec-wallet profile`) were not taken; nothing below
 
 ### C-7. `Transfer` (public) emitted from two sites — keep
 
-`_credit_public` emits `Transfer { from: PRIVATE_ADDRESS_MAGIC_VALUE, to, amount }`; `_debit_public` emits `Transfer { from, to: PRIVATE_ADDRESS_MAGIC_VALUE, amount }`. These are two distinct effects with different marker positions, and each site is the only path to its effect, so the "every state change emits" invariant is structural, not conventional. **Keep.**
+**What the check looks for.** Section C asks, for every state change, whether an event is emitted, from how many places, and whether the emissions can drift apart. An event emitted from several sites is the usual way an "every change emits" invariant erodes: one site is edited, the other is not, or a new path is added that forgets to emit. The 0.4.0 bridges introduced a second public `Transfer` emission, which is what triggered the row.
+
+**The two sites.** Both are `#[only_self]` public halves in each variant's `main.nr`, reached only through `enqueue_self` from a private bridge:
+
+| Site | Emits | Enqueued by | Meaning |
+|---|---|---|---|
+| `_credit_public(to, amount)` | `Transfer { from: PRIVATE_ADDRESS_MAGIC_VALUE, to, amount }` | `transfer_private_to_public`, `transfer_private_to_public_with_commitment` | value arrived on the public side from a private sender |
+| `_debit_public(from, amount)` | `Transfer { from, to: PRIVATE_ADDRESS_MAGIC_VALUE, amount }` | `transfer_public_to_private` | value left the public side towards a private recipient |
+
+`PRIVATE_ADDRESS_MAGIC_VALUE` is `sha224("PRIVATE_ADDRESS")`, the sentinel AIP-20 puts in the position of the party that stays private, so that an indexer can tell "the counterpart is private" from "the counterpart is the zero address" (a mint or a burn). The library defines it once in `hybridModule.nr` with the same value as the fork's token; nothing in the suite pins that value (see the last paragraph).
+
+**Why two sites is the right number here.** The two emissions are not two copies of one effect; they are two different effects, and the difference is exactly the marker's position. A credit has no `from` to publish and a debit has no `to`, so a single shared emission would need either a flag that selects which field carries the marker, or an emit in the private half — the first buys nothing over two one-line sites, the second would publish the address the private half exists to hide. Each effect has one and only one path to it, and the emission sits in the same function as the state change it reports (`credit_public` / `debit_public` in `tokenModule.nr` update the map, the enclosing public half emits), so the invariant "a public balance never moves without a `Transfer`" holds by construction rather than by convention: there is no third way to move a public balance. That is the sense in which the row says *structural*.
+
+**What it is not.** It is not the private `Transfer` (H-4). The same event struct is used in two contexts: `transfer_private_to_private` emits it *privately* and delivers it constrained to the recipient and to the issuer; the two sites above emit it *publicly*, as a plain log anyone can read, from a public function. The public emissions publish `to` or `from` and `amount`, which is the nature of the public side the holder chose; the private one publishes nothing. C-7 is only about the public pair.
+
+**What a reviewer should check when the code moves.** That every path that touches `public_balances` still ends in one of the two halves (today: three enqueues, listed above); that the marker occupies the private side's slot in both; that the value still equals AIP-20's, since indexers written for the standard key on it; and that no private function emits the public event. A test that pins the constant to `sha224("PRIVATE_ADDRESS")` and one that decodes the public log of each bridge and asserts the marker's position would make the last two checks mechanical; neither exists today, and they are the one addition worth making. **Keep** the two sites.
 
 ### C-8. A completed commitment's note has no issuer copy — keep, and it is documented
 
@@ -241,15 +256,70 @@ Traced every argument of the two new public halves. `_credit_public(to, amount)`
 
 `complete_from_private` emits the completion as a log tagged by the commitment with `[storage_slot, value]` in clear — the library's design, not this project's. An observer learns the amount and cannot link it to a party without the commitment's preimage. Disclosed in `doc/README.md`, the standards documents and the assessment's privacy discussion. **Keep**; it is the price of the partial-note pattern.
 
-### H-10. Issuer processing of offchain copies — decide
+### H-10. Issuer processing of offchain copies — root cause found; fix and tests laid out
 
-The design's hard requirement is that the issuer can reconstruct every balance. K-2 now proves each note movement emits an offchain message *addressed to the issuer* (one per mint or burn, two per transfer, following a rotation). What no test proves is that the issuer's PXE can *do anything with them*: `offchain_receive` stores them in an inbox and sync "validates the resulting notes against onchain data" — validation of a note the recipient does not own is the very thing the README says the onchain path cannot do, and the offchain path has not been shown to do it either. The e2e suite's only issuer assertion (`balance_of_private(issuer)`) is the issuer's own balance. **Decide**: write the e2e test — issuer collects `offchainMessages` from a holder's transfer, calls `offchain_receive`, syncs, and reads the holder's notes (or fails, in which case the audit story needs the app-siloed-key alternative the README lists). Until it exists, the auditability claim is delivery-proven and processing-unproven.
+**The finding.** The design's hard requirement is that the issuer can reconstruct every balance. K-2 proves each note movement emits an offchain message *addressed to the issuer* (one per mint or burn, two per transfer, following a rotation). What no test proved is that the issuer's PXE can *do anything with them*. The 0.3.0 README states the belief the code was built on: an onchain copy to a non-owner "breaks discovery" because "note discovery computes the note's nullifier, which needs the owner's nullifier key", and "delivering the issuer's copy offchain sidesteps that". This section checks that belief against aztec-nr v5.2.0 and the PXE, finds it half right, and sets out what can be done.
 
-## I. Dependency and interface granularity
+#### What the code does with a copy of someone else's note
 
-Nothing new. The two authorization contracts depend on `aztec` and `cmtat_aztec_lib` only; the tokens depend on the same plus `uint_note`, `balance_set`, `compressed_string`. No contract crate depends on another contract crate (the reverted `CMTATAztecAIP20` had needed an interface-only stub for exactly the event-collision reason 0.3.0's I section anticipated; the stub went with the revert).
+Onchain and offchain messages are processed by the **same** function. `sync_state_with_secrets` (`messages/discovery/mod.nr`) first processes the tagged logs fetched from the node, then, if an offchain inbox exists, every message the recipient handed to `offchain_receive`, and both go through `process_message_ciphertext` → `process_private_note_msg` → `attempt_note_discovery` → `attempt_note_nonce_discovery`. Offchain delivery changes *how the ciphertext reaches the PXE* (a call to `offchain_receive` instead of a tag query), not what happens to it afterwards.
 
-## J. Modularity
+In `attempt_note_nonce_discovery` (`messages/discovery/nonce_discovery.nr`), after the note hash has been matched against the transaction's unique note hashes, the note's nullifier is computed through the contract's `compute_nullifier_unconstrained`, which for `UintNote` is `try_get_public_keys(owner).map(|pk| get_nhk_app(pk.npk_m_hash))`. Two outcomes, depending on what the issuer's PXE knows about the holder:
+
+| Issuer's PXE state | `try_get_public_keys(holder)` | Then | Result for the copy |
+|---|---|---|---|
+| Holder's complete address **not registered** | `None` | `compute_nullifier_unconstrained` returns `None` | The library logs `Unable to compute nullifier of unique note … skipping PXE insertion` and **drops the note**. The comment above that branch reads: "TODO: down the line we want to be able to store notes for which we don't know their nullifier, e.g. notes that belong to someone that is not us … https://linear.app/aztec-labs/issue/F-265/store-external-notes". |
+| Holder's complete address **registered** (as a sender or contact) | `Some(keys)` | `get_nhk_app(npk_m_hash)` → PXE `KeyStore.getKeyValidationRequest` → `getKeyPrefixAndAccount` scans the key store, which holds secrets only for the PXE's own accounts | The key store **throws** `Could not find key prefix.`; the oracle call fails inside `sync_state`, so the issuer's sync of this contract aborts — including for the issuer's own notes. |
+
+So the README's premise is right (the nullifier needs the owner's key) and its conclusion is wrong: offchain delivery does not sidestep it, because the offchain path reaches the same line. At 5.2.0 **a stock PXE cannot store a note it does not own, by either delivery mode**, and the framework says so in a TODO. The copies are not useless — the issuer holds the keys to decrypt them, and custom tooling can decrypt a message, recompute the note hash and prove its membership in the tree — but nothing in `@aztec/pxe` does that today.
+
+Two further facts change what "the issuer's audit trail" rests on:
+
+- **Spent status is invisible even with the copies.** A stored copy would tell the issuer that a note *was created* for a holder, never that it was *spent*: the nullifier is `H(note_hash, nhk_app)` and unlinkable without the holder's key. A ledger of creations is not a balance. Only the constrained **`Transfer` event** (H-4), delivered to the issuer with `from`, `to` and `amount`, gives the movements; replaying mint, transfer and burn amounts is what reconstructs a balance. The note copies can at most *corroborate* the events (the preimage of a note the event says was created).
+- **Offchain copies depend on the sender forwarding them.** An offchain message is returned to the *sender's* wallet as an `OffchainEffect` of its own simulation; nothing on chain carries it. The holder's software has to transport `(ciphertext, recipient, tx_hash, anchor_block_timestamp)` to the issuer and the issuer has to call `offchain_receive`. A holder that does not forward is undetectable on chain, which the README already notes; combined with the previous point, the onchain constrained `Transfer` event is the only record the issuer gets without the holder's cooperation. Private events have no owner and no nullifier, so the issuer's PXE **can** process them: `process_private_event_msg` validates the event commitment against the tree and stores it, with no key lookup on any other party.
+
+#### Can it be fixed?
+
+Four routes, from cheapest to least available:
+
+| Route | What it is | Available at 5.2.0 | What the issuer gets | Cost |
+|---|---|---|---|---|
+| **A. Events as the ledger** | Treat the constrained `Transfer` event stream as the audit record it already is; add constrained private events to the issuer for **mint** and **burn** (today `_mint` / `_burn` only touch `total_supply` in public, so the issuer learns amounts from the public `total_supply` delta and the holder from its note, but no per-holder private record reaches the issuer) | Yes | Every movement with parties and amounts, on chain, unforgeable, processable by a stock PXE; balances by replay | Two more constrained event deliveries per mint / burn (about 20,200 gates each by the 0.4.0 measurement); the issuer reads `getPrivateEvents` |
+| **B. Custom audit message + capsule ledger** | Deliver the issuer's copy as a **custom message** (`custom_msg_type_id(0)`, `encode_message`, `do_private_message_delivery`) instead of a private-note message, and register a `custom_message_handler` (`#[aztec(AztecConfig::new().custom_message_handler(…))]`) that recomputes the note hash, checks it against `resolved_tx.unique_note_hashes_in_tx` with the public `compute_note_hash_nonce` / `compute_siloed_note_hash` / `compute_unique_note_hash`, and stores `(owner, unique_note_hash, value)` in a **capsule** keyed by owner; a `#[external("utility")] fn audit_notes_of(holder)` reads it back | Yes — the framework ships `custom_message_contract` as the reference for exactly this handler-plus-capsule pattern | A verified list of every note created per holder, processable by a stock PXE, without the holder's keys; still no spent status (see above) | One custom handler per variant (about 60 lines, shareable through a library function), one custom message per note instead of a note message (same size), tests through `env.offchain_messages()` + `offchain_receive` in the TXE |
+| **C. Upstream F-265, "store external notes"** | The library stores notes whose nullifier it cannot compute | No (TODO in the source, no date) | The same as B, done by the framework, with the note in the note store rather than a capsule | None here; unknown timing |
+| **D. Share the app-siloed nullifier key** | The holder gives the issuer `nhk_app` for this contract (the README's "app-siloed key" alternative), letting the issuer compute nullifiers and so see spends without being able to prove a spend (the kernel's key validation needs the master key) | No — the PXE key store has no notion of a viewing-only app-siloed key for another address; it would need a custom PXE and a key-sharing protocol | Full per-holder ledger including spends | A new trust relationship (the issuer learns every spend), custom PXE, no framework support |
+
+**Recommendation.** A is the honest description of what already holds and closes the largest gap for a small, measurable cost: the `Transfer` event already does the work for transfers, and mint and burn are the two movements the issuer currently learns only in aggregate. B is worth doing if the issuer needs note-level corroboration (for example to prove to a third party that a specific note exists), and it is the route that makes the existing offchain copies *processable* instead of decoratively delivered. C and D are not decisions this project can take. Whichever is chosen, the README sentence "delivering the issuer's copy offchain sidesteps that" should be corrected to what the code does: the copy arrives, is decryptable by the issuer, and is dropped by a stock PXE.
+
+#### How the tests would be implemented in this project
+
+Two tests, one per environment, because the TXE cannot reproduce the situation and the e2e suite can.
+
+**Why the TXE cannot prove or disprove H-10.** The TXE runs one PXE and one key store for every account of a test. When the issuer scope ingests the holder's copy through `offchain_receive`, `try_get_public_keys(holder)` succeeds and `get_nhk_app` finds the holder's secret in the shared store, so the note is accepted and stored — for the holder, whose note it is. A green TXE test would say nothing about an issuer that does not hold the holder's keys. What the TXE *can* pin is the framework's behaviour on the path (that the copies are decryptable and match the tree) and the ingestion call itself; the reference token's `transfer_in_private_with_offchain_delivery_updates_both_balances` test is the model, with the shape `env.offchain_messages()` → batch of at most `MAX_OFFCHAIN_MESSAGES_PER_RECEIVE_CALL` → `env.execute_utility(Token::at(token).offchain_receive(batch))`; K-2's tests already use the first of those calls to count the copies and check their recipient.
+
+**The e2e test that answers the question** — `src/test/e2e/issuer_audit.test.ts`, on a sandbox, built from the two-PXE setup that `scripts/multiple_pxe.ts` already contains:
+
+1. **Two PXEs, two wallets.** PXE A holds the holder's account; PXE B holds the issuer's account and nothing else. Deploy `CMTATAztec` from B with the issuer as issuer and admin; grant `MINTER_ROLE`. Register the token's artifact in both PXEs.
+2. **Mint and transfer from A.** `mint_to_private(holder, 1_000)` from the issuer (on B), then `transfer_private_to_private(holder, other, 100, 0)` from the holder (on A), capturing the interaction's `OffchainOutput`: `offchainMessages` filtered to `recipient == issuer`.
+3. **Forward the copies to B.** `token.methods.offchain_receive([{ ciphertext, recipient: issuer, tx_hash, anchor_block_timestamp }]).simulate({ from: issuer })` on B, in batches of 16, exactly as the *Offchain message delivery* documentation shows.
+4. **Sync B and observe.** Three assertions, each of which is a fact today rather than a wish:
+   - `balance_of_private(holder)` executed as a utility on B returns **0** (the copy was dropped, first row of the table above), and B's log contains `skipping PXE insertion`; if the holder's complete address was registered on B beforehand (`registerSender`), the sync instead **throws** `Could not find key prefix.` (second row) — the test should cover both, since an issuer that registers its holders as senders, which is the natural thing to do, hits the worse case.
+   - `getPrivateEvents(Transfer, { contractAddress: token, scopes: [issuer] })` on B returns the transfer with `from = holder`, `to = other`, `amount = 100`: the event path works for a non-owner.
+   - `balance_of_private(holder)` on A returns 900: the holder's own view is unaffected by anything the issuer did.
+5. **After A or B is implemented**, the first assertion flips: with route A, B's events also carry the mint (and a burn, if the test adds one); with route B, `audit_notes_of(holder)` on B returns the change note and `audit_notes_of(other)` the payment note, both with hashes present in the tree.
+
+Two practical notes for whoever writes it. The sandbox clock cannot be fast-forwarded, so the test must wait `CHANGE_ROLES_DELAY_SECONDS` (360 s) after deployment before the first mint, as the existing e2e suite does. And `getPrivateEvents` needs the event's metadata from the generated artifact (`CMTATAztecContract.events.Transfer`), which `yarn codegen` produces.
+
+**Status.** Root cause established from the source; the auditability claim is delivery-proven (K-2), event-processable by construction, note-processable **not** — and not fixable inside the PXE at 5.2.0 without route B. The e2e test has not been run (no sandbox in this review).
+
+**Route A applied after the review.** `mint_to_private`, `mint_batch` (one per recipient), `burn` and `burn_batch` (one for the batch total, since the batch debits one account) now emit `Transfer` with the zero address on the private side's slot — the ERC-20 / AIP-20 convention — delivered `onchain_constrained` to the issuer, in all three variants. The `Transfer` stream is therefore a complete ledger of movements the issuer's PXE can process without anyone else's keys. Verified:
+
+- `tests/cmtat-aztec/src/test_issuer_records.nr`, four tests. The TXE cannot read a private event's content, so each test counts what the event leaves in the transaction (`aztec::test::helpers::txe_oracles::get_last_tx_effects`): one private log and two nullifiers (the event commitment and the constrained delivery's sequence nullifier). Each operation runs twice and the second transaction is measured, because a first contact also creates the handshakes tagging needs and their notes, logs and nullifiers would make the counts depend on delivery order. Measured without the event, a warm mint leaves 1 note, 1 log, 2 nullifiers; with it, 1 note, 2 logs, 4 nullifiers.
+- Mutants: removing the four `emit`s in the base contract fails all four tests.
+- Gates: `mint_to_private` +24,086, `burn` +23,703, `mint_batch` +86,085 (four events), `burn_batch` +21,357 (one event), see the baseline table; the batch caps hold (`mint_batch` at 4 carries eight constrained deliveries, the count `transfer_batch` at 2 already carried).
+- The README's *Events* and *Limitations* sections corrected as recommended above.
+
+Route B stays available if note-level corroboration is ever needed; the two-PXE e2e test described above is still the one that would demonstrate, on a real PXE, the drop of the note copy and the processing of the events.
 
 ### J-2. Tests in contract crates — corrected, then fixed
 
@@ -382,7 +452,7 @@ Two of the new tests measured behaviour the code did not state, and both are rec
 
 ## What was run, and what was not
 
-**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, and 218/218 after the K-6 fix (128 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
+**Run.** `aztec compile --workspace` (clean); `aztec profile gates ./target` three times (baseline, after A-4's refactor, after D-3); `aztec test --workspace` — **214 tests passed** (126 base, 12 Debt, 7 Light, 35 + 34 authorization; plus 2 library tests) after the additions, 216/216 from the `tests/` crates after the J-2 move, 218/218 after the K-6 fix (128 base), and 222/222 after route A of H-10 (132 base); five mutation runs with the targeted tests, plus their re-runs after the fixes; the `default-member` experiment (mtime of all five artifacts after a bare `aztec compile`); a scripted inventory of entry points, asserts, branches, `should_fail_with` strings and tested entry points.
 
 **Not run.** `aztec-wallet profile` (needs a sandbox); `yarn test:js`; any test of the issuer's PXE processing offchain messages (H-10).
 

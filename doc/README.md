@@ -221,13 +221,13 @@ _Diagram source: `doc/img/burn-flow.puml`._
 
 Both numbers are measured, not derived from the protocol constants. Every value was tried by setting the global, adjusting the tests and running the full Noir suite.
 
-**Mint and burn** — one note and one or two constrained deliveries per address:
+**Mint and burn** — one note, its constrained delivery, and since 0.4.0 one constrained event to the issuer per recipient (mint) or per call (burn):
 
 | `MAX_ADDR_PER_CALL` | `mint_batch` | `burn_batch` | Result |
 |---:|---:|---:|---|
-| 1 | 30,776 | 81,736 | all tests pass |
-| 2 | 60,169 | 160,189 | all tests pass |
-| **4** | **132,584** | **331,362** | **all tests pass** |
+| 1 | 30,776 | 81,736 | all tests pass (measured before the issuer's mint / burn events) |
+| 2 | 60,169 | 160,189 | all tests pass (same) |
+| **4** | **218,669** | **352,719** | **all tests pass** |
 | 5 | — | — | batched mint and burn end with a wrong total supply |
 
 **Transfer** — two notes and, since the `Transfer` event is delivered constrained to both the recipient and the issuer, **four constrained deliveries per recipient**:
@@ -281,6 +281,8 @@ Events must be declared inside the contract module, not in the shared library, w
 | Event | Fields | Emitted by | Delivered to | Mode |
 |---|---|---|---|---|
 | `Transfer` | `from`, `to`, `amount` | `transfer_private_to_private`, and `transfer_batch` once per recipient | the **recipient** and the **issuer** | `onchain_constrained`, both |
+| `Transfer` with `from = 0` | `from = AztecAddress::zero()`, `to`, `amount` | `mint_to_private`, and `mint_batch` once per recipient | the **issuer** | `onchain_constrained` |
+| `Transfer` with `to = 0` | `from`, `to = AztecAddress::zero()`, `amount` | `burn` (per call) and `burn_batch` (one event for the batch total, since it debits one account) | the **issuer** | `onchain_constrained` |
 
 This one is worth explaining, because both choices — who receives it, and how — were made deliberately and cost something.
 
@@ -288,7 +290,9 @@ This one is worth explaining, because both choices — who receives it, and how 
 
 **Why constrained.** An `onchain_unconstrained` delivery is "on-chain delivery without constrained encryption": the circuit computes `from` correctly, but nothing proves that what the sender's PXE posts encrypts that value. The recipient would decrypt whatever the sender chose — a receipt the sender can forge is not a convenience but a settlement-confirmation attack surface. Constrained delivery makes the receipt provable. It costs about **20,200 gates per delivery**, measured.
 
-**Why the issuer.** The issuer's note copies are offchain by necessity — PXE cannot discover a note it does not own — so until this event the issuer's whole audit trail had no data availability and a dropped message was undetectable. An event has no nullifier and no discovery step, and it was **verified** that the issuer can receive one constrained and on chain. This is therefore the issuer's first on-chain, unforgeable record of who paid whom and how much.
+**Why the issuer.** The issuer's note copies are offchain, and a stock PXE cannot store a note it does not own by either delivery mode (see *Limitations*), so without the events the issuer's whole audit trail had no data availability, a dropped message was undetectable, and even a delivered copy was unprocessable. An event has no owner and no nullifier: the issuer's PXE validates its commitment against the tree and stores it without anyone else's keys. The `Transfer` stream is therefore the issuer's on-chain, unforgeable **ledger**: since 0.4.0 it covers every movement — mints (`from = 0`) and burns (`to = 0`) as well as transfers, the ERC-20 and AIP-20 convention — so replaying it reconstructs every holder's balance, which no set of note copies could do (a copy says a note was created, never that it was spent). The note copies remain as corroboration: the preimage of a note the ledger says exists.
+
+**What the mint and burn records cost.** One constrained delivery each: `mint_to_private` 36,976 → 61,062 gates, `burn` 87,935 → 111,638, `mint_batch` 132,584 → 218,669 (one event per recipient), `burn_batch` 331,362 → 352,719 (one event for the total) on the base and Debt variants; Light: 30,776 → 54,862, 81,736 → 105,439, 107,871 → 193,956, 306,820 → 328,177. The batch caps are unchanged: `mint_batch` at 4 recipients carries eight constrained deliveries, the same count `transfer_batch` at 2 already carries.
 
 **What it cost.** `transfer_private_to_private` went from 120,824 to **161,493 gates** (+34%), and because each constrained delivery counts against a per-call budget, the transfer batch cap fell from **4 to 2** recipients — see [Batching limits](#batching-limits). That trade was taken knowingly: a security token's audit trail is the point of the instrument, and batched transfers are its rare path.
 
@@ -399,7 +403,7 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 
 - **Objective**: Enable the issuer to see all transactions.
 - **Current implementation**: Note emission is duplicated: one message for the owner of that note, and a second copy of the same message for the issuer (`deliver_to(issuer, ...)`).
-- **Delivery mode of the issuer's copy**: the owner's copy is delivered onchain and constrained; the issuer's copy is delivered **offchain**. Aztec's own documentation presents an onchain constrained copy to an auditor as the supported pattern, but PXE cannot process an onchain note message addressed to someone who is not the note's owner: note discovery computes the note's nullifier, which needs the owner's nullifier key. Delivering the issuer's copy offchain sidesteps that, at the cost of the issuer's copy having no onchain data availability - the issuer must capture these messages as they are produced, and a sender who drops them is not detectable onchain.
+- **Delivery mode of the issuer's copy**: the owner's copy is delivered onchain and constrained; the issuer's copy is delivered **offchain**. Aztec's own documentation presents an onchain constrained copy to an auditor as the supported pattern, but PXE cannot process an onchain note message addressed to someone who is not the note's owner: note discovery computes the note's nullifier, which needs the owner's nullifier key. Delivering the issuer's copy offchain avoids the onchain cost of a copy the PXE cannot use, but it does **not** make the copy processable: the offchain path runs through the same discovery code, which skips any note whose nullifier it cannot compute (the 0.4.0 review, H-10, traces it to `attempt_note_nonce_discovery`; the framework tracks storing such notes as future work). The copies are decryptable by the issuer with custom tooling and have no onchain data availability - the issuer must capture them as they are produced, and a sender who drops them is not detectable onchain. The issuer's processable, on-chain record is the constrained `Transfer` event stream, which since 0.4.0 covers mints and burns as well as transfers (see *Events*).
 - **Other potential implementations**:
   - **App-siloed key**: Use an app-siloed key that the issuer can use for decrypting any note in the note hash tree of this app.
 

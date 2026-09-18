@@ -78,6 +78,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Added
 
+- Every mint and burn now delivers a constrained `Transfer` event to the issuer, with the zero address on the private side (`from = 0` for a mint, `to = 0` for a burn, the ERC-20 and AIP-20 convention), in the three token variants; `mint_batch` emits one per recipient, `burn_batch` one for the batch total (review finding H-10, route A).
+  - Why: the issuer's offchain note copies cannot be stored by a stock PXE, by either delivery mode — note discovery skips any note whose nullifier it cannot compute, and that needs the owner's key — and a copy would in any case never show that a note was spent. The `Transfer` event stream, which a PXE processes without anyone else's keys, is the issuer's ledger; it now covers every movement, so replaying it reconstructs every holder's balance.
+  - Cost: one constrained delivery per record. `mint_to_private` 36,976 → 61,062 gates, `burn` 87,935 → 111,638, `mint_batch` 132,584 → 218,669, `burn_batch` 331,362 → 352,719 (base and Debt); Light 30,776 → 54,862, 81,736 → 105,439, 107,871 → 193,956, 306,820 → 328,177. Batch caps unchanged.
+  - The README's limitation on the issuer's copy is corrected accordingly: offchain delivery avoids the cost of an unusable onchain copy, it does not make the copy processable.
 - `CMTATAztecAuth` and `CMTATAztecAuthMultiToken`, two ARC-403 authorization contracts that apply CMTAT's pause, deactivation, freeze and a sender-side blacklist / whitelist to the stock AIP-20 `Token` and ARC-1155 `MultiToken` of the `aztec-standards` fork, which call them before every transfer and burn. Documented in `doc/auth/README.md`, with three PlantUML sequence diagrams under `doc/auth/img/` (AIP-20 flow, ARC-1155 flow, public entry points).
   - Rules follow CMTAT Solidity on the arguments the hook provides: a transfer needs the contract not paused and `from` neither frozen nor stopped by the enabled list; a burn needs it not deactivated and the same on `from`; burns are recognised by the reference contracts' selectors, everything else is a transfer. Mints never reach the hook, and neither the recipient nor the initiator is passed, so a listed or frozen address can still receive.
   - The freeze and list flags are read in private; the pause and deactivation flags are `PublicMutable` and checked by one enqueued public call whose only argument is `is_burn`, the same immediate-pause choice the token contracts made under `H-3`.
@@ -105,7 +109,8 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - How: thirty files moved with `git mv`, no test body changed; a test crate imports its contract by package name (`use cmtat_aztec::CMTATAztec`) and deploys it with `env.deploy("@cmtat_aztec/CMTATAztec")`; `mod test;` and the `cmtat_aztec_test_helpers` dependency left the contract crates.
   - Running one crate is now `aztec test --package cmtat_aztec_test` (was `cmtat_aztec`); `yarn test:nr` (`aztec test --workspace`) is unchanged.
 - Three tests pin the single-payment rule of commitments: a second payment is refused, both for a commitment the recipient opened and for one the sender opened with `transfer_private_to_public_with_commitment`, and the first payment is received unchanged; both refusal tests were confirmed to fail with the guard removed.
-- Four compiler warnings in the base test crate silenced. The Noir suite is now 218 tests (128 base, 12 Debt, 7 Light, 35 and 34 authorization) plus 2 library tests.
+- Four tests in `test_issuer_records.nr` pin the issuer's mint and burn records by counting what each event leaves in the transaction (one private log, two nullifiers), measured on a second call so that first-contact handshakes do not enter the count; all four fail with the emits removed.
+- Four compiler warnings in the base test crate silenced. The Noir suite is now 222 tests (132 base, 12 Debt, 7 Light, 35 and 34 authorization) plus 2 library tests.
 
 ### Documentation
 
