@@ -37,6 +37,7 @@ This repository contains a functional private CMTAT prototype, where transaction
 - [Comparison with CMTAT-Confidential (Zama FHE)](#comparison-with-cmtat-confidential-zama-fhe)
 - [Limitations](#limitations)
 - [Miscellaneous](#miscellaneous)
+- [FAQ](#faq)
 - [Glossary](#glossary)
   - [Aztec protocol](#aztec-protocol)
   - [Aztec.nr and the code in this repository](#aztecnr-and-the-code-in-this-repository)
@@ -401,7 +402,7 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 - Unlike the validation module, this module is mandatory.
 - Changing an address to frozen has a delay, as the value is a `DelayedPublicMutable`.
 
-> **"Freeze Address" Note**: The enforcement has a delay, similar to the validation module. One approach is to pause the contract before freezing some accounts for the delay time, then unpause it. This requires manual pause/unpause.
+> **"Freeze Address" Note**: The enforcement has a delay, similar to the validation module, and the target can see the freeze coming during it (see [FAQ](#faq)). One approach is to pause the contract before freezing some accounts for the delay time, then unpause it. This requires manual pause/unpause.
 
 ### Issuer's view of transactions and notes
 
@@ -681,6 +682,18 @@ Note that the two disagree about total supply in opposite directions: this imple
 - **External references**:
   - Aztec Development Notes: [Engineering Designs](https://github.com/AztecProtocol/engineering-designs)
   - Protocol Limitations: [Aztec Protocol Circuits](https://github.com/AztecProtocol/aztec-packages/blob/aztec-packages-v0.49.1/noir-projects/noir-protocol-circuits/crates/types/src/constants.nr)
+
+## FAQ
+
+**Q: During the delay, can the target address know that it is about to be frozen?**
+
+Yes, from three public sources, so the delay is a notice period rather than a countdown the target cannot see:
+
+- **The event.** `freeze` emits a public `AddressFrozen { account, is_frozen, enforcer, effective_at }` log in the same transaction, naming the address, who froze it and the exact timestamp the freeze takes effect.
+- **The scheduled value.** A `DelayedPublicMutable` is public state, and so is its pending change: the library's own words are that the value "is fully public, as are all scheduled value and delay changes". Anyone with a node can read the scheduled flag and its effective timestamp before it is current.
+- **The transaction.** The `freeze` call is a public function whose arguments, `user` among them, are visible in the block.
+
+The consequence is the one this document already records for the validation module: a holder who sees the freeze scheduled can move its funds to a fresh address before it bites, and that address's flags are clean. The delay does not create the problem, the public flag does; the delay only sets the length of the head start, six minutes at the current `CHANGE_ROLES_DELAY_SECONDS`. The countermeasure the token has is the **pause**, which is a `PublicMutable` and takes effect immediately: `pause → freeze → wait the delay → unpause` reduces the head start to zero, at the cost of halting every holder for the delay, and the pause is itself a public event. Checking the freeze in the public half instead, the way the pause is checked, would make it immediate but would publish the parties of every transfer, which is the trade this token refuses (review finding H-6, option 5). Removing the address from the event would not help, since the scheduled value and the call arguments remain public.
 
 ## Glossary
 

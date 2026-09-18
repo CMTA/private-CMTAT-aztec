@@ -37,7 +37,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | G-7 | `doc/img/architecture.puml` still showed three variants and no `tokenModule` | ✅ fixed — re-drawn and re-rendered |
 | G-8 | The glossary and the agent guide named the removed `_*_internal` helpers | ✅ fixed |
 | G-9 | A stale `cmtat_aztec_aip20` artifact from the reverted crate sat in `target/` | ✅ fixed — removed; `yarn clean` before profiling |
-| H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ⬜ decide — unchanged; the bridges add four more entry points that carry the same expiration window |
+| H-6 | The 360-second delay is an order of magnitude under the library's recommended minimum | ⬜ decide — detailed: every value-moving tx expires 6 min after its anchor and is fingerprinted against a 24 h neighbourhood (`token_blacklist_contract`, AIP-20, `MAX_TX_LIFETIME` all sit at 86,400); five options and two coherent positions set out in H-6 |
 | H-7 | Public-call-count fingerprint, extended to the bridges | ⬜ keep — every value-moving entry point enqueues exactly one public call; the two that enqueue none move no value |
 | H-8 | What the bridges publish | ✅ verified — exactly the mover's own side, as the design states; `PRIVACY:` comments at every public half |
 | H-9 | The commitment completion log carries the amount unencrypted | ⬜ keep — inherent to partial notes; disclosed in `doc/README.md` and the assessment |
@@ -59,7 +59,7 @@ Carried forward from 0.3.0 where still open; new IDs continue each check's seque
 | ID | Item | Why it is still open |
 |---|---|---|
 | F-1 | The two AIP-20 features still open after 0.4.0 | A commitment **expiry** (F2, addition 1: a recipient frozen after opening a commitment can still be paid into it) and the **rule-engine hook** with recipient and caller (F3). Both are additions, not renames; both need a design pass. The refusals — holder self-burn, a single immutable minter, public-to-public transfers — are decided and should stay refused. |
-| H-6 | The 360 s delay | Unchanged: needs the network's typical delay, real proving times and a compliance call. 0.4.0 raised the stakes slightly — nine private entry points now read a delayed value instead of five. |
+| H-6 | The 360 s delay | Choose between 86,400 s (the protocol maximum and the largest privacy set; freeze window covered by the immediate pause) and 360 s documented as a compliance choice with its six-minute proving budget; an intermediate value only if the target network's contracts cluster there. Add `set_delay` for `issuer_address` either way. Still missing: proving time on holders' devices. |
 | H-10 | Issuer processing of offchain copies | **Closed by route A** (constrained mint / burn events to the issuer; the `Transfer` stream is now a complete ledger). Remaining: the two-PXE e2e test that shows a real PXE dropping the note copy and processing the events (H-10 lays it out); route B (custom audit message + capsule ledger) if note-level corroboration is wanted. |
 | K-6 | Commitment reuse | **Closed**: option 2 of `doc/design/commitment-reuse.md` applied — one nullifier `H(C, DOM_SEP__CMTAT_COMMITMENT_PAID)` pushed in `pay_commitment` (private half; nothing published, no layout change), +52 gates on `transfer_private_to_commitment`, three tests, mutant killed. Upstream checked 2026-09-17: aztec-nr `main` and aztec-standards `main` unchanged; aztec-packages #14364 (open) puts single-completion on *contract logic* so the library never spends a completion nullifier, i.e. the framework expects exactly this fix from the token. The two design questions of K.3 (zero-address recipient / completer, last admin renouncing) remain open. |
 
@@ -315,9 +315,77 @@ The `#[internal]` glossary row in `doc/README.md` and the *Batching caps* senten
 
 ## H. Weird behaviour and privacy leakage
 
-### H-6. The delay — carried forward
+### H-6. The delay — carried forward, and detailed
 
-Unchanged decision, slightly larger surface: the bridges and `initialize_transfer_commitment` read the same `DelayedPublicMutable` values, so nine private entry points (was five) now carry the 360-second expiration window and the fingerprint the 0.3.0 report describes.
+**In one sentence.** Every private read of a flag or of the issuer address is only valid for `CHANGE_ROLES_DELAY_SECONDS = 360` seconds, so every value-moving transaction of this token must be included within six minutes of its anchor block and announces that fact on chain; the library recommends hours, the framework's own blacklist token uses a day, and the value was taken from an unrelated example.
+
+#### What the delay does, and where it is felt
+
+A `DelayedPublicMutable` is a public value a private function is allowed to read. The trick that makes the read sound is a promise: a write is *scheduled*, and takes effect only `DELAY` seconds later, so a value read at the anchor block is guaranteed still current until `anchor_timestamp + DELAY`. The private function proves against the anchor and sets the transaction's `expiration_timestamp` to that bound; the kernel takes the **minimum** over every read in the transaction; the rollup rejects a transaction included after it. Three effects follow from one number:
+
+| Effect | Who feels it | With 360 s |
+|---|---|---|
+| **Write latency.** A freeze, a listing, a list-mode change or an issuer rotation takes effect `DELAY` after it is scheduled. | The compliance officer | six minutes: the freeze window the assessment describes, and the reason the value is short |
+| **Validity window.** A transaction that read the value must be proved *and* included before `anchor + DELAY`. | Every holder, on every mint, transfer, burn and bridge | six minutes from the anchor block for proving (119,290 gates for a transfer, 228,274 for a batch of two; 10 to 60 s on a laptop by the documentation, longer on a phone), mempool wait and inclusion, all together |
+| **Fingerprint.** `expiration_timestamp` is public. A transaction whose expiry is `anchor + 360` reads a variable with a 360 s delay. | Every holder's privacy | the token's transactions are distinguishable from those of any contract that uses a different delay, or none |
+
+The wallet can lower an expiration to hide it in a crowd; it cannot raise it. The contract's delay is therefore an upper bound on the privacy of every transaction that touches it.
+
+#### Which transactions carry it
+
+All of them that move value, because they all read `issuer_address` to deliver the issuer's copies, and most read the screening flags as well:
+
+| Private entry point | Delayed reads |
+|---|---|
+| `mint_to_private`, `mint_batch` | issuer; recipient freeze flag; recipient list flags and the list mode |
+| `transfer_private_to_private`, `transfer_batch`, `transfer_private_to_public`, `transfer_public_to_private`, `transfer_private_to_public_with_commitment` | issuer; both parties' freeze flags; both parties' list flags; the list mode |
+| `burn`, `burn_batch`, `transfer_private_to_commitment` | issuer; one party's flags |
+| `initialize_transfer_commitment` | issuer; the recipient's flags |
+| `private_get_issuer` | issuer |
+
+Nine value-moving entry points and one getter, all at 360, so the minimum is 360 everywhere. Note the consequence for any proposal to "lengthen only some": a transaction's expiry is the minimum over its reads, and every one of these reads the issuer *and* at least one flag, so the shortest delay among the variables is the delay of the token. Mixing values would not lengthen any window and would add a second fingerprint (which flags a transaction read). One value for every delayed variable is the right structure; the question is only which value.
+
+#### Where 360 came from, and what the references use
+
+| Source | Delay | Purpose |
+|---|---:|---|
+| This project, `CHANGE_ROLES_DELAY_SECONDS` | 360 s | freeze, lists, list mode, issuer |
+| Framework example `auth_contract` (`CHANGE_AUTHORIZED_DELAY`) | 360 s | a single authorised address; the documentation's illustrative value ("5 slots") |
+| Framework example **`token_blacklist_contract`** (`CHANGE_ROLES_DELAY`) | **86,400 s** | roles and a blacklist read privately by a token — the closest analogue of this contract, and the origin of this project's constant *name* |
+| Library docstring examples | 21,600 s / 86,400 s | a pause (6 h), an authorisation (24 h) |
+| Library recommendation | "at least a couple hours" | general |
+| `MAX_TX_LIFETIME` | 86,400 s | the protocol's inclusion limit for every transaction; the library calls it "the optimal delay from a privacy point of view", because a contract using it "puts contracts in the same privacy set as those that do not use `DelayedPublicMutable` at all" |
+| AIP-20 `Token` (aztec-standards) | — | no delayed reads; its transactions expire at the protocol's 24 h |
+
+So the name was borrowed from the blacklist token and the value from the authorisation example, which is what the 0.3.0 report meant by "decided by the documentation's example value". Two things the table settles that the 0.3.0 report left open. The privacy-set question has a partial answer: the protocol's own reference token for this exact use case sits at 24 hours, and a token with no delayed reads, AIP-20 included, expires at 24 hours too, so a 360 s expiry is a singular value on any network where those are the neighbours. And the "optimal" value is not a matter of taste: at exactly `MAX_TX_LIFETIME` the token's transactions are indistinguishable from transactions that never read a delayed variable, the largest set there is. Any other value, long or short, is a fingerprint of some size; the only two defensible choices are 86,400 or whatever cluster the network's other compliance tokens settle on.
+
+#### The trade, quantified
+
+| `DELAY` | Freeze / listing bites after | Validity window for proving and inclusion | Privacy set |
+|---:|---|---|---|
+| **360 s** (today) | 6 min | 6 min: tight for a phone, a congested mempool, or a batch | alone, unless other contracts copy the same example |
+| 3,600 s | 1 h | 1 h: comfortable | small; nothing known uses it |
+| 21,600 s | 6 h | 6 h | the library's pause example |
+| **86,400 s** | 24 h | 24 h, the protocol maximum | the largest: every contract with no delayed reads, plus `token_blacklist_contract` |
+
+Compliance wants the first column short; privacy and usability want the other two long; no value serves both, and the current one sits at the compliance end without having weighed the other two. The emergency lever the token already has changes the weighing: the **pause is immediate** (`PublicMutable`, decided under H-3), so a targeted freeze that would take `DELAY` to bite can be preceded by a pause that stops all transfers at once. With a long delay the compliance playbook for a sanctioned holder becomes *pause → freeze → wait `DELAY` → unpause*, at the cost of halting every holder for `DELAY`; at 24 hours that is a full trading day for one freeze, at one hour it is tolerable. The freeze window itself, the interval in which the target can still move funds, is the same as today's problem at a different scale, and the assessment's existing note ("a user who knows they are going to be blacklisted before the delay elapses might send their funds… This problem has no solution for now") applies at every value.
+
+#### What could be changed
+
+Five options, from the cheapest to the most structural.
+
+1. **Raise the constant.** One line in `enforcementModule.nr` and one in `validationModule.nr`. `DELAY` is a type parameter, not storage, so the layout does not move; it is a redeployment like any change. Every Noir test that waits `CHANGE_ROLES_DELAY_SECONDS` adapts automatically (the TXE advances time). The e2e suite does not: a sandbox clock cannot be fast-forwarded, so a 24-hour constant makes the existing sandbox tests wait a day. The workable answer is a test build with a short constant (a second value selected at compile time), accepting that the test artifact is a different contract class from the production one; the alternative, deploying at 360 and raising at runtime, is option 3 and only reaches one of the four variables.
+2. **Keep 360 and document it as a choice.** The README currently states the value as a fact; the reasoning belongs beside it, with the three facts this section adds: the transaction expiry, the fingerprint against a 24-hour neighbourhood, and the proving budget on a phone. A wallet integrating the token should also be told that its transactions expire six minutes after the anchor, so that it re-anchors before proving rather than after.
+3. **Make the delay adjustable at runtime.** The library supports it: `schedule_delay_change(new_delay)` on a `DelayedPublicMutable`, with an asymmetry the docstring explains: an *increase* takes effect at once (nothing already scheduled can land earlier than promised), a *decrease* is itself delayed by the difference. A `set_delay(new)` entry point under `DEFAULT_ADMIN_ROLE` would let the issuer lengthen the delay after deployment, and shorten it with notice. The catch is the maps. `issuer_address` and `operationsFlag` are single instances and can be adjusted in one call; the freeze and list flags are `Map<AztecAddress, DelayedPublicMutable<…>>`, and the delay is stored **per entry**, so a global change would have to visit every address that has ever been scheduled, and untouched entries keep the compile-time initial value. A variant that works: each `freeze` / `add_to_list` / `remove_from_list` first applies the contract's current delay setting to *that* entry (`schedule_delay_change`, then `schedule_value_change`), at `2N + 2` extra `SSTORE`s per write, so entries converge to the setting as they are touched; until they all have, two entries with different delays give two different expirations, a transient fingerprint the section above already argued against. Useful for `issuer_address` today, awkward for the maps, and no substitute for choosing the initial value well.
+4. **Remove the issuer read from the private path.** Every value-moving function reads `issuer_address` privately to know where to send the copies. If the issuer were a `PublicImmutable`, that read would not set an expiry and would cost ~4,000 gates less; `set_issuer` would go, and a rotation would be a redeployment. It does not change the token's delay, because the flags are still read, so on its own it buys nothing for H-6; it is listed because it is the one read that could leave the delayed set, and because the rotation feature (0.3.0) is what keeps it there.
+5. **Check freeze and lists in the public half instead.** The pause is checked in the enqueued `_transfer` precisely so that it can be immediate. Doing the same for the freeze and list flags would make them immediate too and remove every delayed read from transfers, at the price H-1 and H-3 already priced: the public half would need `from` and `to` as arguments, and publish them. Hashing the addresses does not help, since the set of addresses is public and a hash of one is a lookup. This is the design the token exists to avoid; it is here so that the trade is written down, not as a proposal.
+
+**Recommendation.** Decide between two coherent positions and write the reasoning into the README:
+
+- **Privacy-first: 86,400 s**, the protocol maximum. The token's transactions join the largest privacy set, proving and inclusion have the protocol's full window, and the freeze window is covered operationally by the immediate pause (`pause → freeze → wait → unpause`) or accepted as the 24-hour exposure the assessment already documents in kind. Requires the e2e test build with a short constant. This is what the framework's own compliance token does.
+- **Compliance-first: keep 360 s**, and state what it costs: a six-minute proving-and-inclusion budget that a wallet must be designed around, and a transaction shape that identifies the token on any network where the neighbours use the protocol's defaults.
+
+An intermediate value (an hour, six hours) buys a shorter freeze window at the price of a privacy set that has to be shared with someone, and nothing known shares it; it should be chosen only if a measured population of contracts on the target network clusters there. Either way, add `set_delay` for `issuer_address` (option 3, the single-instance case) so that the one variable that can be tuned after deployment can be, and keep a single value across the four variables. The number that would settle the choice is still the one the 0.3.0 report asked for and nobody has: how long a transfer takes to prove on the devices the token's holders will use.
 
 ### H-7. Public-call fingerprint, extended — keep
 
