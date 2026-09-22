@@ -34,6 +34,7 @@ This repository contains a functional private CMTAT prototype, where transaction
 - [Private/public bridges](#privatepublic-bridges)
 - [AIP-20 private profile](#aip-20-private-profile)
 - [Deployment](#deployment)
+- [Gas sponsorship](#gas-sponsorship)
 - [Comparison with Solidity CMTAT](#comparison-with-solidity-cmtat)
 - [Comparison with CMTAT-Confidential (Zama FHE)](#comparison-with-cmtat-confidential-zama-fhe)
 - [Limitations](#limitations)
@@ -72,7 +73,7 @@ Noir has no inheritance and allows one contract per package, so the variants are
 | `CMTATAztec` | The above plus the validation module (blacklist / whitelist) |
 | `CMTATAztecDebt` | The above plus credit events and debt, for bond-like instruments |
 
-Two further contracts are not tokens but **ARC-403 authorization contracts**: they apply CMTAT's pause, deactivation, freeze and sender-side blacklist / whitelist to the stock tokens of the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), which call them as a hook before every transfer and burn. See [`doc/auth/README.md`](auth/README.md).
+Two further contracts are not tokens but **ARC-403 authorization contracts**: they apply CMTAT's pause, deactivation, freeze and sender-side blacklist / whitelist to the stock tokens of the [CMTA fork of `aztec-standards`](https://github.com/CMTA/aztec-standards), which call them as a hook before every transfer and burn. See [`doc/auth/README.md`](./auth/README.md).
 
 | Contract | Restricts |
 |---|---|
@@ -92,7 +93,7 @@ The private CMTAT supports the following core features:
 
 Unlike the reference [Solidity CMTAT](https://github.com/CMTA/CMTAT), it does not support:
  - Upgradeability
- - Gasless transactions
+ - An ERC-2771 meta-transaction module — unnecessary here, because Aztec sponsors gas natively; see [Gas sponsorship](#gas-sponsorship)
 
 This reference implementation aims to fulfill the criteria required to tokenize financial instruments such as bonds, equity shares, and private credit notes.
 
@@ -132,13 +133,13 @@ You may modify the token code by adding, removing, or modifying features, at you
 
 Three deployment variants compose modules from one shared library. Noir has no inheritance and allows one contract per package, so a variant is a different *composition*, not a subclass.
 
-![Workspace layout: three token variants and two authorization contracts over the shared module library, whose tokenModule holds the value-moving chains](img/architecture.png)
+![Workspace layout: three token variants and two authorization contracts over the shared module library, whose tokenModule holds the value-moving chains](./img/architecture.png)
 
 _Diagram source: `doc/img/architecture.puml`._
 
 What the token keeps private is the holder balances and the transfers between them. Everything an issuer needs to administer publicly — supply, roles, pause state, the compliance flags — stays public by design.
 
-![What is public and what is private](img/state-split.png)
+![What is public and what is private](./img/state-split.png)
 
 _Diagram source: `doc/img/state-split.puml`._
 
@@ -152,7 +153,7 @@ _Diagram source: `doc/img/state-split.puml`._
 
 ### Mint private specifications
 
-![Private mint sequence](img/mint-flow.png)
+![Private mint sequence](./img/mint-flow.png)
 
 _Diagram source: `doc/img/mint-flow.puml`._
 
@@ -175,7 +176,7 @@ _Diagram source: `doc/img/mint-flow.puml`._
 
 The transfer is the flow worth reading closely: it shows the private half doing all the work on the user's own device, and the enqueued public half deliberately taking no arguments at all.
 
-![Private transfer sequence, private and public halves](img/transfer-flow.png)
+![Private transfer sequence, private and public halves](./img/transfer-flow.png)
 
 _Diagram source: `doc/img/transfer-flow.puml`._
 
@@ -195,7 +196,7 @@ _Diagram source: `doc/img/transfer-flow.puml`._
 
 ### Burn private specifications
 
-![Private burn sequence, with and without an authwit](img/burn-flow.png)
+![Private burn sequence, with and without an authwit](./img/burn-flow.png)
 
 _Diagram source: `doc/img/burn-flow.puml`._
 
@@ -357,7 +358,7 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 
 #### Token module - Shared Context
 
-`lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants: `mint_private`, `transfer_private`, `burn_private` (screening, then the note movement with the issuer's copy of every note), the bridge chains (`bridge_private_to_public`, `bridge_public_to_private`, `open_commitment`, `pay_commitment`), the batch preconditions, and the public halves' bodies (`mint_public`, `burn_public`, `require_transfer`, `credit_public`, `debit_public`). The functions take the state variables as arguments and never own them, so each contract keeps its own `#[storage]` and slot layout. What a variant screens is a `Screening` value it builds from its own storage: `FreezeAndLists` for `CMTATAztec` and `CMTATAztecDebt`, `FreezeOnly` for `CMTATAztecLight` — that one library method (`screening(storage)`) is the only place the three contracts differ on these paths. Each `main.nr` keeps the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions, which Noir requires in the contract module. The refactor's rationale and measured effect are in [`doc/technical/token-module.md`](technical/token-module.md); the gate profile is identical before and after, because both `#[internal]` helpers and library functions are inlined.
+`lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants: `mint_private`, `transfer_private`, `burn_private` (screening, then the note movement with the issuer's copy of every note), the bridge chains (`bridge_private_to_public`, `bridge_public_to_private`, `open_commitment`, `pay_commitment`), the batch preconditions, and the public halves' bodies (`mint_public`, `burn_public`, `require_transfer`, `credit_public`, `debit_public`). The functions take the state variables as arguments and never own them, so each contract keeps its own `#[storage]` and slot layout. What a variant screens is a `Screening` value it builds from its own storage: `FreezeAndLists` for `CMTATAztec` and `CMTATAztecDebt`, `FreezeOnly` for `CMTATAztecLight` — that one library method (`screening(storage)`) is the only place the three contracts differ on these paths. Each `main.nr` keeps the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions, which Noir requires in the contract module. The refactor's rationale and measured effect are in [`doc/technical/token-module.md`](./technical/token-module.md); the gate profile is identical before and after, because both `#[internal]` helpers and library functions are inlined.
 
 #### Authorisation module (access control) - Public Context
 
@@ -379,7 +380,7 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 
 The diagram below is the whole argument in one picture: why the flags must be delayed, and what that delay costs.
 
-![Why compliance flags are delayed, and the window it opens](img/delayed-flag.png)
+![Why compliance flags are delayed, and the window it opens](./img/delayed-flag.png)
 
 _Diagram source: `doc/img/delayed-flag.puml`._
 
@@ -457,7 +458,7 @@ They are **off unless the issuer enables them at deployment**: the constructor's
 
 - **+52 gates** on `transfer_private_to_commitment` in every variant (93,011 → 93,063 base and Debt, 86,812 → 86,864 Light); no storage change, no ABI change, nothing published — the nullifier is a different hash of the commitment than the completion log tag and is unlinkable to it without the commitment.
 - **The failure is an invalid transaction, not a named revert.** The payer's simulation passes (it does not check the nullifier tree for a nullifier it is about to create) and the node refuses the transaction; in the TXE this surfaces as `Nullifier collision`, the same signature as a replayed authwit. A wallet that wants to warn before sending can derive the nullifier and check its existence.
-- **Behaviour differs from AIP-20's code in one direction only**: a caller reaching the shared selector meets a stricter contract, never a laxer one, and the wallet rule the standard's documentation gives (one commitment per expected payment) still holds; it is now enforced rather than assumed. Measured and tested in `tests/cmtat-aztec/src/test_edge_cases.nr`; the reasoning and the options considered are in [`doc/technical/commitment-reuse.md`](technical/commitment-reuse.md).
+- **Behaviour differs from AIP-20's code in one direction only**: a caller reaching the shared selector meets a stricter contract, never a laxer one, and the wallet rule the standard's documentation gives (one commitment per expected payment) still holds; it is now enforced rather than assumed. Measured and tested in `tests/cmtat-aztec/src/test_edge_cases.nr`; the reasoning and the options considered are in [`doc/technical/commitment-reuse.md`](./technical/commitment-reuse.md).
 
 **Where the code lives.** The entry points are in each variant's `main.nr` under the `HYBRID` banner (Noir requires every external function in the contract module); the state and the helpers, which are derived from the AIP-20 `Token`, are in [`lib/src/modules/hybridModule.nr`](../lib/src/modules/hybridModule.nr). That one file is **MIT-only**, with Wonderland's copyright notice for the derived parts — see [Intellectual property](#intellectual-property).
 
@@ -499,7 +500,7 @@ Install the correct version of the toolkit with:
 aztec-up install 5.2.0
 ```
 
-The version should match the [Nargo.toml](https://github.com/CMTA/private-CMTAT-aztec/blob/master/Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
+The version should match the [Nargo.toml](../Nargo.toml) dependency versions. More instructions [here](https://docs.aztec.network/guides/getting_started)
 
 Start the sandbox with:
 
@@ -516,7 +517,7 @@ yarn codegen
 yarn test
 ```
 
-The contract is deployed on the sandbox, by the [setup function](https://github.com/CMTA/private-CMTAT-aztec/blob/master/tests/cmtat-aztec/src/utils.nr), and all the tests are run.
+The contract is deployed on the sandbox, by the [setup function](../tests/cmtat-aztec/src/utils.nr), and all the tests are run.
 
 ### Testnet
 
@@ -534,6 +535,24 @@ yarn deploy
 
 If you run into troubleshooting issues, consult the [Aztec starter repository](https://github.com/AztecProtocol/aztec-starter/tree/main) and try running it first.
 
+
+## Gas sponsorship
+
+**A holder does not need Fee Juice to use this token, and the token carries no code to make that true.** On Aztec the fee payer is chosen per transaction, not configured in the contract: any transaction may nominate a **fee-paying contract** (FPC) with `set_as_fee_payer()` during its non-revertible setup phase. There is no trusted forwarder, no `_msgSender()` override and no relayer to trust — which is why this implementation has no equivalent of CMTAT's ERC-2771 module and does not need one. The equivalency assessment answers the *fee payer / gasless* criterion `partial` for exactly this reason.
+
+Three ways to pay, all available to a holder of this token without any change to it:
+
+| Who pays | How | Where it works |
+|---|---|---|
+| The holder | Its own public Fee Juice balance, bridged from L1 | Everywhere |
+| A **sponsored FPC** | Pays unconditionally, asking nothing of the holder | Local network, devnet, testnet |
+| A **third-party FPC** | Holds its own Fee Juice and charges the holder in another asset, usually against a signed quote and an authwit collected during setup | Anywhere one is deployed; the realistic mainnet route |
+
+This repository already uses the second: `src/utils/sponsored_fpc.ts` supplies the payment method, `deploy_account.ts` and `create_account_from_env.ts` deploy accounts with it, and `yarn fees` demonstrates all three paths including bridging and claiming Fee Juice.
+
+**An FPC cannot practically charge in this token.** Two obstacles, and both are outside the contract's control: the setup phase runs against an allowlist from which custom token public functions were removed in Aztec 4.2.0, and mainnet alpha does not include custom token class IDs in it; and this token's balances are private notes, so a setup-phase charge would be a private transfer whose freeze and list screening could revert a phase that is not supposed to revert. An issuer wanting sponsorship should sponsor directly, or use an FPC that accepts a different asset.
+
+**Sponsorship is also a privacy measure, not only a convenience.** Fee payment is public — a Fee Juice balance visibly decreases — so a holder who pays its own fee publishes that it transacted, even though the transfer itself reveals neither party nor amount. Paying through an FPC is what keeps the payer out of that record, which matters more for this token than for a transparent one.
 
 ## Comparison with solidity CMTAT
 
@@ -555,7 +574,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
   - The cap is currently 4 addresses per call, set by the per-call note-hash and log budgets rather than by the private-call budget — see [Batching limits](#batching-limits).
   - As those budgets grow, the cap can be raised: the logic is already written for arbitrary batch sizes. Each raise needs re-measuring rather than re-reading the constants, and the per-recipient proving cost grows with it.
 
-> These functions are not separated into their own “abstract contract”, which does not exist in Aztec. They are, since 0.4.0, in a library module: `lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants, and the extra code this was expected to cost turned out to be negative — about 500 lines fewer across the repository, with every private circuit identical to the gate. What Noir still requires in each contract is the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions; see [`doc/technical/token-module.md`](technical/token-module.md).
+> These functions are not separated into their own “abstract contract”, which does not exist in Aztec. They are, since 0.4.0, in a library module: `lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants, and the extra code this was expected to cost turned out to be negative — about 500 lines fewer across the repository, with every private circuit identical to the gate. What Noir still requires in each contract is the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions; see [`doc/technical/token-module.md`](./technical/token-module.md).
 
 - **Validation module enhancements**:
   - The limitation regarding `DelayedPublicMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.
@@ -771,19 +790,19 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **`#[external("private" \| "public" \| "utility")]`** | Marks a function callable from outside the contract, and says which environment runs it. |
 | **`#[internal("private" \| "public")]`** | A helper callable only from inside the contract and **inlined** at the call site — reached through `self.internal`. `_grant_role_internal`, `_emit_listed` and `_open_commitment` are these; the value-moving chains are ordinary library functions in `tokenModule.nr`, inlined the same way. |
 | **`#[only_self]`** | A real (non-inlined) function only the contract itself may call. The enqueued public halves `_mint`, `_transfer` and `_burn` use it. |
-| **`self.enqueue_self`** | Schedules one of this contract's public functions to run after private execution. This is how a private mint updates the public `total_supply`. |
+| **`self.enqueue_self`** | Schedules one of this contract's public functions to run after private execution. This is how a private mint updates the public `total_supply`. Not a Noir feature: the `#[aztec]` macro generates one method per non-view public function of *this* contract, so `self.enqueue_self._mint(...)` is type-checked against the real signature and a rename breaks the call site. `#[view]` functions go to `self.enqueue_self_static` instead, and the generated stub publishes `msg_sender` — `self.enqueue_incognito` is the variant that does not. |
 | **`#[authorize_once("from", "authwit_nonce")]`** | Macro that validates the authwit when the caller is not `from`, and nullifies the nonce so it cannot be replayed. The `from` account itself must pass `authwit_nonce = 0`. |
 | **Storage slot** | The index that keeps one state variable's data from colliding with another's. Assigned automatically. |
 | **`PublicMutable<T>`** | Public value, read and written by public functions only. Used for `total_supply` and the role table. |
 | **`PublicImmutable<T>`** | Public value written once and readable everywhere, including private functions. Used for `name`, `symbol`, `decimals`. |
-| **`DelayedPublicMutable<T, DELAY>`** | A public value whose writes take effect only after `DELAY`. That delay is what makes it readable from a *private* function, since the circuit can prove the value cannot change for a known window. Used for `issuer_address`, freeze flags and validation flags. **`DELAY` is a number of seconds** (`CHANGE_ROLES_DELAY_SECONDS = 360`), not a block count. |
+| **`DelayedPublicMutable<T, DELAY>`** | A public value whose writes take effect only after `DELAY`. That delay is what makes it readable from a *private* function, since the circuit can prove the value cannot change for a known window. Used for `issuer_address`, freeze flags and validation flags. **`DELAY` is a number of seconds** (`CHANGE_ROLES_DELAY_SECONDS = 3600`, one hour, and adjustable at runtime with `set_roles_delay`), not a block count. |
 | **`Owned<V>`** | Wrapper required by private state variables, binding them to an owner; reached with `.at(address)`. |
 | **`PrivateSet<Note>`** | A collection of notes belonging to one owner. |
 | **`BalanceSet`** | The Aztec.nr state variable for private balances, a `PrivateSet<UintNote>` with `add` / `sub` / `balance_of`. `private_balances` is an `Owned<BalanceSet>`. |
 | **`Map<K, V>`** | Key-value container for *public* state, the analogue of a Solidity `mapping`. Private state uses `Owned` instead. |
 | **`UintNote`** | The built-in note type holding a `u128`, used here for token amounts. |
 | **Note message / `MessageDelivery`** | Creating a note yields a message that **must** be delivered, and you choose how: `onchain_constrained()` (proven, most expensive), `onchain_unconstrained()` (onchain but trusts the sender), or `offchain()` (cheapest, no onchain data). See *Issuer's view of transactions and notes* for the choice made here. |
-| **`deliver_to(address, mode)`** | Delivers a copy of a note message to somebody who is *not* the note's owner. They learn the note exists; they cannot spend it, and cannot see when it is spent. This is the issuer's audit channel. |
+| **`deliver_to(address, mode)`** | Delivers a copy of a note or event message to somebody who is *not* the note's owner. They learn the note exists; they cannot spend it, and cannot see when it is spent. This is the issuer's audit channel. An Aztec.nr method, not a Noir one, on the message that `self.emit(...)` and `BalanceSet::add` / `sub` return; the message is `#[must_use]`, so forgetting to deliver it is a compiler warning rather than silent data loss. `deliver(mode)` is the shorthand for the owner. A **note** copy to a non-owner has to be `offchain()` — a stock PXE cannot process one delivered onchain, because it cannot compute the nullifier; an **event** copy has no owner and can be `onchain_constrained()`. |
 | **Module (in this repo)** | Because Noir has no inheritance, each concern is a plain struct held as a field of the contract's storage: `access_control`, `pause_module`, `enforcement_module`, `validation_module`, `extra_information_module`, and in the Debt variant `credit_event_module` and `debt_module`. They live in `lib/`, shared by every variant, and each user-callable entry point is still re-declared in that variant's `main.nr`. |
 | **`EmbeddedWallet`** | The TypeScript wallet used by `scripts/` and the end-to-end tests. It owns its own PXE and holds several accounts; each call names its sender with `from`. |
 | **`aztec codegen`** | Generates the typed TypeScript contract bindings in `src/artifacts/` from the compiled artifact. Re-run it after any change to the contract's interface. |

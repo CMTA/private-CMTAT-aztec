@@ -141,6 +141,10 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - Solution 2 is marked as available by hand — `pause_contract` / `add_to_list` / `unpause_contract` — since the pause is deliberately immediate; solution 1 is marked unavailable, as reading public state privately still has no protocol support.
   - The per-flag delay is described as the runtime setting `roles_delay()` rather than the compile-time constant, and the section cross-references the delay section and the freeze-notice FAQ entry.
 
+- New **Gas sponsorship** section in `doc/README.md`, and both READMEs corrected: they listed "gasless transactions" as unsupported, which contradicted the equivalency assessment's `partial` answer and the repository's own `src/utils/sponsored_fpc.ts`.
+  - What is absent is CMTAT's ERC-2771 meta-transaction module, and it is unnecessary here: Aztec chooses the fee payer per transaction rather than in the contract, so a holder needs no Fee Juice and the token needs no forwarder.
+  - The section gives the three payment routes (self, sponsored FPC, third-party FPC), records that this repository already deploys accounts through a sponsored FPC, and states why an FPC cannot practically charge in this token — the setup-phase allowlist since Aztec 4.2.0, and private balances whose screening could revert a non-revertible phase.
+  - It also records sponsorship as a privacy measure: fee payment is public, so a holder paying its own fee publishes that it transacted even though the transfer reveals neither party nor amount.
 ### Removed
 
 - `doc/standards/cmtat-as-aip20-auth-contract.md`, the feasibility study for an authorization contract. Superseded by the contracts themselves: its mandatory-criteria scorecard (re-scored against what was built) and its list of hook changes that would close the partials moved into `doc/auth/README.md`; the probe measurements it recorded are replaced by the shipped contracts' numbers.
