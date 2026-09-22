@@ -31,6 +31,14 @@ end note
 
 Priv -> To : new note for `to`, onchain_constrained
 Priv -> Issuer : copy of that note, offchain
+Priv -> Issuer : Transfer{from = 0, to, amount}, onchain_constrained
+note right of Issuer
+  Added in 0.4.0 (review finding H-10). The note copy above is offchain
+  and a stock PXE cannot process a note it does not own, so without this
+  event the issuer had no on-chain record of a mint. An event has no
+  owner and no nullifier, so the issuer's PXE can store it.
+  Cost: one constrained delivery, about 24,000 gates.
+end note
 
 Priv -> Pub : enqueue_self _mint(msg_sender(), amount)
 note over Pub

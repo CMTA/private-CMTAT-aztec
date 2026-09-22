@@ -40,6 +40,14 @@ Priv -> PXE : sub(amount) on `account`
 PXE --> Priv : nullify the spent notes, create a change note
 Priv -> Holder : change note, onchain_constrained
 Priv -> Issuer : copy of the change note, offchain
+Priv -> Issuer : Transfer{from = account, to = 0, amount}, onchain_constrained
+note right of Issuer
+  Added in 0.4.0 (review finding H-10), for the same reason as the mint:
+  the note copy is offchain and unprocessable by a stock PXE, so the
+  event is what makes the burn part of the issuer's on-chain ledger.
+  burn_batch emits one event for the batch total, since it debits one
+  account. Cost: one constrained delivery, about 24,000 gates.
+end note
 
 Priv -> Pub : enqueue_self _burn(msg_sender(), amount)
 note over Pub

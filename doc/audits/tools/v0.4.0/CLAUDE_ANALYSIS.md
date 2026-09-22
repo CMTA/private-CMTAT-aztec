@@ -317,6 +317,8 @@ The `#[internal]` glossary row in `doc/README.md` and the *Batching caps* senten
 
 ### H-6. The delay — carried forward, and detailed
 
+> **Applied after the review (2026-09-18).** The finding below describes the state it was raised against, `CHANGE_ROLES_DELAY_SECONDS = 360`. The initial delay is now **3600 seconds (one hour)** and adjustable at runtime with `set_roles_delay` (options 1 and 3), bounded by `MAX_ROLES_DELAY_SECONDS = 86400`. Read the section as the analysis that led there; every "360 s" and "six minutes" in it is the old value.
+
 **In one sentence.** Every private read of a flag or of the issuer address is only valid for `CHANGE_ROLES_DELAY_SECONDS = 360` seconds, so every value-moving transaction of this token must be included within six minutes of its anchor block and announces that fact on chain; the library recommends hours, the framework's own blacklist token uses a day, and the value was taken from an unrelated example.
 
 #### What the delay does, and where it is felt

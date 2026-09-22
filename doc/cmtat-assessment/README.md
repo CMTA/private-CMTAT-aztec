@@ -612,7 +612,7 @@ Three consequences MUST be recorded:
 - **Issuer name and description** — `DebtIdentifier.issuerName` and `DebtIdentifier.issuerDescription`, two debt attributes present in the Solidity `ICMTATDebt.DebtIdentifier` but with no counterpart among criteria 48–61.
 - **Authwit revocation** — `cancel_authwit(inner_hash)` lets a holder invalidate a granted authentication witness before it is used, by publishing its nullifier. CMTAT Solidity has no equivalent, because an ERC-20 allowance is revoked by overwriting it.
 - **Private reads of token attributes** — `private_get_name`, `private_get_symbol`, `private_get_decimals` and `private_get_issuer` allow a private function to read these values without a public call that would leak the caller's address.
-- **Batch entry points** — `mint_batch`, `transfer_batch` and `burn_batch` exist but are capped at `MAX_ADDR_PER_CALL = 1` by the per-call protocol limits (16 private logs and 8 nested private calls). The logic is written for larger batches and the cap can be raised as the limits allow.
+- **Batch entry points** — `mint_batch`, `transfer_batch` and `burn_batch` exist, capped at `MAX_ADDR_PER_CALL = 4` for mint and burn and `MAX_TRANSFER_ADDR_PER_CALL = 2` for transfer. Both caps are **measured**, not derived from the protocol constants: each value was set, the tests adjusted and the full suite run. Transfer's is lower because each recipient costs four constrained deliveries once the `Transfer` event goes to both the recipient and the issuer. The logic is written for larger batches, and raising a cap means re-running the suite at the new value.
 
 ## Conclusion
 
