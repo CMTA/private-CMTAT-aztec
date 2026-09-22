@@ -8,9 +8,9 @@ This project implements a private version of the CMTAT security token, using [Az
 
 [CMTAT](https://github.com/CMTA/CMTAT?tab=readme-ov-file) is a framework for the tokenization of securities in compliance with local regulations. This project integrates Aztec with CMTAT, allowing financial institutions to adopt the standard while preserving transaction confidentiality.
 
-This repository contains a functional private CMTAT prototype, where transactions remain private for users, while issuers retain the ability to audit and monitor activity to ensure compliance. This marks a significant step forward, enabling institutions to participate in tokenized markets without exposing confidential data—overcoming one of the key limitations of public blockchains.
+This repository contains a functional private CMTAT prototype, where transactions remain private for users, while issuers retain the ability to audit and monitor activity to ensure compliance. Institutions can therefore participate in tokenized markets without publishing holdings or counterparties, which a public blockchain otherwise forces them to do.
 
-**Disclaimer:** Aztec is under heavy developpment, and this repository may be subject to rapid changes. Significant updates will needed once Aztec reaches mainnet. Additionally, unlike CMTAT, this code has not been audited and may not be fully compliant with the Swiss law.
+**Disclaimer:** This project has not undergone an audit and is provided as-is without any warranties.
 
 
 ## Table of contents
@@ -64,7 +64,7 @@ Enough to read the rest of this document. The full [Glossary](#glossary) at the 
 
 ## Deployment variants
 
-Noir has no inheritance and allows one contract per package, so the variants are separate contract packages over a shared module library (`lib/`), built together as a Nargo workspace. A second library crate, `test-helpers/`, holds the test scaffolding the three Noir suites share, so that it does not ship inside `lib/`.
+Noir has no inheritance and allows one contract per package, so the variants are separate contract packages over a shared module library (`lib/`), built together as a Nargo workspace. A second library crate, `test-helpers/`, holds the helpers the three Noir suites share — advancing the chain past a delay, calling a private function on behalf of another account — so that they do not ship inside `lib/`.
 
 | Variant | Contents |
 |---|---|
@@ -370,7 +370,7 @@ Aztec Noir uses Rust-like modularity, which means that there is no Solidity-like
 
 - This module is called only when performing transfers.
 - The `operateOnTransfer` function, used in a private context, is called by the transfer function.
-- Each user flag update will be delayed by `CHANGE_ROLES_DELAY_SECONDS`.
+- Each user flag update is delayed by the current setting, `roles_delay()` — `CHANGE_ROLES_DELAY_SECONDS` (one hour) at deployment, adjustable afterwards; see [Delay of the delayed values](#delay-of-the-delayed-values).
 - If no operations are enabled, no checks are done, but the function is still called.
 - Operations can be enabled or disabled, and there is also a delay.
 - Currently, no operations can be added; there is only blacklist/whitelist.
@@ -383,9 +383,9 @@ The diagram below is the whole argument in one picture: why the flags must be de
 
 _Diagram source: `doc/img/delayed-flag.puml`._
 
-- The delay is caused by the fact that the roles are stored in a `DelayedPublicMutable` variable type.
+- The delay is caused by the flags being stored in a `DelayedPublicMutable`. To be precise about which state this is: the **validation flags** (`users`, `operationsFlag`), the **freeze flags** and `issuer_address`. The **roles** are not delayed — `RoleData.has_role` is a `Map<AztecAddress, PublicMutable<bool>>` and a grant or revoke takes effect in the same block. The constant is named `CHANGE_ROLES_DELAY_SECONDS` for historical reasons, which is misleading on this point.
 - This is needed to preserve privacy when doing a private transfer between two users while maintaining the strict rule that no tokens should be transferred from/to a blacklisted address.
-- **Problem**: A user who knows they are going to be blacklisted before the delay elapses might send their funds to an address that is not blacklisted. This problem has no solution for now.
+- **Problem**: A user who knows they are going to be blacklisted before the delay elapses might send their funds to an address that is not blacklisted. This problem has no solution for now, and the target does learn of a pending freeze — see the [FAQ](#faq) for the three public sources that tell it.
 - **Consideration**: We need to think about whether the shared state will be changed often. If not, then `DelayedPublicMutable` is an acceptable solution; otherwise, it might be problematic.
 
 **Potential solutions**:
@@ -393,6 +393,14 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 - **Theoretical solution 1**: Using a `DelayedPublicMutable` is essential because otherwise, you would use a `PublicMutable`, which means that the user calling the transfer function needs to call a public function to read the `PublicMutable` variable, leaking the sender’s address. One possible solution might be to hide the caller's address using [Diversified and Stealth Addresses](https://docs.aztec.network/protocol-specs/addresses-and-keys/diversified-and-stealth). If reading `PublicMutable` did not leak the user address, then `DelayedPublicMutable` would be unnecessary.
 - **Theoretical solution 2**: Have a counter that is set when the `DelayedPublicMutable` is changed. For the `COUNTER` amount of time, the token contract is paused to prevent any blacklisted address from retrieving funds. This solution is poor in terms of user experience and developer experience, as the issuer needs to manually unpause the contract.
 - **Practical solution 3**: If we whitelist instead of blacklist, a new whitelisted address will not be able to transfer funds directly, which is not a significant issue.
+
+**What is implemented today.** Of the three above, one is in the contract and one is available by hand:
+
+- **Solution 3 is implemented and is the issuer's choice at runtime.** The validation module carries both modes — `BLACKLIST_FLAG` and `WHITELIST_FLAG`, held together in a `SetFlag { operate_blacklist, operate_whitelist }` — and `set_operations` (`VALIDATION_ROLE`) turns either or both on. In whitelist mode the delay works in the safe direction: a newly listed address simply cannot transfer until the delay elapses, whereas in blacklist mode a newly listed address can still move funds during it. An issuer that cannot accept the escape window should run in whitelist mode; that is the mitigation, and it costs the delay on every new holder instead.
+- **Solution 2 is not implemented as a counter, but the pause it needs exists and is immediate.** `is_paused` is a `PublicMutable<bool>` checked in the enqueued `_transfer`, deliberately not delayed (see [Delay of the delayed values](#delay-of-the-delayed-values)), so an issuer that wants the "freeze the whole token while a listing takes effect" behaviour can call `pause_contract`, then `add_to_list`, then `unpause_contract` after the delay. Nothing automates the sequence, and the manual unpause is exactly the operational cost the solution describes.
+- **Solution 1 is not available.** It depends on reading a `PublicMutable` from private without revealing the caller, which the protocol does not offer at 5.2.0; diversified and stealth addresses remain a specification, not an implementation.
+
+**What changed since these were written.** The delay is no longer a compile-time constant: `set_roles_delay(new_delay)` (`DEFAULT_ADMIN_ROLE`, `1 ≤ new_delay ≤ 86400`) moves it at runtime, the per-address entries adopt the setting when they are next written, and each event carries the `effective_at` the library scheduled, not `now + delay`. That does not close the escape window — it lets the issuer trade its width against the transaction-validity window and the privacy set, and the **Consideration** bullet above is the decision it asks for.
 
 #### Pause module - Public Context
 
@@ -529,7 +537,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
 
 ## Comparison with solidity CMTAT
 
-### What can we actually do with private CMTAT?
+### What private CMTAT can do today
 
 - **Mint/transfer**: Behave the same way as in CMTAT.
 - **Burn**: We can perform `burn_from` with allowance.
@@ -547,7 +555,7 @@ If you run into troubleshooting issues, consult the [Aztec starter repository](h
   - The cap is currently 4 addresses per call, set by the per-call note-hash and log budgets rather than by the private-call budget — see [Batching limits](#batching-limits).
   - As those budgets grow, the cap can be raised: the logic is already written for arbitrary batch sizes. Each raise needs re-measuring rather than re-reading the constants, and the per-recipient proving cost grows with it.
 
-> These functions are not separated into their own “abstract contract”, which does not exist in Aztec. They are, since 0.4.0, in a library module: `lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants, and the boilerplate this was expected to cost turned out to be negative — about 500 lines fewer across the repository, with every private circuit identical to the gate. What Noir still requires in each contract is the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions; see [`doc/technical/token-module.md`](technical/token-module.md).
+> These functions are not separated into their own “abstract contract”, which does not exist in Aztec. They are, since 0.4.0, in a library module: `lib/src/modules/tokenModule.nr` holds the value-moving chains once for the three variants, and the extra code this was expected to cost turned out to be negative — about 500 lines fewer across the repository, with every private circuit identical to the gate. What Noir still requires in each contract is the `#[external]` declarations, their attributes, the `enqueue_self` calls and the event emissions; see [`doc/technical/token-module.md`](technical/token-module.md).
 
 - **Validation module enhancements**:
   - The limitation regarding `DelayedPublicMutable` delay means changes to the whitelist/blacklist have a delay (minutes to hours) before reflecting on the blockchain.

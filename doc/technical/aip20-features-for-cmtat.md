@@ -65,7 +65,7 @@ The last column is the state of the code; the *Verdict* column is the recommenda
 | — | Holder self-burn | **Regresses criterion 11** | — | — | Rejected | **Still rejected** — `burn` keeps `BURNER_ROLE` and its own selector |
 | — | Single immutable minter | **Regresses 29–31** | — | — | Rejected | **Still rejected** — minting keeps `MINTER_ROLE` |
 
-The product map this table originally carried — *CMTAT-private gains F1 and F3 and nothing else; CMTAT-private-AIP20 is CMTAT-private plus F2, F4, F5 and F7* — is **retired**. The release found a third shape the note did not consider: one product in which the AIP-20 surface is a deployment flag rather than a separate contract, and in which F6 appears only as the endpoint of a holder-initiated bridge rather than as a second, transparent ledger. The reasoning that produced the map is still sound; what it missed is that "public balances" is not one feature but two, and only the larger one contradicts the token's premise.
+The product map this table originally carried — *CMTAT-private gains only F1 and F3; CMTAT-private-AIP20 is CMTAT-private plus F2, F4, F5 and F7* — is **retired**. The release found a third shape the note did not consider: one product in which the AIP-20 surface is a deployment flag rather than a separate contract, and in which F6 appears only as the endpoint of a holder-initiated bridge rather than as a second, transparent ledger. The reasoning that produced the map is still sound; what it missed is that "public balances" is not one feature but two, and only the larger one contradicts the token's premise.
 
 ## F1 — Note budget with recursive subtraction
 

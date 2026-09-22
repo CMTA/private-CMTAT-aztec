@@ -183,7 +183,7 @@ Expected: **79 tests passed**. Then the rest of the workspace if wanted (`aztec 
 
 > **Trap 2 — a missing sibling artifact crashes the TXE and cascades.** If only `token_contract` was compiled, the first "on behalf of" test deploys `GenericProxy`, the TXE server cannot open `target/generic_proxy-GenericProxy.json`, the server dies, and **every subsequent test** fails with `Failed calling external resolver. client error (Connect)`. The first run of this migration showed 78 failures for that reason alone. The real error is the `ENOENT` in the very first failure; everything after it is noise. Step 2's `--workspace` prevents it.
 
-If a test is genuinely failing, `--test-threads 1` makes the output readable, and `aztec test --package token_contract <test_name>` runs one.
+If a test is failing for a reason of its own rather than under parallel load, `--test-threads 1` makes the output readable, and `aztec test --package token_contract <test_name>` runs one.
 
 ## Step 4 — the TypeScript side
 

@@ -169,7 +169,7 @@ So the scheme is a win only if most debits settle in one or two notes. For a sec
 #### What implementing it involves
 
 - `debit_private` in `tokenModule.nr` takes a `max_notes` parameter and returns the remainder instead of asserting; the recursion itself cannot live in the library, because calling the contract from inside itself (`self.call_self`) needs the contract context, so each variant's `main.nr` gains one `#[external("private")] #[only_self] fn _recurse_debit(account, remaining) -> u128` and the loop that AIP-20 has. Three variants, one new selector each (an ABI *addition*, not a break); no storage or note-layout change.
-- Every value-moving path changes at once, which is why the report's hazards paragraph asks for the gate profile *and* the note-count edge cases of K.3 as acceptance: the 12-note ceiling test of K-7 is precisely the case whose outcome flips (from a failure to a success with two recursive calls), and `Balance too low` must still fire for a genuinely insufficient balance at every recursion depth.
+- Every value-moving path changes at once, which is why the report's hazards paragraph asks for the gate profile *and* the note-count edge cases of K.3 as acceptance: the 12-note ceiling test of K-7 is precisely the case whose outcome flips (from a failure to a success with two recursive calls), and `Balance too low` must still fire at every recursion depth for a balance that is short even after the recursion.
 - The issuer's offchain copies and the constrained deliveries are unaffected: they are per note created, and the change note is still one.
 
 **Applied after the review (2026-09-18).** `tokenModule.nr` gained `DEBIT_INITIAL_MAX_NOTES = 2`, `DEBIT_RECURSIVE_MAX_NOTES = 8`, `try_debit` (one attempt, returns `(covered, change-or-remaining)`), `debit_recursive`, and `debit_private` now takes the recursion as a closure so that the four chains stay in the library; each variant's `main.nr` gained `#[external("private")] #[only_self] fn _recurse_debit(account, remaining) -> u128`, which calls `debit_recursive` with itself as the closure. Scheme and constants are AIP-20's, credited in the code; the implementation is this project's. Measured:
@@ -184,7 +184,7 @@ So the scheme is a win only if most debits settle in one or two notes. For a sec
 | `transfer_batch` (2) / `burn_batch` (4) | 312,909 / 352,719 | **228,274 / 183,691** |
 | `_recurse_debit` (new) | — | 30,138 per recursive call, plus the nested-call kernel iteration |
 
-Light is about 10,400 lower on each, as before. Tests (`test_edge_cases.nr`): 2 notes without recursion, 3 notes through one recursive call (the case that got dearer), 12 and 17 notes in one transfer (the K-7 ceiling and the 16-note failure, both gone; 50 was measured to pass and the probe removed), `Balance too low` still firing on a fragmented balance that is genuinely short, and `_recurse_debit` refused to a caller that is not the contract. The open input — how fragmented real balances are — is unchanged, and the decision taken is the standard's: optimise the one-or-two-note case and let a fragmented balance pay per eight notes rather than fail.
+Light is about 10,400 lower on each, as before. Tests (`test_edge_cases.nr`): 2 notes without recursion, 3 notes through one recursive call (the case that got dearer), 12 and 17 notes in one transfer (the K-7 ceiling and the 16-note failure, both gone; 50 was measured to pass and the probe removed), `Balance too low` still firing on a fragmented balance that the recursion cannot cover, and `_recurse_debit` refused to a caller that is not the contract. The open input — how fragmented real balances are — is unchanged, and the decision taken is the standard's: optimise the one-or-two-note case and let a fragmented balance pay per eight notes rather than fail.
 
 ### A-6. `initialize_transfer_commitment` — keep
 
@@ -465,7 +465,7 @@ Two tests, one per environment, because the TXE cannot reproduce the situation a
 
 **The e2e test that answers the question** — `src/test/e2e/issuer_audit.test.ts`, on a sandbox, built from the two-PXE setup that `scripts/multiple_pxe.ts` already contains:
 
-1. **Two PXEs, two wallets.** PXE A holds the holder's account; PXE B holds the issuer's account and nothing else. Deploy `CMTATAztec` from B with the issuer as issuer and admin; grant `MINTER_ROLE`. Register the token's artifact in both PXEs.
+1. **Two PXEs, two wallets.** PXE A holds the holder's account; PXE B holds only the issuer's account. Deploy `CMTATAztec` from B with the issuer as issuer and admin; grant `MINTER_ROLE`. Register the token's artifact in both PXEs.
 2. **Mint and transfer from A.** `mint_to_private(holder, 1_000)` from the issuer (on B), then `transfer_private_to_private(holder, other, 100, 0)` from the holder (on A), capturing the interaction's `OffchainOutput`: `offchainMessages` filtered to `recipient == issuer`.
 3. **Forward the copies to B.** `token.methods.offchain_receive([{ ciphertext, recipient: issuer, tx_hash, anchor_block_timestamp }]).simulate({ from: issuer })` on B, in batches of 16, exactly as the *Offchain message delivery* documentation shows.
 4. **Sync B and observe.** Three assertions, each of which is a fact today rather than a wish:

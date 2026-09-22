@@ -98,7 +98,7 @@ There is no `type = "lib"` crate anywhere in the workspace, so there is not even
 
 ### Option B — use the ARC-403 authorization hook
 
-**Verdict: the only genuinely interesting option, and it fails on one specific thing.**
+**Verdict: the closest any option comes to working, and it fails on one specific thing.**
 
 > The mirror image of this option — building the *hook contract* out of `cmtat_aztec_lib` so a stock AIP-20 token gains CMTAT compliance — is built, tested and measured: [`doc/auth/README.md`](../auth/README.md). It reaches the same limit from the other side, and adds a second missing argument: the hook is not told who initiated the operation either.
 
@@ -108,7 +108,7 @@ The design would be: deploy a stock AIP-20 token, deploy a CMTAT compliance cont
 
 **Where it is called:** nine sites — all five private transfer paths, both public transfer paths, `burn_private` and `burn_public`.
 
-**Where it is not called:** `mint_to_private`, `mint_to_public` and `mint_to_commitment`. Minting is not hooked at all. *(This project screens the recipient of a mint and the account of a burn against the lists, as CMTAT Solidity does; the code-quality review's `G-1` was closed by making the code do what its comment claimed. The hook cannot reach either, so a sidecar cannot.)*
+**Where it is not called:** `mint_to_private`, `mint_to_public` and `mint_to_commitment`. Minting is not hooked at all. *(This project screens the recipient of a mint and the account of a burn against the lists, as CMTAT Solidity does; the code-quality review's `G-1` was closed by making the code do what its comment claimed. The hook is not called on either, so a sidecar cannot screen them.)*
 
 #### What CMTAT controls the hook can and cannot express
 
@@ -147,9 +147,9 @@ There is also a privacy consequence worth naming: a compliance contract that mus
 
 **Verdict: collapses into re-implementing the token.**
 
-The idea: deploy a stock AIP-20 token, have a CMTAT contract hold all of it, and let the CMTAT contract track who really owns what.
+The idea: deploy a stock AIP-20 token, have a CMTAT contract hold all of it, and let the CMTAT contract track the beneficial owner of each unit.
 
-It fails immediately. AIP-20's private transfer functions are callable by any holder directly; a wrapper cannot intercept them. To make the wrapper authoritative it must be the sole holder — at which point the underlying token has one holder, all real balances live in the wrapper's own ledger, and the wrapper has re-implemented notes, balances, transfers and delivery. The AIP-20 token beneath it is then an accounting artefact that adds a contract call to every operation and nothing else.
+It fails immediately. AIP-20's private transfer functions are callable by any holder directly; a wrapper cannot intercept them. To make the wrapper authoritative it must be the sole holder — at which point the underlying token has one holder, all real balances live in the wrapper's own ledger, and the wrapper has re-implemented notes, balances, transfers and delivery. The AIP-20 token beneath it is then an accounting artefact whose only effect is a contract call on every operation.
 
 This is the pattern AIP-4626 uses legitimately, because a vault genuinely *is* a separate instrument holding a separate asset. It does not transfer to a token that is meant to *be* the asset.
 
@@ -161,7 +161,7 @@ Copy `token_contract/src/main.nr` — 695 lines — into this repository, add th
 
 What it buys:
 
-- The partial-note machinery, already written and tested.
+- The partial-note helpers — `initialize_commitment`, `complete_commitment` and the validity-commitment check — already written and tested.
 - The recursive balance subtraction, which [`F-1`](../audits/tools/v0.3.0/CLAUDE_ANALYSIS.md) measures as worth **43,046 gates, 36% of a transfer**.
 - The public/private balance split, if wanted.
 - The AIP-20 entry-point names, which tooling recognises — though a fork that adds recipient screening is no longer conformant, so this benefit is partly illusory.
@@ -342,7 +342,7 @@ Two things would have to be decided by the issuer, not the holder, and both are 
 
 `burn` is the one function that *could* be renamed to match and *must not* be, because an identical selector with different semantics is worse than a different name.
 
-- AIP-20 `burn_private(from, amount, _nonce)` is **holder-authorised**: `#[authorize_once("from", "_nonce")]` and nothing else. Any holder burns their own tokens.
+- AIP-20 `burn_private(from, amount, _nonce)` is **holder-authorised**: the only gate is `#[authorize_once("from", "_nonce")]`. Any holder burns their own tokens.
 - CMTAT `burn(account, amount, authwit_nonce)` is **privileged**: the caller must hold `BURNER_ROLE` *and* the holder must consent. A plain holder calling it gets `AccessControlUnauthorizedAccount`. This is by design — in CMTAT, burning is redemption, an issuer act.
 
 A wallet that sees selector `0xc282ed79` would call it as a self-burn and fail with a role error it has no way to anticipate. Keeping the CMTAT name makes the difference discoverable instead of surprising. *(CMTAT Solidity's `BURNER_SELF_ROLE` lives in the cross-chain module, not the core, so there is no core self-burn to map to either.)*
@@ -383,7 +383,7 @@ Two observations fall out of that.
 
 **On pause, the hook can be exactly as faithful to CMTAT as this repository now is.** This repository used to block mint and burn while paused, a documented deviation; it has since been aligned with the reference — `_transfer` asserts not-paused, `_mint` and `_burn` assert not-deactivated. A hook-based pause reproduces the same thing: transfers refused, mint untouched because it is never hooked, burn let through by matching its selector.
 
-**On deactivation, the hook falls short in one place, and it is the mint gap again.** A deactivated AIP-20 token can still be minted into, because `mint_to_private`, `mint_to_public` and `mint_to_commitment` never reach the hook. CMTAT Solidity blocks that explicitly, and so does this repository, with the same explicit not-deactivated check in `_mint`. Behind the hook it is an operational rule — the minter is the issuer's own key, so the issuer stops minting — but it is not enforced, and criterion 17 (*Deactivate contract*) should be answered with that caveat rather than a clean `y`.
+**On deactivation, the hook leaves one gap, and it is the mint gap again.** A deactivated AIP-20 token can still be minted into, because `mint_to_private`, `mint_to_public` and `mint_to_commitment` do not call the hook. CMTAT Solidity blocks that explicitly, and so does this repository, with the same explicit not-deactivated check in `_mint`. Behind the hook it is an operational rule — the minter is the issuer's own key, so the issuer stops minting — but it is not enforced, and criterion 17 (*Deactivate contract*) should be answered with that caveat rather than a clean `y`.
 
 ### Immediate or delayed — the same choice this repository already made
 

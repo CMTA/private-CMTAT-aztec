@@ -45,7 +45,7 @@ Consequences that drive every design decision:
 
 ## Accounts, addresses and keys
 
-Aztec has **native account abstraction**: an account *is* a contract, and how it authorises transactions is up to that contract. Beside that, the protocol mandates a set of key pairs, all on the **Grumpkin** curve (the curve whose base field is the BN254 scalar field, so its arithmetic is native inside a proof).
+Aztec has **native account abstraction**: an account *is* a contract, and how it authorises transactions is up to that contract. Beside that, the protocol mandates a set of key pairs, all on the **Grumpkin** curve. Grumpkin's base field is BN254's scalar field, so its arithmetic is native inside a proof — which is why every key the framework must handle in-circuit lives there.
 
 | Key pair | Purpose at 5.2.0 | Managed by |
 |---|---|---|
@@ -106,7 +106,7 @@ pub contract MyContract {
 }
 ```
 
-- **One contract per Noir package**, one `#[storage]` struct per contract, holding *all* state. The `Context` generic parameter is boilerplate: it tells each state variable which execution mode it is in, and the compiler hides the methods that mode cannot use (a `PublicMutable::read` simply does not exist in a private function).
+- **One contract per Noir package**, one `#[storage]` struct per contract, holding *all* state. The `Context` generic parameter is required on every storage struct: it tells each state variable which execution mode it is in, and the compiler hides the methods that mode cannot use (a `PublicMutable::read` simply does not exist in a private function).
 - Everything is reached through `self`: `self.storage`, `self.msg_sender()`, `self.address`, `self.context`, `self.call(...)`, `self.enqueue(...)`, `self.emit(...)`.
 
 The attributes worth knowing:
@@ -159,7 +159,7 @@ Public state behaves like Ethereum's: a key-value tree the sequencer updates, ev
 
 - The delay is a **duration in seconds**, not a number of blocks.
 - Reading one in private sets the transaction's `expiration_timestamp` (anchor + remaining delay). The transaction is unincludable after that, and the expiry is **public** — so a delay nobody else uses fingerprints your application. Pick a common value.
-- Delays are themselves adjustable through `schedule_delay_change`: an *increase* is immediate, a *decrease* takes effect after the difference (otherwise shortening the delay would retroactively break the guarantee a reader relied on).
+- Delays are themselves adjustable through `schedule_delay_change`: an *increase* is immediate, a *decrease* takes effect after the difference. Shortening it immediately would retroactively break the guarantee a reader had already relied on.
 - A zero or near-zero delay is not usable from private: the earliest includable block is already a slot away, so the transaction would expire before it could land. The library's own example uses 360 s and calls it "5 slots"; real deployments use hours.
 - Not suitable for an emergency lever, precisely because it is delayed.
 
@@ -169,7 +169,7 @@ Private state is a set of **notes** (UTXOs). The note hash tree stores only comm
 
 - **Create** a note: compute its hash, push it to the context, deliver the contents to the owner.
 - **Destroy** a note: push its nullifier. The nullifier is derived from the note and the owner's app-siloed nullifier key, so nobody can link a note to its nullifier without that key — and nobody else can produce it.
-- **Update**: nullify, create a new note. A note created and nullified in the same transaction is **transient** and is squashed by the kernel; it never reaches a tree.
+- **Update**: nullify, create a new note. A note created and nullified in the same transaction is **transient** and is squashed by the kernel; it is never written to a tree.
 - A note created for someone else is only usable by them once they can **find and decrypt** it — delivery and discovery are separate problems from note creation, and both are the contract's responsibility.
 
 State variable types, all wrapped in `Owned<...>` and reached with `.at(owner)`:
@@ -273,7 +273,7 @@ Each transaction is split into up to three **phases**:
 - **App (revertible).** The public call stack the private execution enqueued, plus whatever those calls enqueue. A revert here discards the phase's state changes — and the private side effects — but the setup-phase fee is still charged.
 - **Teardown (optional).** Runs after the app phase with the final fee available, so an FPC can refund the unused part.
 
-Two timing values matter to contract authors: the **anchor block** (the historical state private execution read) and the **expiration timestamp** (the earliest deadline imposed by anything read during private execution; the kernel keeps the minimum). `MAX_TX_LIFETIME` is 24 hours.
+Two timing values matter to contract authors: the **anchor block** (the historical state private execution read) and the **expiration timestamp**, which is the earliest deadline imposed by anything read during private execution — the kernel keeps the minimum. `MAX_TX_LIFETIME` is 24 hours.
 
 ## Fees
 
@@ -400,7 +400,7 @@ Questions asked while learning, with the answer as it stands at 5.2.0.
 - **If I emit the same note to two parties, what do I use for the second encryption?** Not an outgoing viewing key — those are unused. Deliver the same message twice with `deliver_to(recipient, mode)`. But a *note* copy addressed to a non-owner cannot be processed onchain by that recipient's PXE (nullifier computation needs the owner's key); send it offchain, or send an **event** instead.
 - **Will a user who was just frozen/blacklisted get one more transaction through?** With a delayed flag, yes: the change takes effect after the delay, and any transaction anchored before it and included before its expiry is valid. That is the price of making the flag privately readable.
 - **Can I fast-forward time on a local network?** Not on a live local network; the TXE can (`env.advance_next_block_timestamp_by` then `env.mine_block`), which is why delay-dependent tests live in Noir and the e2e suite has to wait in real time.
-- **What happens to my notes if I change computer?** The PXE database is local. Losing it loses your notes unless they were delivered onchain (in which case a resynced PXE with the same keys can rediscover them) or you exported them. Offchain-delivered notes that you did not keep are gone.
+- **What happens to my notes if I change computer?** The PXE database is local. Losing it loses your notes unless you exported them, or they were delivered onchain — in which case a resynced PXE with the same keys can rediscover them. Offchain-delivered notes that you did not keep are gone.
 - **Can I decide which notes to keep in my PXE?** Discovery is contract-side and customisable in principle, but there is no standard "reject this airdrop" flow today. The database grows with what you sync.
 - **Do public transactions link back to the private proof?** Yes. An enqueued public call is visibly part of the same transaction as the private proof, and by default carries the caller's address as `msg_sender`.
 - **Can I deploy my own verifier?** Yes, for your own proofs verified inside a contract — see the recursive-verification tutorial. The rollup's own verifier is enshrined on L1.

@@ -209,7 +209,7 @@ For option 2:
 
 No. A double spend would be one note spent in two transactions, and the protocol excludes it: spending a note pushes its nullifier, and a nullifier can enter the tree once. What the second payment spends is *other* notes — the change note left by the first payment, or any other note `from` holds. The balances in the measured case make it visible: the sender starts with 1,000, pays 100 twice and ends with **800**; each payment took 100 real units out of its balance. Value is conserved on chain — 800 + 100 (the recipient's discovered note) + 100 (the undiscovered one) = 1,000 = `total_supply`. The completer gains nothing from the reuse; it pays twice and the recipient can spend once. The word "again" in the body means "a second time", not "the same notes again".
 
-The one thing that *is* replayable is the call itself. When the caller is `from`, `authwit_nonce` is `0` and the `#[authorize_once]` machinery pushes no nullifier — replay protection exists for third-party authorisations, not for an account acting on its own. So nothing in the contract makes `transfer_private_to_commitment(from, C, amount, 0)` idempotent; option 2's nullifier is exactly that missing idempotency, keyed on `C`.
+The one thing that *is* replayable is the call itself. When the caller is `from`, `authwit_nonce` is `0` and `#[authorize_once]` pushes no nullifier — replay protection exists for third-party authorisations, not for an account acting on its own. So nothing in the contract makes `transfer_private_to_commitment(from, C, amount, 0)` idempotent; option 2's nullifier is exactly that missing idempotency, keyed on `C`.
 
 ### "CMTAT-Aztec did not import AIP-20's public completion paths" — why not, and how could they be imported?
 
