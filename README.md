@@ -6,7 +6,7 @@ Balances and transfers are **private**: a holder's balance is a set of encrypted
 
 > **Repository.** Since **v0.3.0** the project is maintained and released by the [Capital Market and Technology Association](https://cmta.ch/) at [github.com/CMTA/private-CMTAT-aztec](https://github.com/CMTA/private-CMTAT-aztec). Releases 0.1.0 to 0.2.0 were published by Taurus SA at [github.com/taurushq-io/private-CMTAT-aztec](https://github.com/taurushq-io/private-CMTAT-aztec), whose history this repository carries.
 
-> **Disclaimer.** This is a prototype. It has **not** been audited, it is not upgradeable, it has no gasless-transaction support, and it may not be fully compliant with Swiss law. Aztec itself is under heavy development; expect breaking changes between toolchain versions.
+> **Disclaimer.** This project has not undergone an audit and is provided as-is without any warranties.
 
 ## Table of contents
 
