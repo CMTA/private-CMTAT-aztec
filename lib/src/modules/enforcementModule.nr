@@ -1,8 +1,8 @@
+use crate::modules::access_controlModule::{AccessControlModule, ENFORCEMENT_ROLE};
 use aztec::context::{PrivateContext, PublicContext};
 use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::{Deserialize, Packable, Serialize};
 use aztec::state_vars::{DelayedPublicMutable, Map, StateVariable};
-use crate::modules::access_controlModule::{AccessControlModule, ENFORCEMENT_ROLE};
 
 // Initial delay before a scheduled change to a delayed value takes effect, in seconds (since Aztec v3 a
 // DelayedPublicMutable's delay is a duration, not a number of blocks). One hour: review finding H-6

@@ -65,7 +65,6 @@ pub struct FreezeOnly {
     pub enforcement: Freezable<FreezableFlag, &mut PrivateContext>,
 }
 
-
 impl Screening for FreezeAndLists {
     fn transfer(self, from: AztecAddress, to: AztecAddress) {
         assert(!self.enforcement.is_frozen(from), TEXT_FROZEN_SENDER);
@@ -127,7 +126,12 @@ pub global DEBIT_RECURSIVE_MAX_NOTES: u32 = 8;
 /// `(true, change)` when the spent notes cover `amount`, `(false, remaining)` when they do not and
 /// the caller has to spend more. The change note is not created here: the top-level debit creates it
 /// once, from the value the last attempt returns.
-pub fn try_debit(balances: PrivateBalances, from: AztecAddress, amount: u128, max_notes: u32) -> (bool, u128) {
+pub fn try_debit(
+    balances: PrivateBalances,
+    from: AztecAddress,
+    amount: u128,
+    max_notes: u32,
+) -> (bool, u128) {
     let subtracted = balances.at(from).try_sub(amount, max_notes);
     if subtracted >= amount {
         (true, subtracted - amount)
@@ -174,7 +178,12 @@ pub fn debit_private<Env>(
 }
 
 /// Creates a note of `amount` for `to`, delivered to `to` constrained and to the issuer offchain.
-pub fn credit_private(balances: PrivateBalances, to: AztecAddress, amount: u128, issuer: AztecAddress) {
+pub fn credit_private(
+    balances: PrivateBalances,
+    to: AztecAddress,
+    amount: u128,
+    issuer: AztecAddress,
+) {
     let note_message = balances.at(to).add(amount);
     note_message.deliver(MessageDelivery::onchain_constrained());
     note_message.deliver_to(issuer, MessageDelivery::offchain());
@@ -182,7 +191,13 @@ pub fn credit_private(balances: PrivateBalances, to: AztecAddress, amount: u128,
 
 // ---- the three operations, private half ----------------------------------------------------------
 
-pub fn mint_private<S>(balances: PrivateBalances, screening: S, to: AztecAddress, amount: u128, issuer: AztecAddress)
+pub fn mint_private<S>(
+    balances: PrivateBalances,
+    screening: S,
+    to: AztecAddress,
+    amount: u128,
+    issuer: AztecAddress,
+)
 where
     S: Screening,
 {
@@ -262,7 +277,12 @@ where
 /// Opens a partial note for `to` that only `completer` may fill. The recipient is screened HERE,
 /// because at completion the contract holds only the commitment. Returns the commitment; the
 /// contract emits its `CommitmentInitialized` event to the issuer with it.
-pub fn open_commitment<S>(context: &mut PrivateContext, screening: S, to: AztecAddress, completer: AztecAddress) -> Field
+pub fn open_commitment<S>(
+    context: &mut PrivateContext,
+    screening: S,
+    to: AztecAddress,
+    completer: AztecAddress,
+) -> Field
 where
     S: Screening,
 {
@@ -307,7 +327,13 @@ where
 {
     screening.sender(from);
     debit_private(balances, from, amount, issuer, recurse);
-    complete_commitment(context, commitment, completer, balances.get_storage_slot(), amount);
+    complete_commitment(
+        context,
+        commitment,
+        completer,
+        balances.get_storage_slot(),
+        amount,
+    );
     // Safety: the value is a hash of a public argument under a fixed separator; there is nothing to
     // constrain beyond what the hash already binds, and a duplicate is rejected by the protocol.
     context.push_nullifier_unsafe(commitment_paid_nullifier(commitment));
@@ -348,13 +374,23 @@ pub fn require_transfer(pause: PauseModule<PublicContext>) {
 }
 
 /// `_credit_public`: a transfer's lifecycle rule, then the public credit.
-pub fn credit_public(pause: PauseModule<PublicContext>, public_balances: PublicBalances<PublicContext>, to: AztecAddress, amount: u128) {
+pub fn credit_public(
+    pause: PauseModule<PublicContext>,
+    public_balances: PublicBalances<PublicContext>,
+    to: AztecAddress,
+    amount: u128,
+) {
     require_transfer(pause);
     public_balances.increase(to, amount);
 }
 
 /// `_debit_public`: a transfer's lifecycle rule, then the public debit (refusing an overdraft).
-pub fn debit_public(pause: PauseModule<PublicContext>, public_balances: PublicBalances<PublicContext>, from: AztecAddress, amount: u128) {
+pub fn debit_public(
+    pause: PauseModule<PublicContext>,
+    public_balances: PublicBalances<PublicContext>,
+    from: AztecAddress,
+    amount: u128,
+) {
     require_transfer(pause);
     public_balances.decrease(from, amount);
 }

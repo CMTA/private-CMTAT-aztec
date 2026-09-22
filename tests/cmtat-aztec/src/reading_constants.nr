@@ -1,6 +1,6 @@
 use crate::utils;
-use cmtat_aztec::CMTATAztec as Token;
 use aztec::protocol::traits::Serialize;
+use cmtat_aztec::CMTATAztec as Token;
 use compressed_string::FieldCompressedString;
 
 // It is not possible to deserialize strings in Noir ATM, so name and symbol cannot be checked yet.
@@ -11,8 +11,7 @@ unconstrained fn check_decimals_private() {
     let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
 
     // Check decimals
-    let result =
-        env.view_private(issuer, Token::at(token_contract_address).private_get_decimals());
+    let result = env.view_private(issuer, Token::at(token_contract_address).private_get_decimals());
 
     assert(result == 18);
 }

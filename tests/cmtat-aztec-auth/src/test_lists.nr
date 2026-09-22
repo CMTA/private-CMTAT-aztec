@@ -1,7 +1,7 @@
-use cmtat_aztec_auth::CMTATAztecAuth as Auth;
 use crate::utils::{self, SOME_TRANSFER_SELECTOR};
 use aztec::protocol::address::AztecAddress;
 use aztec::test::helpers::test_environment::TestEnvironment;
+use cmtat_aztec_auth::CMTATAztecAuth as Auth;
 use cmtat_aztec_lib::modules::access_controlModule::{
     ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, VALIDATION_ROLE,
 };

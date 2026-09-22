@@ -1,7 +1,7 @@
 use crate::utils;
+use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec_lib::modules::access_controlModule::ENFORCEMENT_ROLE;
 use cmtat_aztec_lib::modules::enforcementModule::{CHANGE_ROLES_DELAY_SECONDS, FreezableFlag};
-use cmtat_aztec::CMTATAztec as Token;
 
 #[test]
 unconstrained fn get_frozen() {
@@ -83,7 +83,12 @@ unconstrained fn transfer_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -97,7 +102,12 @@ unconstrained fn burn_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 
     let freezable_flag = FreezableFlag { is_freezed: true };
@@ -123,7 +133,12 @@ unconstrained fn burn_batch_restricted_when_freezed() {
     let transfer_amount = 10000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 
     let freezable_flag = FreezableFlag { is_freezed: true };

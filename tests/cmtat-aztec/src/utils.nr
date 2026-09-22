@@ -5,8 +5,8 @@ use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
 // Contract-agnostic helpers live in the shared `cmtat_aztec_test_helpers` crate (analysis D-2); they
 // are re-exported here so tests keep calling `utils::advance_past_delay` / `utils::call_private_on_behalf_of`.
 pub use cmtat_aztec_test_helpers::{advance_past_delay, call_private_on_behalf_of};
-use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
+use cmtat_aztec::CMTATAztec as Token;
 
 pub unconstrained fn setup(
     with_account_contracts: bool,

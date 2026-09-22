@@ -1,4 +1,3 @@
-
 use aztec::macros::aztec;
 
 #[aztec]
@@ -8,15 +7,14 @@ pub contract CMTATAztecLight {
 
     use aztec::{
         authwit::auth::compute_authwit_nullifier,
+        context::PrivateContext,
         macros::{
             events::event,
             functions::{authorize_once, external, initializer, internal, only_self, view},
             storage::storage,
         },
         messages::delivery::MessageDelivery,
-        context::PrivateContext,
-        protocol::address::AztecAddress,
-        protocol::traits::ToField,
+        protocol::{address::AztecAddress, traits::ToField},
         state_vars::{DelayedPublicMutable, Owned, PublicImmutable, PublicMutable},
     };
 
@@ -24,14 +22,16 @@ pub contract CMTATAztecLight {
 
     use cmtat_aztec_lib::modules::{
         access_controlModule::{AccessControlModule, DEFAULT_ADMIN_ROLE},
-        enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
+        enforcementModule::{
+            CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag,
+        },
         extraInformationModule::{DocumentInfo, ExtraInformation},
         hybridModule::{PRIVATE_ADDRESS_MAGIC_VALUE, PublicBalances, require_public_side_enabled},
         pauseModule::PauseModule,
         tokenModule::{
-            bridge_private_to_public, bridge_public_to_private, burn_private, burn_public, debit_recursive, FreezeOnly,
-            mint_private, mint_public, open_commitment, pay_commitment, require_transfer,
-            transfer_private, credit_public, debit_public,
+            bridge_private_to_public, bridge_public_to_private, burn_private, burn_public,
+            credit_public, debit_public, debit_recursive, FreezeOnly, mint_private, mint_public,
+            open_commitment, pay_commitment, require_transfer, transfer_private,
         },
     };
 
@@ -141,7 +141,6 @@ pub contract CMTATAztecLight {
         lastModified: u64,
     }
 
-
     // --- C-6: administrative operations now leave a trail ---------------------------------------
     // Names follow the reference where one exists: `Paused` / `Unpaused` and `RoleRevoked` are the
     // OpenZeppelin events CMTAT Solidity inherits (`NewRole` above corresponds to `RoleGranted`);
@@ -222,7 +221,13 @@ pub contract CMTATAztecLight {
     // `public_side_enabled` is the issuer's deployment-time choice: whether holders may move value
     // between their private notes and a public balance (the four AIP-20 bridges). Off reproduces the
     // fully private token; it cannot be changed after deployment.
-    fn constructor(admin: AztecAddress, name: str<31>, symbol: str<31>, decimals: u8, public_side_enabled: bool) {
+    fn constructor(
+        admin: AztecAddress,
+        name: str<31>,
+        symbol: str<31>,
+        decimals: u8,
+        public_side_enabled: bool,
+    ) {
         assert(!admin.is_zero(), "invalid admin");
         self.storage.name.initialize(FieldCompressedString::from_string(name));
         self.storage.symbol.initialize(FieldCompressedString::from_string(symbol));
@@ -344,7 +349,9 @@ pub contract CMTATAztecLight {
             self.storage.access_control,
             self.storage.roles_delay.read(),
         );
-        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
+        self.emit(
+            AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at },
+        );
     }
 
     #[external("public")]
@@ -357,7 +364,9 @@ pub contract CMTATAztecLight {
             self.storage.access_control,
             self.storage.roles_delay.read(),
         );
-        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
+        self.emit(
+            AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at },
+        );
     }
 
     /** ==========================================================
@@ -380,13 +389,15 @@ pub contract CMTATAztecLight {
             self.msg_sender(),
             self.storage.access_control,
         );
-        self.emit(Terms {
-            name: terms_.name,
-            uri: terms_.uri,
-            documentHashHigh: terms_.documentHashHigh,
-            documentHashLow: terms_.documentHashLow,
-            lastModified: last_modified,
-        });
+        self.emit(
+            Terms {
+                name: terms_.name,
+                uri: terms_.uri,
+                documentHashHigh: terms_.documentHashHigh,
+                documentHashLow: terms_.documentHashLow,
+                lastModified: last_modified,
+            },
+        );
     }
 
     #[external("public")]
@@ -394,7 +405,6 @@ pub contract CMTATAztecLight {
     fn terms() -> pub [Field; 5] {
         self.storage.extra_information_module.get_terms()
     }
-
 
     /**
      * @roles: onlyExtraInformationManager
@@ -497,11 +507,7 @@ pub contract CMTATAztecLight {
         self.storage.access_control.only_role(DEFAULT_ADMIN_ROLE, operator);
         self.storage.issuer_address.schedule_value_change(new_issuer);
         let (_, effective_at) = self.storage.issuer_address.get_scheduled_value();
-        self.emit(IssuerChanged {
-            issuer: new_issuer,
-            operator,
-            effective_at,
-        });
+        self.emit(IssuerChanged { issuer: new_issuer, operator, effective_at });
     }
 
     /**
@@ -562,7 +568,13 @@ pub contract CMTATAztecLight {
     #[external("private")]
     fn mint_to_private(to: AztecAddress, amount: u128) {
         let issuer = self.storage.issuer_address.get_current_value();
-        mint_private(self.storage.private_balances, screening(self.storage), to, amount, issuer);
+        mint_private(
+            self.storage.private_balances,
+            screening(self.storage),
+            to,
+            amount,
+            issuer,
+        );
         self.enqueue_self._mint(self.msg_sender(), amount);
         // The issuer's on-chain record of the issuance (H-10, route A): the note copy it receives
         // offchain cannot be processed by a stock PXE (it does not own the note), the event can.
@@ -581,13 +593,18 @@ pub contract CMTATAztecLight {
         // Loop-invariant: one issuer for the whole call, read once rather than per address.
         let issuer = self.storage.issuer_address.get_current_value();
         for i in 0..MAX_ADDR_PER_CALL {
-            mint_private(self.storage.private_balances, screening(self.storage), accounts[i], amount[i], issuer);
+            mint_private(
+                self.storage.private_balances,
+                screening(self.storage),
+                accounts[i],
+                amount[i],
+                issuer,
+            );
             acc += amount[i];
             // One issuance record per recipient, as in `mint_to_private` (H-10, route A).
-            self.emit(Transfer { from: AztecAddress::zero(), to: accounts[i], amount: amount[i] }).deliver_to(
-                issuer,
-                MessageDelivery::onchain_constrained(),
-            );
+            self
+                .emit(Transfer { from: AztecAddress::zero(), to: accounts[i], amount: amount[i] })
+                .deliver_to(issuer, MessageDelivery::onchain_constrained());
         }
         self.enqueue_self._mint(self.msg_sender(), acc);
     }
@@ -614,9 +631,22 @@ pub contract CMTATAztecLight {
     */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_private_to_private(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+    fn transfer_private_to_private(
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: u128,
+        authwit_nonce: Field,
+    ) {
         let issuer = self.storage.issuer_address.get_current_value();
-        transfer_private(self.storage.private_balances, screening(self.storage), from, to, amount, issuer, |a, r| self.call_self._recurse_debit(a, r));
+        transfer_private(
+            self.storage.private_balances,
+            screening(self.storage),
+            from,
+            to,
+            amount,
+            issuer,
+            |a, r| self.call_self._recurse_debit(a, r),
+        );
         self.enqueue_self._transfer();
         // Delivered constrained to BOTH parties that need it, deliberately - see the event list in
         // doc/README.md for the reasoning. Constrained, because an unconstrained receipt lets the sender forge
@@ -646,7 +676,15 @@ pub contract CMTATAztecLight {
         // Loop-invariant: one issuer for the whole call, read once rather than per recipient.
         let issuer = self.storage.issuer_address.get_current_value();
         for i in 0..MAX_TRANSFER_ADDR_PER_CALL {
-            transfer_private(self.storage.private_balances, screening(self.storage), from, accounts[i], amount[i], issuer, |a, r| self.call_self._recurse_debit(a, r));
+            transfer_private(
+                self.storage.private_balances,
+                screening(self.storage),
+                from,
+                accounts[i],
+                amount[i],
+                issuer,
+                |a, r| self.call_self._recurse_debit(a, r),
+            );
             let transfer_event = self.emit(Transfer { from, to: accounts[i], amount: amount[i] });
             transfer_event.deliver_to(accounts[i], MessageDelivery::onchain_constrained());
             transfer_event.deliver_to(issuer, MessageDelivery::onchain_constrained());
@@ -683,7 +721,14 @@ pub contract CMTATAztecLight {
     #[external("private")]
     fn burn(account: AztecAddress, amount: u128, authwit_nonce: Field) {
         let issuer = self.storage.issuer_address.get_current_value();
-        burn_private(self.storage.private_balances, screening(self.storage), account, amount, issuer, |a, r| self.call_self._recurse_debit(a, r));
+        burn_private(
+            self.storage.private_balances,
+            screening(self.storage),
+            account,
+            amount,
+            issuer,
+            |a, r| self.call_self._recurse_debit(a, r),
+        );
         self.enqueue_self._burn(self.msg_sender(), amount);
         // The issuer's on-chain record of the redemption (H-10, route A); `to` is the zero address,
         // the ERC-20 / AIP-20 convention for a burn. Constrained, so the burner cannot forge it.
@@ -699,16 +744,19 @@ pub contract CMTATAztecLight {
     */
     #[authorize_once("account", "authwit_nonce")]
     #[external("private")]
-    fn burn_batch(
-        account: AztecAddress,
-        amount: [u128; MAX_ADDR_PER_CALL],
-        authwit_nonce: Field,
-    ) {
+    fn burn_batch(account: AztecAddress, amount: [u128; MAX_ADDR_PER_CALL], authwit_nonce: Field) {
         let mut acc: u128 = 0;
         // Loop-invariant: one issuer for the whole call, read once rather than per entry.
         let issuer = self.storage.issuer_address.get_current_value();
         for i in 0..MAX_ADDR_PER_CALL {
-            burn_private(self.storage.private_balances, screening(self.storage), account, amount[i], issuer, |a, r| self.call_self._recurse_debit(a, r));
+            burn_private(
+                self.storage.private_balances,
+                screening(self.storage),
+                account,
+                amount[i],
+                issuer,
+                |a, r| self.call_self._recurse_debit(a, r),
+            );
             acc += amount[i];
         }
         self.enqueue_self._burn(self.msg_sender(), acc);
@@ -733,7 +781,12 @@ pub contract CMTATAztecLight {
     #[external("private")]
     #[only_self]
     fn _recurse_debit(account: AztecAddress, remaining: u128) -> pub u128 {
-        debit_recursive(self.storage.private_balances, account, remaining, |a, r| self.call_self._recurse_debit(a, r))
+        debit_recursive(
+            self.storage.private_balances,
+            account,
+            remaining,
+            |a, r| self.call_self._recurse_debit(a, r),
+        )
     }
 
     /// The parties' screening this variant applies before any note moves: freeze flags on every party (this variant has no validation module).
@@ -765,7 +818,13 @@ pub contract CMTATAztecLight {
     // public state. Do NOT add `to`: the recipient is the one thing a mint keeps private.
     #[only_self]
     fn _mint(caller: AztecAddress, amount: u128) {
-        mint_public(self.storage.access_control, self.storage.pause_module, self.storage.total_supply, caller, amount);
+        mint_public(
+            self.storage.access_control,
+            self.storage.pause_module,
+            self.storage.total_supply,
+            caller,
+            amount,
+        );
     }
 
     #[external("public")]
@@ -784,7 +843,13 @@ pub contract CMTATAztecLight {
     // BURNER_ROLE who redeems its own tokens publishes itself. Keep BURNER_ROLE an issuer role.
     #[only_self]
     fn _burn(caller: AztecAddress, amount: u128) {
-        burn_public(self.storage.access_control, self.storage.pause_module, self.storage.total_supply, caller, amount);
+        burn_public(
+            self.storage.access_control,
+            self.storage.pause_module,
+            self.storage.total_supply,
+            caller,
+            amount,
+        );
     }
 
     /** ==========================================================
@@ -821,10 +886,23 @@ pub contract CMTATAztecLight {
      */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_private_to_public(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+    fn transfer_private_to_public(
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: u128,
+        authwit_nonce: Field,
+    ) {
         require_public_side_enabled(self.storage.public_side_enabled.read());
         let issuer = self.storage.issuer_address.get_current_value();
-        bridge_private_to_public(self.storage.private_balances, screening(self.storage), from, to, amount, issuer, |a, r| self.call_self._recurse_debit(a, r));
+        bridge_private_to_public(
+            self.storage.private_balances,
+            screening(self.storage),
+            from,
+            to,
+            amount,
+            issuer,
+            |a, r| self.call_self._recurse_debit(a, r),
+        );
         self.enqueue_self._credit_public(to, amount);
     }
 
@@ -836,10 +914,22 @@ pub contract CMTATAztecLight {
      */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_public_to_private(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
+    fn transfer_public_to_private(
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: u128,
+        authwit_nonce: Field,
+    ) {
         require_public_side_enabled(self.storage.public_side_enabled.read());
         let issuer = self.storage.issuer_address.get_current_value();
-        bridge_public_to_private(self.storage.private_balances, screening(self.storage), from, to, amount, issuer);
+        bridge_public_to_private(
+            self.storage.private_balances,
+            screening(self.storage),
+            from,
+            to,
+            amount,
+            issuer,
+        );
         self.enqueue_self._debit_public(from, amount);
     }
 
@@ -873,7 +963,12 @@ pub contract CMTATAztecLight {
      */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_private_to_commitment(from: AztecAddress, commitment: Field, amount: u128, authwit_nonce: Field) {
+    fn transfer_private_to_commitment(
+        from: AztecAddress,
+        commitment: Field,
+        amount: u128,
+        authwit_nonce: Field,
+    ) {
         require_public_side_enabled(self.storage.public_side_enabled.read());
         let issuer = self.storage.issuer_address.get_current_value();
         pay_commitment(
@@ -896,10 +991,23 @@ pub contract CMTATAztecLight {
      */
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn transfer_private_to_public_with_commitment(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) -> pub Field {
+    fn transfer_private_to_public_with_commitment(
+        from: AztecAddress,
+        to: AztecAddress,
+        amount: u128,
+        authwit_nonce: Field,
+    ) -> pub Field {
         require_public_side_enabled(self.storage.public_side_enabled.read());
         let issuer = self.storage.issuer_address.get_current_value();
-        bridge_private_to_public(self.storage.private_balances, screening(self.storage), from, to, amount, issuer, |a, r| self.call_self._recurse_debit(a, r));
+        bridge_private_to_public(
+            self.storage.private_balances,
+            screening(self.storage),
+            from,
+            to,
+            amount,
+            issuer,
+            |a, r| self.call_self._recurse_debit(a, r),
+        );
         self.enqueue_self._credit_public(to, amount);
         self.internal._open_commitment(to, self.msg_sender(), issuer)
     }
@@ -921,7 +1029,12 @@ pub contract CMTATAztecLight {
     // PRIVACY: `to` and `amount` are published - that is the nature of a public credit, chosen by the
     // sender. `from` never reaches this half.
     fn _credit_public(to: AztecAddress, amount: u128) {
-        credit_public(self.storage.pause_module, self.storage.public_balances, to, amount);
+        credit_public(
+            self.storage.pause_module,
+            self.storage.public_balances,
+            to,
+            amount,
+        );
         self.emit(Transfer { from: PRIVATE_ADDRESS_MAGIC_VALUE, to, amount });
     }
 
@@ -930,7 +1043,12 @@ pub contract CMTATAztecLight {
     // PRIVACY: `from` and `amount` are published - the debited balance is public state anyway. `to`
     // never reaches this half.
     fn _debit_public(from: AztecAddress, amount: u128) {
-        debit_public(self.storage.pause_module, self.storage.public_balances, from, amount);
+        debit_public(
+            self.storage.pause_module,
+            self.storage.public_balances,
+            from,
+            amount,
+        );
         self.emit(Transfer { from, to: PRIVATE_ADDRESS_MAGIC_VALUE, amount });
     }
 

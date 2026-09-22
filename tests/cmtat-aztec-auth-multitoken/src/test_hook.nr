@@ -1,5 +1,5 @@
-use cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken as Auth;
 use crate::utils::{self, SOME_ID, SOME_TRANSFER_SELECTOR};
+use cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken as Auth;
 use cmtat_aztec_lib::modules::access_controlModule::ENFORCEMENT_ROLE;
 use cmtat_aztec_lib::modules::authorizationHookModule::{
     ARC1155_BURN_PRIVATE_SELECTOR, ARC1155_BURN_PUBLIC_SELECTOR,

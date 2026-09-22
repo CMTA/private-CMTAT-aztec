@@ -26,11 +26,7 @@ pub unconstrained fn call_private_on_behalf_of<let M: u32, let N: u32, T>(
 where
     T: Deserialize,
 {
-    env.call_private_opts(
-        caller,
-        CallPrivateOptions::new().with_additional_scopes([owner]),
-        call,
-    )
+    env.call_private_opts(caller, CallPrivateOptions::new().with_additional_scopes([owner]), call)
 }
 
 /// Advances the chain past a DelayedPublicMutable delay so that a scheduled value change (the issuer

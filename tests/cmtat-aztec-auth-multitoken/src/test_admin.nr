@@ -37,7 +37,12 @@ unconstrained fn pause_and_deactivation_flags_are_readable() {
 unconstrained fn version_matches_the_constant() {
     let (env, auth, _, _) = utils::setup();
     let result = env.view_public(Auth::at(auth).version());
-    assert(result == FieldCompressedString::from_string(cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken::VERSION));
+    assert(
+        result
+            == FieldCompressedString::from_string(
+                cmtat_aztec_auth_multitoken::CMTATAztecAuthMultiToken::VERSION,
+            ),
+    );
     assert(result == FieldCompressedString::from_string("0.4.0                          "));
 }
 
@@ -54,7 +59,10 @@ unconstrained fn the_roles_delay_is_one_hour_and_a_longer_one_applies_to_the_nex
     assert_eq(env.view_public(Auth::at(auth).roles_delay()), 7200);
     utils::freeze(env, auth, admin, user, /* wait */ false);
     utils::advance_past_delay(env, 3600);
-    env.call_private(user, Auth::at(auth).authorize_private(user, SOME_ID, 10, SOME_TRANSFER_SELECTOR)); // still allowed
+    env.call_private(
+        user,
+        Auth::at(auth).authorize_private(user, SOME_ID, 10, SOME_TRANSFER_SELECTOR),
+    ); // still allowed
 }
 
 #[test(should_fail_with = "AccessControlUnauthorizedAccount")]

@@ -19,7 +19,10 @@ pub unconstrained fn setup() -> (TestEnvironment, AztecAddress, AztecAddress, Az
     let user = env.create_light_account();
 
     let initializer_call = Auth::interface().constructor(admin);
-    let auth_address = env.deploy("@cmtat_aztec_auth/CMTATAztecAuth").with_public_initializer(admin, initializer_call);
+    let auth_address = env.deploy("@cmtat_aztec_auth/CMTATAztecAuth").with_public_initializer(
+        admin,
+        initializer_call,
+    );
 
     (env, auth_address, admin, user)
 }

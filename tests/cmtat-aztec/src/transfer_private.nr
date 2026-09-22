@@ -1,6 +1,6 @@
 use crate::utils;
-use cmtat_aztec::CMTATAztec as Token;
 use aztec::test::helpers::authwit::add_private_authwit_from_call;
+use cmtat_aztec::CMTATAztec as Token;
 
 global AUTHWIT_NONCE: Field = 7;
 
@@ -14,7 +14,12 @@ unconstrained fn transfer_private() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user1,
+            transfer_amount,
+            0,
+        ),
     );
 
     // Check balances
@@ -37,13 +42,23 @@ unconstrained fn transfer_private_check_issuer_view() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, 2 * transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user1,
+            2 * transfer_amount,
+            0,
+        ),
     );
     let user2 = env.create_light_account();
 
     env.call_private(
         user1,
-        Token::at(token_contract_address).transfer_private_to_private(user1, user2, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            user1,
+            user2,
+            transfer_amount,
+            0,
+        ),
     );
 
     // Check balances
@@ -67,7 +82,12 @@ unconstrained fn transfer_private_to_self() {
     let transfer_amount = 1000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, issuer, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            issuer,
+            transfer_amount,
+            0,
+        ),
     );
 
     // Check balances
@@ -83,8 +103,12 @@ unconstrained fn transfer_private_on_behalf_of_other() {
     // user1 spends on the issuer's behalf, so msg_sender in the token differs from `from`
     let caller = user1;
     let transfer_amount = 1000 as u128;
-    let transfer_call =
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, transfer_amount, AUTHWIT_NONCE);
+    let transfer_call = Token::at(token_contract_address).transfer_private_to_private(
+        issuer,
+        user1,
+        transfer_amount,
+        AUTHWIT_NONCE,
+    );
     add_private_authwit_from_call(env, issuer, caller, transfer_call);
 
     utils::call_private_on_behalf_of(env, caller, issuer, transfer_call);
@@ -108,7 +132,12 @@ unconstrained fn transfer_private_failure_more_than_balance() {
     let transfer_amount = mint_amount + 1 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user1,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -213,7 +242,12 @@ unconstrained fn transfer_private_to_non_deployed_account() {
     let transfer_amount = 1000 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, not_deployed, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            not_deployed,
+            transfer_amount,
+            0,
+        ),
     );
 
     // Check balances

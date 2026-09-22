@@ -9,7 +9,8 @@ unconstrained fn grant_role_by_admin_succeeds() {
         utils::setup(/* with_account_contracts */ false);
 
     // The constructor's own grant is observable through has_role.
-    let admin = env.view_public(Token::at(token_contract_address).has_role(DEFAULT_ADMIN_ROLE, issuer));
+    let admin =
+        env.view_public(Token::at(token_contract_address).has_role(DEFAULT_ADMIN_ROLE, issuer));
     assert(admin == 1);
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(MINTER_ROLE, user1));
@@ -23,8 +24,7 @@ unconstrained fn grant_role_by_admin_succeeds() {
 /// write would still succeed and only this test would notice.
 #[test(should_fail_with = "AccessControlUnauthorizedAccount")]
 unconstrained fn grant_role_by_non_admin_fails() {
-    let (env, token_contract_address, _, user1) =
-        utils::setup(/* with_account_contracts */ false);
+    let (env, token_contract_address, _, user1) = utils::setup(/* with_account_contracts */ false);
 
     env.call_public(user1, Token::at(token_contract_address).grant_role(MINTER_ROLE, user1));
 }
@@ -35,16 +35,14 @@ unconstrained fn grant_role_by_non_admin_fails() {
 /// the attribute at compile time rather than at run time.
 #[test]
 unconstrained fn only_role_passes_for_a_holder() {
-    let (env, token_contract_address, issuer, _) =
-        utils::setup(/* with_account_contracts */ false);
+    let (env, token_contract_address, issuer, _) = utils::setup(/* with_account_contracts */ false);
 
     env.view_public(Token::at(token_contract_address).only_role(DEFAULT_ADMIN_ROLE, issuer));
 }
 
 #[test(should_fail_with = "AccessControlUnauthorizedAccount")]
 unconstrained fn only_role_reverts_for_a_non_holder() {
-    let (env, token_contract_address, _, user1) =
-        utils::setup(/* with_account_contracts */ false);
+    let (env, token_contract_address, _, user1) = utils::setup(/* with_account_contracts */ false);
 
     env.view_public(Token::at(token_contract_address).only_role(DEFAULT_ADMIN_ROLE, user1));
 }

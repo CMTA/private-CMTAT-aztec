@@ -1,6 +1,6 @@
 use crate::utils;
-use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE, PAUSE_ROLE};
 use cmtat_aztec::CMTATAztec as Token;
+use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE, PAUSE_ROLE};
 
 #[test]
 unconstrained fn get_paused() {
@@ -80,7 +80,12 @@ unconstrained fn burn_when_paused_succeeds() {
     let burn_amount = 1000 as u128;
     env.call_private(issuer, Token::at(token_contract_address).burn(issuer, burn_amount, 0));
 
-    utils::check_private_balance(env, token_contract_address, issuer, mint_amount - burn_amount);
+    utils::check_private_balance(
+        env,
+        token_contract_address,
+        issuer,
+        mint_amount - burn_amount,
+    );
     let total_supply = env.view_public(Token::at(token_contract_address).total_supply());
     assert(total_supply == mint_amount - burn_amount);
 }
@@ -101,7 +106,12 @@ unconstrained fn transfer_when_paused_fails() {
 
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user1, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user1,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -221,7 +231,10 @@ unconstrained fn mint_when_deactivated_fails() {
     env.call_public(issuer, Token::at(token_contract_address).deactivate_contract());
 
     // Mint survives a pause, so deactivation is checked explicitly in `_mint`.
-    env.call_private(issuer, Token::at(token_contract_address).mint_to_private(issuer, 10000 as u128));
+    env.call_private(
+        issuer,
+        Token::at(token_contract_address).mint_to_private(issuer, 10000 as u128),
+    );
 }
 
 #[test(should_fail_with = "Error: token contract is paused")]

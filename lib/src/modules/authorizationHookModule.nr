@@ -22,13 +22,13 @@
 //! `submodules/aztec-standards` (parameter names do not enter a selector; `AztecAddress` encodes as
 //! `(Field)`), so a fork that renames or re-types `burn_private` / `burn_public` must update them.
 
+use crate::modules::enforcementModule::{Freezable, FreezableFlag};
+use crate::modules::pauseModule::PauseModule;
+use crate::modules::validationModule::{UserFlags, ValidationModule};
 use aztec::context::{PrivateContext, PublicContext};
 use aztec::protocol::abis::function_selector::FunctionSelector;
 use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::ToField;
-use crate::modules::enforcementModule::{Freezable, FreezableFlag};
-use crate::modules::pauseModule::PauseModule;
-use crate::modules::validationModule::{UserFlags, ValidationModule};
 
 // AIP-20 `Token`: `burn_private(from: AztecAddress, amount: u128, _nonce: Field)` and `burn_public` alike.
 pub global AIP20_BURN_PRIVATE_SELECTOR: Field =

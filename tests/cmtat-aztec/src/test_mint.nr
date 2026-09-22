@@ -1,6 +1,6 @@
 use crate::utils;
-use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
 use cmtat_aztec::CMTATAztec as Token;
+use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
 
 #[test]
 unconstrained fn mint_private_success() {
@@ -36,10 +36,7 @@ unconstrained fn mint_private_batch_success() {
     let mint_amount = [1000 as u128, 2000 as u128, 300 as u128, 400 as u128];
     let addresses = [user1, user2, user1, user2];
 
-    env.call_private(
-        issuer,
-        Token::at(token_contract_address).mint_batch(addresses, mint_amount),
-    );
+    env.call_private(issuer, Token::at(token_contract_address).mint_batch(addresses, mint_amount));
 
     utils::check_private_balance(env, token_contract_address, user1, 1300 as u128);
     utils::check_private_balance(env, token_contract_address, user2, 2400 as u128);

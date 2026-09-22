@@ -5,7 +5,8 @@ use cmtat_aztec_lib::modules::access_controlModule::MINTER_ROLE;
 
 #[test]
 unconstrained fn private_to_public_and_back() {
-    let (env, token, issuer, user) = utils::setup_with_public_side(false, /* public_side_enabled */ true);
+    let (env, token, issuer, user) =
+        utils::setup_with_public_side(false, /* public_side_enabled */ true);
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
     env.call_private(issuer, Token::at(token).mint_to_private(issuer, 10_000));
     env.call_private(issuer, Token::at(token).transfer_private_to_public(issuer, user, 1_000, 0));

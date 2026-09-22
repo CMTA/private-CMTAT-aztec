@@ -2,10 +2,10 @@
 //! listed as mechanical: a zero amount, a freeze before its delay, a listed commitment party, the
 //! views nothing called. Each `should_fail_with` names the assert it is meant to reach, and the
 //! setup grants every role the path needs before it, so no earlier check can fire first.
-use cmtat_aztec::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
-use cmtat_aztec::CMTATAztec as Token;
 use crate::utils;
 use aztec::test::helpers::test_environment::TestEnvironment;
+use cmtat_aztec::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
+use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec_lib::modules::access_controlModule::{
     ADDRESS_LIST_ADD_ROLE, ENFORCEMENT_ROLE, MINTER_ROLE, PAUSE_ROLE,
 };

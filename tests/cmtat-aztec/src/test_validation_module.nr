@@ -1,9 +1,9 @@
 use crate::utils;
+use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec_lib::modules::access_controlModule::{
     ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, BURNER_ROLE, MINTER_ROLE, VALIDATION_ROLE,
 };
 use cmtat_aztec_lib::modules::validationModule::{CHANGE_ROLES_DELAY_SECONDS, SetFlag, UserFlags};
-use cmtat_aztec::CMTATAztec as Token;
 
 #[test]
 unconstrained fn get_operations_test() {
@@ -19,10 +19,7 @@ unconstrained fn set_operations_test() {
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(VALIDATION_ROLE, issuer));
 
-    let operations = SetFlag {
-        operate_blacklist: true,
-        operate_whitelist: false,
-    };
+    let operations = SetFlag { operate_blacklist: true, operate_whitelist: false };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
@@ -37,10 +34,7 @@ unconstrained fn transfer_when_blacklisted() {
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(VALIDATION_ROLE, issuer));
 
-    let operations = SetFlag {
-        operate_blacklist: true,
-        operate_whitelist: false,
-    };
+    let operations = SetFlag { operate_blacklist: true, operate_whitelist: false };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
@@ -52,17 +46,19 @@ unconstrained fn transfer_when_blacklisted() {
         Token::at(token_contract_address).grant_role(ADDRESS_LIST_ADD_ROLE, issuer),
     );
 
-    let userFlag = UserFlags {
-        is_blacklisted: true,
-        is_whitelisted: false,
-    };
+    let userFlag = UserFlags { is_blacklisted: true, is_whitelisted: false };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, userFlag));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -73,10 +69,7 @@ unconstrained fn transfer_when_not_whitelisted() {
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(VALIDATION_ROLE, issuer));
 
-    let operations = SetFlag {
-        operate_blacklist: false,
-        operate_whitelist: true,
-    };
+    let operations = SetFlag { operate_blacklist: false, operate_whitelist: true };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
@@ -86,7 +79,12 @@ unconstrained fn transfer_when_not_whitelisted() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -101,20 +99,14 @@ unconstrained fn transfer_when_whitelisted() {
         Token::at(token_contract_address).grant_role(ADDRESS_LIST_ADD_ROLE, issuer),
     );
 
-    let operations = SetFlag {
-        operate_blacklist: false,
-        operate_whitelist: true,
-    };
+    let operations = SetFlag { operate_blacklist: false, operate_whitelist: true };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
     let ret = env.view_public(Token::at(token_contract_address).get_operations());
     assert(ret == 2);
 
-    let userFlag = UserFlags {
-        is_blacklisted: false,
-        is_whitelisted: true,
-    };
+    let userFlag = UserFlags { is_blacklisted: false, is_whitelisted: true };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(issuer, userFlag));
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, userFlag));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
@@ -122,7 +114,12 @@ unconstrained fn transfer_when_whitelisted() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 
     utils::check_private_balance(
@@ -145,7 +142,12 @@ unconstrained fn transfer_when_no_operations() {
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -156,10 +158,7 @@ unconstrained fn can_remove_from_list_when_role() {
 
     env.call_public(issuer, Token::at(token_contract_address).grant_role(VALIDATION_ROLE, issuer));
 
-    let operations = SetFlag {
-        operate_blacklist: false,
-        operate_whitelist: true,
-    };
+    let operations = SetFlag { operate_blacklist: false, operate_whitelist: true };
     env.call_public(issuer, Token::at(token_contract_address).set_operations(operations));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
@@ -175,25 +174,24 @@ unconstrained fn can_remove_from_list_when_role() {
         Token::at(token_contract_address).grant_role(ADDRESS_LIST_REMOVE_ROLE, issuer),
     );
 
-    let whitelisted = UserFlags {
-        is_blacklisted: false,
-        is_whitelisted: true,
-    };
+    let whitelisted = UserFlags { is_blacklisted: false, is_whitelisted: true };
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(issuer, whitelisted));
     env.call_public(issuer, Token::at(token_contract_address).add_to_list(user, whitelisted));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
-    let cleared = UserFlags {
-        is_blacklisted: false,
-        is_whitelisted: false,
-    };
+    let cleared = UserFlags { is_blacklisted: false, is_whitelisted: false };
     env.call_public(issuer, Token::at(token_contract_address).remove_from_list(user, cleared));
     utils::advance_past_delay(env, CHANGE_ROLES_DELAY_SECONDS);
 
     let transfer_amount = 100 as u128;
     env.call_private(
         issuer,
-        Token::at(token_contract_address).transfer_private_to_private(issuer, user, transfer_amount, 0),
+        Token::at(token_contract_address).transfer_private_to_private(
+            issuer,
+            user,
+            transfer_amount,
+            0,
+        ),
     );
 }
 
@@ -222,7 +220,9 @@ unconstrained fn mint_to_blacklisted_fails() {
     let (env, token, issuer, user) = utils::setup(/* with_account_contracts */ false);
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
     enable_and_list(
-        env, token, issuer,
+        env,
+        token,
+        issuer,
         SetFlag { operate_blacklist: true, operate_whitelist: false },
         user,
         UserFlags { is_blacklisted: true, is_whitelisted: false },
@@ -237,7 +237,9 @@ unconstrained fn mint_to_non_whitelisted_fails() {
     env.call_public(issuer, Token::at(token).grant_role(MINTER_ROLE, issuer));
     // Whitelist mode on; only the issuer is listed, so `user` may not receive.
     enable_and_list(
-        env, token, issuer,
+        env,
+        token,
+        issuer,
         SetFlag { operate_blacklist: false, operate_whitelist: true },
         issuer,
         UserFlags { is_blacklisted: false, is_whitelisted: true },
@@ -252,7 +254,9 @@ unconstrained fn burn_from_blacklisted_fails() {
     env.call_public(issuer, Token::at(token).grant_role(BURNER_ROLE, issuer));
     // The issuer already holds tokens; blacklisting it must stop its own redemption too.
     enable_and_list(
-        env, token, issuer,
+        env,
+        token,
+        issuer,
         SetFlag { operate_blacklist: true, operate_whitelist: false },
         issuer,
         UserFlags { is_blacklisted: true, is_whitelisted: false },

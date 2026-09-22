@@ -4,10 +4,10 @@ use aztec::protocol::delayed_public_mutable::DelayedPublicMutableValues;
 use aztec::protocol::traits::{Deserialize, FromField, Packable, Serialize, ToField};
 use aztec::state_vars::{DelayedPublicMutable, Map, StateVariable};
 
-use crate::modules::enforcementModule::schedule_with_delay;
 use crate::modules::access_controlModule::{
     AccessControlModule, ADDRESS_LIST_ADD_ROLE, ADDRESS_LIST_REMOVE_ROLE, VALIDATION_ROLE,
 };
+use crate::modules::enforcementModule::schedule_with_delay;
 
 pub global BLACKLIST_FLAG: u64 = 1;
 pub global WHITELIST_FLAG: u64 = 2;
@@ -232,7 +232,6 @@ where
             TEXT_ADDRESS_TO_NOT_WHITELISTED,
         );
     }
-
 }
 
 impl UserFlagsTrait for UserFlags {
@@ -265,7 +264,6 @@ impl ToField for UserFlags {
         if self.is_whitelisted {
             value = value | WHITELIST_FLAG;
         }
-
 
         value.to_field()
     }
@@ -315,7 +313,6 @@ impl ToField for SetFlag {
         if self.operate_whitelist {
             value = value | WHITELIST_FLAG;
         }
-
 
         value.to_field()
     }

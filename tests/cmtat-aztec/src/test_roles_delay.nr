@@ -3,8 +3,8 @@
 //! difference, so nothing scheduled under the old delay can land earlier than it promised; a `Map`
 //! entry carries its own delay and adopts the setting when it is next written.
 use crate::utils;
-use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec::CMTATAztec::{CHANGE_ROLES_DELAY_SECONDS, MAX_ROLES_DELAY_SECONDS};
+use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec_lib::modules::access_controlModule::ENFORCEMENT_ROLE;
 use cmtat_aztec_lib::modules::enforcementModule::FreezableFlag;
 
@@ -24,7 +24,11 @@ unconstrained fn a_longer_delay_applies_at_once_to_the_issuer() {
     env.call_public(issuer, Token::at(token).set_roles_delay(7200));
     env.call_public(issuer, Token::at(token).set_issuer(next));
     utils::advance_past_delay(env, 3600);
-    assert_eq(env.view_public(Token::at(token).public_get_issuer()), issuer, "old delay must not suffice");
+    assert_eq(
+        env.view_public(Token::at(token).public_get_issuer()),
+        issuer,
+        "old delay must not suffice",
+    );
     utils::advance_past_delay(env, 3600);
     assert_eq(env.view_public(Token::at(token).public_get_issuer()), next);
 }
@@ -37,7 +41,11 @@ unconstrained fn a_freeze_adopts_the_current_setting() {
     env.call_public(issuer, Token::at(token).set_roles_delay(7200));
     env.call_public(issuer, Token::at(token).freeze(user, FreezableFlag { is_freezed: true }));
     utils::advance_past_delay(env, 3600);
-    assert_eq(env.view_public(Token::at(token).get_frozen(user)), 0, "not frozen after the old delay");
+    assert_eq(
+        env.view_public(Token::at(token).get_frozen(user)),
+        0,
+        "not frozen after the old delay",
+    );
     utils::advance_past_delay(env, 3600);
     assert_eq(env.view_public(Token::at(token).get_frozen(user)), 1);
 }
@@ -51,7 +59,11 @@ unconstrained fn a_shorter_delay_takes_effect_after_the_difference() {
     env.call_public(issuer, Token::at(token).set_roles_delay(600));
     env.call_public(issuer, Token::at(token).freeze(user, FreezableFlag { is_freezed: true }));
     utils::advance_past_delay(env, 600);
-    assert_eq(env.view_public(Token::at(token).get_frozen(user)), 0, "the previous hour still governs");
+    assert_eq(
+        env.view_public(Token::at(token).get_frozen(user)),
+        0,
+        "the previous hour still governs",
+    );
     utils::advance_past_delay(env, 3000);
     assert_eq(env.view_public(Token::at(token).get_frozen(user)), 1);
 }
@@ -66,7 +78,11 @@ unconstrained fn once_current_the_shorter_delay_governs_the_next_write() {
     utils::advance_past_delay(env, 3600);
     env.call_public(issuer, Token::at(token).unfreeze(user, FreezableFlag { is_freezed: false }));
     utils::advance_past_delay(env, 600);
-    assert_eq(env.view_public(Token::at(token).get_frozen(user)), 0, "unfrozen after the new 600 s delay");
+    assert_eq(
+        env.view_public(Token::at(token).get_frozen(user)),
+        0,
+        "unfrozen after the new 600 s delay",
+    );
 }
 
 #[test(should_fail_with = "AccessControlUnauthorizedAccount")]

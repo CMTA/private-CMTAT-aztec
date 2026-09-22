@@ -1,7 +1,7 @@
 use crate::utils;
-use cmtat_aztec_debt::CMTATAztecDebt as Token;
 use aztec::protocol::address::AztecAddress;
 use aztec::protocol::traits::{FromField, Serialize, ToField};
+use cmtat_aztec_debt::CMTATAztecDebt as Token;
 use cmtat_aztec_lib::modules::access_controlModule::DEBT_ROLE;
 use cmtat_aztec_lib::modules::extensions::debtModule::{
     DebtIdentifier, DebtInformation, DebtInstrument,
@@ -50,7 +50,8 @@ unconstrained fn set_and_get_debt_test() {
 
     let ret: [Field; 16] = env.view_public(Token::at(token_contract_address).get_debt());
 
-    let string_val = FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];
+    let string_val =
+        FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];
 
     // The identifier comes first: four strings.
     for i in 0..4 {
@@ -93,15 +94,13 @@ unconstrained fn set_debt_instrument_keeps_identifier_test() {
         currencyContract: new_currency_contract,
     };
 
-    env.call_public(
-        issuer,
-        Token::at(token_contract_address).set_debt_instrument(instrument),
-    );
+    env.call_public(issuer, Token::at(token_contract_address).set_debt_instrument(instrument));
 
     let ret: [Field; 16] = env.view_public(Token::at(token_contract_address).get_debt());
 
     // The identifier survived untouched...
-    let string_val = FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];
+    let string_val =
+        FieldCompressedString::from_string("abc0000000000000000000000000000").serialize()[0];
     for i in 0..4 {
         assert(ret[i] == string_val);
     }
@@ -131,8 +130,5 @@ unconstrained fn set_debt_instrument_without_role_fails_test() {
         utils::setup(/* with_account_contracts */ false);
 
     let instrument = sample_debt(AztecAddress::from_field(42)).debtInstrument;
-    env.call_public(
-        recipient,
-        Token::at(token_contract_address).set_debt_instrument(instrument),
-    );
+    env.call_public(recipient, Token::at(token_contract_address).set_debt_instrument(instrument));
 }

@@ -1,4 +1,3 @@
-
 use aztec::macros::aztec;
 
 /// CMTATAztecAuth - an ARC-403 authorization contract that applies CMTAT's pause, deactivation and
@@ -23,8 +22,7 @@ pub contract CMTATAztecAuth {
             functions::{external, initializer, internal, only_self, view},
             storage::storage,
         },
-        protocol::address::AztecAddress,
-        protocol::traits::ToField,
+        protocol::{address::AztecAddress, traits::ToField},
         state_vars::PublicMutable,
     };
 
@@ -36,11 +34,11 @@ pub contract CMTATAztecAuth {
             require_from_not_frozen_private, require_from_not_frozen_public,
             require_lifecycle_allows,
         },
-        enforcementModule::{CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag},
-        pauseModule::PauseModule,
-        validationModule::{
-            SetFlag, UserFlags, ValidationModule,
+        enforcementModule::{
+            CHANGE_ROLES_DELAY_SECONDS as FREEZE_DELAY_SECONDS, Freezable, FreezableFlag,
         },
+        pauseModule::PauseModule,
+        validationModule::{SetFlag, UserFlags, ValidationModule},
     };
 
     // Kept equal to the `VERSION` of the CMTAT token contracts (`contracts/cmtat-aztec*/src/main.nr`)
@@ -231,14 +229,19 @@ pub contract CMTATAztecAuth {
     #[external("public")]
     fn set_operations(operations: SetFlag) {
         let operator = self.msg_sender();
-        let effective_at =
-            self.storage.validation_module.set_operations(operator, operations, self.storage.access_control);
-        self.emit(OperationsSet {
-            operate_blacklist: operations.operate_blacklist,
-            operate_whitelist: operations.operate_whitelist,
+        let effective_at = self.storage.validation_module.set_operations(
             operator,
-            effective_at,
-        });
+            operations,
+            self.storage.access_control,
+        );
+        self.emit(
+            OperationsSet {
+                operate_blacklist: operations.operate_blacklist,
+                operate_whitelist: operations.operate_whitelist,
+                operator,
+                effective_at,
+            },
+        );
     }
 
     #[external("public")]
@@ -341,7 +344,9 @@ pub contract CMTATAztecAuth {
             self.storage.access_control,
             self.storage.roles_delay.read(),
         );
-        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
+        self.emit(
+            AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at },
+        );
     }
 
     #[external("public")]
@@ -354,7 +359,9 @@ pub contract CMTATAztecAuth {
             self.storage.access_control,
             self.storage.roles_delay.read(),
         );
-        self.emit(AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at });
+        self.emit(
+            AddressFrozen { account: user, is_frozen: value.is_freezed, enforcer, effective_at },
+        );
     }
 
     /** ==========================================================
@@ -399,13 +406,20 @@ pub contract CMTATAztecAuth {
     }
 
     #[internal("public")]
-    fn _emit_listed(account: AztecAddress, flags: UserFlags, operator: AztecAddress, effective_at: u64) {
-        self.emit(AddressListed {
-            account,
-            is_blacklisted: flags.is_blacklisted,
-            is_whitelisted: flags.is_whitelisted,
-            operator,
-            effective_at,
-        });
+    fn _emit_listed(
+        account: AztecAddress,
+        flags: UserFlags,
+        operator: AztecAddress,
+        effective_at: u64,
+    ) {
+        self.emit(
+            AddressListed {
+                account,
+                is_blacklisted: flags.is_blacklisted,
+                is_whitelisted: flags.is_whitelisted,
+                operator,
+                effective_at,
+            },
+        );
     }
 }

@@ -4,13 +4,16 @@
 //! `burn` is deliberately NOT aligned (`burn_private` there is holder-authorised; here it needs
 //! BURNER_ROLE) - see "Interface alignment" in doc/technical/building-on-aip20.md.
 use crate::utils;
-use cmtat_aztec::CMTATAztec as Token;
 use aztec::protocol::traits::ToField;
+use cmtat_aztec::CMTATAztec as Token;
 
 #[test]
 unconstrained fn private_profile_selectors_match_aip20() {
     let (_, token, issuer, user) = utils::setup(/* with_account_contracts */ false);
-    assert_eq(Token::at(token).transfer_private_to_private(issuer, user, 1, 0).selector.to_field(), 0xedc09d49);
+    assert_eq(
+        Token::at(token).transfer_private_to_private(issuer, user, 1, 0).selector.to_field(),
+        0xedc09d49,
+    );
     assert_eq(Token::at(token).mint_to_private(user, 1).selector.to_field(), 0xf8f84119);
     assert_eq(Token::at(token).name().selector.to_field(), 0x5c5c9c42);
     assert_eq(Token::at(token).symbol().selector.to_field(), 0x62cc9647);

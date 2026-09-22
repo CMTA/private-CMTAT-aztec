@@ -1,7 +1,7 @@
 use crate::utils;
-use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE};
-use cmtat_aztec::CMTATAztec as Token;
 use aztec::test::helpers::authwit::add_private_authwit_from_call;
+use cmtat_aztec::CMTATAztec as Token;
+use cmtat_aztec_lib::modules::access_controlModule::{BURNER_ROLE, MINTER_ROLE};
 
 global AUTHWIT_NONCE: Field = 7;
 
@@ -118,10 +118,7 @@ unconstrained fn burn_private_batch_success() {
     let mint_amount = [1000 as u128, 2000 as u128, 300 as u128, 400 as u128];
     let addresses = [user1, user2, user1, user2];
 
-    env.call_private(
-        issuer,
-        Token::at(token_contract_address).mint_batch(addresses, mint_amount),
-    );
+    env.call_private(issuer, Token::at(token_contract_address).mint_batch(addresses, mint_amount));
 
     let total_supply = env.view_public(Token::at(token_contract_address).total_supply());
     assert(total_supply == 3700 as u128);
@@ -133,10 +130,7 @@ unconstrained fn burn_private_batch_success() {
     let burnt = 370 as u128;
 
     // user1 burns from their own balance, so no authwit is needed and the nonce must be zero.
-    env.call_private(
-        user1,
-        Token::at(token_contract_address).burn_batch(user1, burn_amount, 0),
-    );
+    env.call_private(user1, Token::at(token_contract_address).burn_batch(user1, burn_amount, 0));
 
     utils::check_private_balance(env, token_contract_address, user1, 1300 as u128 - burnt);
     utils::check_private_balance(env, token_contract_address, user2, 2400 as u128);

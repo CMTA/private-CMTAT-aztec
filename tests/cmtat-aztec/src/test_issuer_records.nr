@@ -22,7 +22,11 @@ unconstrained fn a_mint_leaves_the_issuer_one_event_log_and_its_two_nullifiers()
     let effects = get_last_tx_effects();
     assert_eq(effects.note_hashes.len(), 1, "one note: the recipient's");
     assert_eq(effects.private_logs.len(), 2, "the note and the issuer's event");
-    assert_eq(effects.nullifiers.len(), 4, "two without the event, plus its commitment and its delivery sequence");
+    assert_eq(
+        effects.nullifiers.len(),
+        4,
+        "two without the event, plus its commitment and its delivery sequence",
+    );
 }
 
 #[test]

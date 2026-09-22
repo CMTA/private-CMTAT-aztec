@@ -2,11 +2,11 @@
 //! duplicate batch address, two scheduled issuer changes, authwit nonce and replay, cancel_authwit,
 //! commitment completion by the wrong party / twice / after a freeze, re-initialization, the
 //! argument-less public half, and the storage-slot baseline.
-use cmtat_aztec::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
-use cmtat_aztec::CMTATAztec as Token;
 use crate::utils;
 use aztec::protocol::traits::ToField;
 use aztec::test::helpers::authwit::add_private_authwit_from_call;
+use cmtat_aztec::CMTATAztec::CHANGE_ROLES_DELAY_SECONDS;
+use cmtat_aztec::CMTATAztec as Token;
 use cmtat_aztec_lib::modules::access_controlModule::{ENFORCEMENT_ROLE, MINTER_ROLE};
 use cmtat_aztec_lib::modules::enforcementModule::FreezableFlag;
 
