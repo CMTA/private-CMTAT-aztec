@@ -203,7 +203,7 @@ Bump all five to `5.2.0` and reinstall. This is only needed if the fork's own Ty
 
 Once compiled at `v5.2.0`, the fork's crates can be depended on **as contract interfaces**. Every crate in it is `type = "contract"`, so a dependency gives you `Token::at(address).<fn>(…)` for calling a deployed instance — never its implementation to extend. That is the only way the library's own vault consumes the token, and it is the only way this repository can.
 
-**A. Reference only — nothing to do.** For the comparisons in `doc/standards/`, the checkout itself is the artefact; no manifest in this workspace needs to change.
+**A. Reference only — nothing to do.** For the comparisons in `doc/technical/`, the checkout itself is the artefact; no manifest in this workspace needs to change.
 
 **B. A contract in this workspace that calls the AIP-20 token** — for example an end-to-end harness that deploys a stock token beside one of the authorization contracts of [`doc/auth/README.md`](../auth/README.md) (`contracts/cmtat-aztec-auth*`). Add the crate to the new package's manifest by path:
 

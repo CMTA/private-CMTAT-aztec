@@ -4,6 +4,14 @@ An assessment of whether this project could be rebuilt on the [`aztec-standards`
 
 > **Companion document.** [`cmtat-vs-aip20.md`](./cmtat-vs-aip20.md) compares the two *standards*. This one asks the engineering question: given the library as it actually is, what would "building on top" mean, and does any version of it work?
 
+> **Status (2026-09-22).** The verdict stands: this project is not built on `aztec-standards`, and the reason is still the design conflicts rather than the cost of porting. Three parts of the document have since been acted on and carry their own status notes where they occur.
+>
+> - **Option B's mirror image was built.** `CMTATAztecAuth` and `CMTATAztecAuthMultiToken` apply pause, deactivation, freeze and sender-side lists to the fork's `Token` and `MultiToken` through the hook ([`doc/auth/README.md`](../auth/README.md)) — and hit exactly the limit predicted below, the missing recipient.
+> - **Option F was carried out.** The submodule is the [CMTA fork](https://github.com/CMTA/aztec-standards) at `5433e9c`, moved to Aztec 5.2.0, 79/79 passing. The section's estimate held: eleven manifest edits, no source changes.
+> - **Interface alignment shipped**, in the three token variants rather than a fourth — see the status note on that section, and [`aip20-features-for-cmtat.md`](./aip20-features-for-cmtat.md) for the feature-by-feature state, which is the document to read for *what is in the code today*. The recommendation's first item, the note budget, is done too.
+>
+> What is unchanged and still worth reading: the six options and why five of them fail, the measured cost of the fork, the burn trap, and the upstream request for a recipient argument on the ARC-403 hook.
+
 ## Table of contents
 
 - [What was checked](#what-was-checked)
@@ -289,7 +297,7 @@ What CMTAT has that AIP-20 does not, for the mirror image: `transfer_batch`, `mi
 
 ### The cross-domain paths: what they are for, and offering them as a holder's choice
 
-> **Status (2026-09-14): implemented in 0.4.0**, as proposed below — the four bridges plus `initialize_transfer_commitment` and `balance_of_public`, behind the `public_side_enabled` deployment flag, with the compliance chain in the private half, recipient screening at commitment opening and a `CommitmentInitialized` event to the issuer. Not implemented: the commitment expiry, and the public-to-public transfer, public mint and public burn (decision 2 below, left as "not needed"). One deliberate departure from the standard's code, added after the 0.4.0 review (K-6): a commitment can be **paid only once** — `pay_commitment` pushes a nullifier derived from the commitment, where AIP-20 lets a second completion debit the payer for a note the recipient never discovers; see [`doc/design/commitment-reuse.md`](../design/commitment-reuse.md). The derived code is in `lib/src/modules/hybridModule.nr` under the MIT licence. User documentation: [`doc/README.md`, "Private/public bridges"](../README.md#privatepublic-bridges).
+> **Status (2026-09-14): implemented in 0.4.0**, as proposed below — the four bridges plus `initialize_transfer_commitment` and `balance_of_public`, behind the `public_side_enabled` deployment flag, with the compliance chain in the private half, recipient screening at commitment opening and a `CommitmentInitialized` event to the issuer. Not implemented: the commitment expiry, and the public-to-public transfer, public mint and public burn (decision 2 below, left as "not needed"). One deliberate departure from the standard's code, added after the 0.4.0 review (K-6): a commitment can be **paid only once** — `pay_commitment` pushes a nullifier derived from the commitment, where AIP-20 lets a second completion debit the payer for a note the recipient never discovers; see [`doc/technical/commitment-reuse.md`](commitment-reuse.md). The derived code is in `lib/src/modules/hybridModule.nr` under the MIT licence. User documentation: [`doc/README.md`, "Private/public bridges"](../README.md#privatepublic-bridges).
 
 Four of the missing entry points are not "public balances" in the sense of a transparent ledger; they are the **bridges between the private and the public domain** that give AIP-20 its "hybrid" character. A holder who has private notes can decide to move some of them into the public side of the token, and back. The question this raises for CMTAT is different from F6's: not "should balances be public" but "may a holder *choose* to make one of their own transfers public".
 
@@ -410,8 +418,8 @@ Even if one of the options above were chosen, these apply:
 
 **Do not rebuild on `aztec-standards` — and the reason is no longer "it would be hard to port".** Option F showed the port is trivial. The reason is that after the port every design problem is still there, and solving them produces a fork that is no longer the standard. Keep the current architecture — CMTAT modules over aztec-nr, three deployment variants — and take from AIP-20 the two things that are portable:
 
-1. **Adopt the note-budget-plus-recursion pattern.** This is the measured win and it is independent of everything else. Prerequisite is a note-count distribution measurement, not an architecture decision.
-2. **Consider aligning a future compliance hook with ARC-403's shape**, so that a CMTAT compliance contract could serve both this token and a stock AIP-20 token if the hook ever gains a recipient argument.
+1. **Adopt the note-budget-plus-recursion pattern.** This is the measured win and it is independent of everything else. Prerequisite is a note-count distribution measurement, not an architecture decision. — **Done** in 0.4.0 under review finding A-5: two notes, then `_recurse_debit` at eight per call, AIP-20's constants credited in the code; −42,203 gates on a transfer.
+2. **Consider aligning a future compliance hook with ARC-403's shape**, so that a CMTAT compliance contract could serve both this token and a stock AIP-20 token if the hook ever gains a recipient argument. — **Done on the contract side, not on the token side.** The two authorization contracts are that compliance contract, in ARC-403's shape, serving the fork's tokens today. The token's own settable hook — F3 of the features document, with `to` and the caller added — is still open.
 
 **And raise the recipient argument upstream.** `authorize_private(from, amount, selector)` cannot express recipient screening, which every regulated token needs and which is not an exotic requirement — ERC-3643, ERC-1404 and CMTAT all check both parties. Adding `to` to the hook signature would cost the standard very little and would be the difference between "a compliant token can use AIP-20" and "a compliant token must fork it". That is the single most valuable change this project could suggest to the standard, and it supersedes suggestion A-1 in the companion document, which asked for a hook that already exists.
 

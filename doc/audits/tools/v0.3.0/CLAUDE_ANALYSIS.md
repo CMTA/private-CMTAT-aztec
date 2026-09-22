@@ -38,7 +38,7 @@
 | C-4 | Constructor configures the contract with no event at all | ✅ fixed |
 | C-5 | No undelivered messages anywhere | ✅ checked — clean |
 | C-6 | Nine state-changing admin entry points emit nothing | ✅ fixed |
-| D-1 | The three `main.nr` files are 99–100% identical | ✅ closed in 0.4.0 — the value-moving chains were extracted into `lib/src/modules/tokenModule.nr` (`doc/design/token-module.md`); "extraction is not available" held for the entry-point declarations only |
+| D-1 | The three `main.nr` files are 99–100% identical | ✅ closed in 0.4.0 — the value-moving chains were extracted into `lib/src/modules/tokenModule.nr` (`doc/technical/token-module.md`); "extraction is not available" held for the entry-point declarations only |
 | D-2 | `test/utils.nr` duplicated 75/78 lines across three crates | ✅ fixed (partially, as scoped) — the two contract-agnostic helpers moved to a `test-helpers` lib crate |
 | E-1 | `#[view]` missing on four read-only entry points | ✅ fixed |
 | E-2 | Getters returning without `pub`, unlike every sibling | ✅ fixed — four, not three |
@@ -436,7 +436,7 @@ That was verified by removing `#[view]` from `terms` and rebuilding. So switchin
 
 ### F-1. Should this token implement AIP-20?
 
-> The full standard-to-standard comparison behind this finding is in [`doc/standards/cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md), and the engineering question — could this project be *rebuilt on* the `aztec-standards` library — is answered in [`doc/standards/building-on-aip20.md`](../standards/building-on-aip20.md). This section states the decision for *this* contract.
+> The full standard-to-standard comparison behind this finding is in [`doc/technical/cmtat-vs-aip20.md`](../../../technical/cmtat-vs-aip20.md), and the engineering question — could this project be *rebuilt on* the `aztec-standards` library — is answered in [`doc/technical/building-on-aip20.md`](../../../technical/building-on-aip20.md). This section states the decision for *this* contract.
 >
 > ⚠️ One correction from reading that library's source: AIP-20 **does** have a transfer-authorization hook (ARC-403), which this finding's first revision did not know about. It does not change the verdict — the hook is not passed the recipient, so it cannot express CMTAT's screening — but it narrows the gap from "no extension point" to "one missing argument".
 

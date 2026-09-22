@@ -141,11 +141,11 @@ env.call_public(admin, CMTATAztecAuth::at(auth).pause_contract());
 // transfer_private_to_private now fails with "Error: contract is paused"; burn_private still passes
 ```
 
-The fork's token cannot be compiled from inside this repository (see Trap 3 in [`upgrading-aztec-standards.md`](../standards/upgrading-aztec-standards.md)), which is why the integration test above lives in a copy of the fork rather than in this workspace — see [How it was verified](#how-it-was-verified).
+The fork's token cannot be compiled from inside this repository (see Trap 3 in [`upgrading-aztec-standards.md`](../technical/upgrading-aztec-standards.md)), which is why the integration test above lives in a copy of the fork rather than in this workspace — see [How it was verified](#how-it-was-verified).
 
 ## Limitations
 
-- **The recipient is not screened — by any rule.** A frozen or blacklisted address can still *receive*, and in whitelist mode an unlisted address can receive too. This is the ARC-403 signature, not a choice: `authorize_*` receives `from`, not `to`, and the authorization contract has no way to read the token's call arguments. The CMTAT token contracts check both parties. The fix is a fork change: pass `to` in the hook (zero for the commitment paths), which is the suggestion recorded in [`cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md).
+- **The recipient is not screened — by any rule.** A frozen or blacklisted address can still *receive*, and in whitelist mode an unlisted address can receive too. This is the ARC-403 signature, not a choice: `authorize_*` receives `from`, not `to`, and the authorization contract has no way to read the token's call arguments. The CMTAT token contracts check both parties. The fix is a fork change: pass `to` in the hook (zero for the commitment paths), which is the suggestion recorded in [`cmtat-vs-aip20.md`](../technical/cmtat-vs-aip20.md).
 - **The initiator is not screened.** A transfer executed by a third party under an authwit is judged on `from` only; CMTAT Solidity also checks the `spender`.
 - **Mints are unrestricted by the hook.** The `aztec-standards` mint paths do not call it. Who may mint is decided by the token's single `minter`; a frozen recipient can be minted to, and minting continues after deactivation.
 - **AIP-721 is out of reach** until the fork's `NFT` contract gains a hook — see [Adding AIP-721](#adding-aip-721).
@@ -192,7 +192,7 @@ Four changes to the fork's ARC-403 hook, in order of impact. Together they would
 
 None of these is exotic: ERC-3643's compliance hook receives sender, recipient and amount; ERC-1404 checks both parties; CMTAT's own `RuleEngine` receives `from`, `to`, `value` and the spender. AIP-20's hook is the outlier, by omission rather than by decision.
 
-The audit-trail gap (criterion 8) is the one thing no hook change fixes: only the token can copy notes to an observer. That is a separate proposal — an optional observer delivery in AIP-20 itself — and the same auditability conversation [`cmtat-vs-aip20.md`](../standards/cmtat-vs-aip20.md) already suggests for the standard.
+The audit-trail gap (criterion 8) is the one thing no hook change fixes: only the token can copy notes to an observer. That is a separate proposal — an optional observer delivery in AIP-20 itself — and the same auditability conversation [`cmtat-vs-aip20.md`](../technical/cmtat-vs-aip20.md) already suggests for the standard.
 
 ## Version
 

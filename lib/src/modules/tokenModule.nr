@@ -3,7 +3,7 @@
 //!
 //! Noir keeps `#[external]` declarations, `enqueue_self` calls and `self.emit` in the contract
 //! module, so each variant's `main.nr` still declares the entry points; every check and every note
-//! movement behind them lives here (see `doc/design/token-module.md`). The functions take the state
+//! movement behind them lives here (see `doc/technical/token-module.md`). The functions take the state
 //! variables as arguments and never own them, so the storage layout of each contract is untouched.
 //!
 //! Invariants, in one place:

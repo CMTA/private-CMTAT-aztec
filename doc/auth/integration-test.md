@@ -1,6 +1,6 @@
 # Integration test of the authorization contracts against the `aztec-standards` tokens
 
-The fork under `submodules/aztec-standards` cannot be compiled in place (Trap 3 in [`upgrading-aztec-standards.md`](../standards/upgrading-aztec-standards.md): `nargo` resolves the outermost workspace, which is this repository's). The integration tests are therefore run in a copy of the fork with this repository's crates added to it. This file records how, and the test sources, so the run can be repeated after a fork or Aztec bump. Last run: fork `5433e9c`, Aztec 5.2.0, **10/10** (7 token, 3 multitoken).
+The fork under `submodules/aztec-standards` cannot be compiled in place (Trap 3 in [`upgrading-aztec-standards.md`](../technical/upgrading-aztec-standards.md): `nargo` resolves the outermost workspace, which is this repository's). The integration tests are therefore run in a copy of the fork with this repository's crates added to it. This file records how, and the test sources, so the run can be repeated after a fork or Aztec bump. Last run: fork `5433e9c`, Aztec 5.2.0, **10/10** (7 token, 3 multitoken).
 
 ## Set up the copy
 

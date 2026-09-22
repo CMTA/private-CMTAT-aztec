@@ -2,7 +2,7 @@
 //! `aztec-standards` Token, so a caller addressing the standard by selector reaches this contract.
 //! Values read from `Token::at(..).<fn>(..).selector` compiled against the fork at 5433e9c.
 //! `burn` is deliberately NOT aligned (`burn_private` there is holder-authorised; here it needs
-//! BURNER_ROLE) - see "Interface alignment" in doc/standards/building-on-aip20.md.
+//! BURNER_ROLE) - see "Interface alignment" in doc/technical/building-on-aip20.md.
 use crate::utils;
 use cmtat_aztec::CMTATAztec as Token;
 use aztec::protocol::traits::ToField;

@@ -1,6 +1,15 @@
 # Moving mint, transfer and burn into a library module
 
 > **Status (2026-09-15): applied.** `lib/src/modules/tokenModule.nr` exists (281 lines), the three `main.nr` shrank by 105 / 105 / 97 lines, the `Screening` trait was used rather than the `Option`, and the gate profile of all 48 private circuits is byte-identical before and after. Test counts unchanged. The rest of this note is the analysis as written before the change.
+>
+> **Where the applied code differs from the sketch below (2026-09-22).** The note is kept as written, so four names in [The change](#the-change) do not exist in the repository, and one placement changed.
+>
+> - **`Screening` is the trait, not the struct.** The sketch shows a `Screening<Context>` struct carrying `Option<ValidationModule>`; the code has a `pub trait Screening` with two implementations, `FreezeAndLists` (base, Debt) and `FreezeOnly` (Light) — the shape [Disadvantages](#disadvantages) recommends over the `Option`.
+> - **The public halves were not split the way the sketch splits them.** `require_mint` + `increase_supply` became one `mint_public`, `require_burn` + `decrease_supply` one `burn_public`; only `require_transfer` kept its name. Searching the repository for the other four finds nothing.
+> - **The bridge chains live in `tokenModule.nr`, not `hybridModule.nr`.** `bridge_private_to_public`, `bridge_public_to_private`, `open_commitment` and `pay_commitment` sit next to the three operations; `hybridModule.nr` kept `PublicBalances`, `initialize_commitment` and `complete_commitment`, which is also what keeps its MIT-only provenance clean.
+> - **The module is now 360 lines, not 281**, and the growth is the note's argument being cashed in: `A-5` added the note budget (`try_debit`, `debit_recursive`, `debit_private` and the recursion closure the four chains take) and `K-6` added `commitment_paid_nullifier`, each written **once** where before 0.4.0 each would have been written three times. Those are the first two changes to the compliance chain since the refactor.
+> - **The verification plan's counts are superseded.** It expects 95 / 11 / 6 / 29 / 28; the suite is at **237** (143 base, 12 Debt, 7 Light, 38 + 37 authorization). The gate-diff step is unchanged and is still the acceptance test — the 0.4.0 review adopted it as the standing rule for any change claiming to be a pure refactor.
+> - **The residue guard [Limitations that remain](#limitations-that-remain) asks for exists.** "A test that computes each variant's selectors and asserts the shared set is equal across the three artifacts" is `tests/cmtat-aztec-debt/src/test_selectors.nr` and its Light twin, added as `K-4`.
 
 A design note for a refactor that was then done: taking the bodies of the value-moving operations — mint, transfer, burn, their batch forms, their enqueued public halves and the four private/public bridges — out of the three `main.nr` files and into one module of `cmtat_aztec_lib`, so that the compliance chain exists once instead of three times. It states what would change, what it would cost, what it would buy, what it would not, and what Noir does not allow.
 

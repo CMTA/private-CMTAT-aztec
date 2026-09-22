@@ -96,7 +96,7 @@ The review recorded K-6 with three claims. Checked against the library and the f
 | Claim in the review | Verdict |
 |---|---|
 | "Inherited from `PartialUintNote::complete`" — the behaviour is the library's | **Correct**, with a precision: CMTAT-Aztec completes through `complete_from_private`, whose validity check is `assert_nullifier_exists(for_settled(V))`; the public `complete` uses `nullifier_exists_unsafe`. Both are existence checks; neither consumes `V`. |
-| "AIP-20 has the same behaviour" | **Correct by code reading** — same library call, no guard in any of its five completion paths. Not demonstrated by a test in the fork; the fork cannot be built in place (see `doc/standards/upgrading-aztec-standards.md`, trap 3), and the Aztec docs make the same statement about AIP-20 directly. |
+| "AIP-20 has the same behaviour" | **Correct by code reading** — same library call, no guard in any of its five completion paths. Not demonstrated by a test in the fork; the fork cannot be built in place (see `doc/technical/upgrading-aztec-standards.md`, trap 3), and the Aztec docs make the same statement about AIP-20 directly. |
 | "The contract could refuse it — the public half pushes a nullifier of the commitment" | **Wrong place.** The completion is in the *private* half; the enqueued `_transfer` deliberately takes no arguments, and passing `C` to it would publish the commitment in the public call's arguments. The nullifier belongs in the private chain (`pay_commitment`), where `UintNote::partial` itself pushes `V`. Corrected in the README and the review. |
 | "100 units are no one's, yet still counted in supply" | **Imprecise.** They are the recipient's — owner and randomness are the recipient's — and unknown to its wallet. Supply is right; the wallets are wrong. This matters for the options below: the funds are recoverable in principle, not burned. |
 
@@ -201,7 +201,7 @@ For option 2:
 2. Add the same test for `transfer_private_to_public_with_commitment`'s commitment (the sender is its completer).
 3. Re-run the gate profile for `transfer_private_to_commitment` in the three variants (0.4.0 baseline: 93,011 / 93,011 / 86,812) and re-probe its note ceiling the way K-7 was measured (`spend_n_notes`-style helper against the commitment path).
 4. Break the change on purpose — remove the `push_nullifier_unsafe` — and watch test 1 fail, per the project's rule for chain changes.
-5. Update the README bridge section, `doc/standards/building-on-aip20.md` (behavioural difference from the standard) and the review's K-6 row.
+5. Update the README bridge section, `doc/technical/building-on-aip20.md` (behavioural difference from the standard) and the review's K-6 row.
 
 ## FAQ
 

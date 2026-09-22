@@ -2,6 +2,9 @@
 
 The third step of a three-step plan. Step one brings the [`aztec-standards`](https://github.com/defi-wonderland/aztec-standards) fork to Aztec 5.2.0 ([`upgrading-aztec-standards.md`](./upgrading-aztec-standards.md)); step two packages the compliance modules as an ARC-403 authorization contract for a stock AIP-20 token, with its known limits on mint and burn (built: [`doc/auth/README.md`](../auth/README.md)). This document is step three: **which AIP-20 features can be brought into the CMTAT token itself without breaking its equivalence to CMTAT, and in what order.**
 
+> **Status (2026-09-22): four of the seven features are in the code, and the two-product map below is retired.** 0.4.0 did not build the fourth variant this note recommends. It put the AIP-20 features into the **three existing variants** behind the constructor flag `public_side_enabled`, so what the note calls CMTAT-private and CMTAT-private-AIP20 is one product with a deployment switch: with the flag `false` the token is exactly the unqualified private product, and with it `true` the AIP-20 bridges and the public balance exist. The per-feature state is the last column of the summary table and a status block on each section; the reconciliation that drove it is finding **F-1** of the [0.4.0 review](../audits/tools/v0.4.0/CLAUDE_ANALYSIS.md), which carries the same seven rows. What still stands as written — and is the reason to keep this document — is the four-question test, the scoring of each feature against the 61 criteria and the nine-row privacy table, the measured costs, and the two rejections with their grounds.
+>
+> **One consequence has not been carried through.** Test 2 below says a feature that moves a privacy-table row must be disclosed in the assessment. F2 and the narrow form of F6 both moved rows, and the privacy table in [`doc/cmtat-assessment/README.md`](../cmtat-assessment/README.md) still answers *balance of an address* and *transfer amount* as plain `private`, with no mention of `public_side_enabled`, the bridges or `balance_of_public`. That is an open gap in the assessment, not in this note.
 
 ## Table of contents
 
@@ -16,7 +19,7 @@ The third step of a three-step plan. Step one brings the [`aztec-standards`](htt
 - [F6 — Public balances](#f6--public-balances)
 - [F7 — Named constructors](#f7--named-constructors)
 - [Rejected — features that are not CMTAT-compatible](#rejected--features-that-are-not-cmtat-compatible)
-- [Recommended order](#recommended-order)
+- [Recommended order — superseded by what 0.4.0 did](#recommended-order--superseded-by-what-040-did)
 - [What each feature changes in the equivalency assessment](#what-each-feature-changes-in-the-equivalency-assessment)
 
 ## The test each feature has to pass
@@ -28,7 +31,7 @@ Four questions, asked of every feature:
 3. **Which product it belongs in.** Two products are in scope:
    - **CMTAT-private** — the three variants that exist today (`CMTATAztec`, `CMTATAztecDebt`, `CMTATAztecLight`), keeping CMTAT's own names and surface, no AIP-20 entry points.
    - **CMTAT-private-AIP20** — a variant that integrates AIP-20: its entry-point names, its commitment flow, and whatever else from the standard survives the first two tests. Still private by construction; still CMTAT-equivalent.
-   A feature can belong in both, in one, or in neither.
+   A feature can belong in both, in one, or in neither. **This third test is the one the release retired:** there is one product, and the AIP-20 surface is a constructor flag on it, so where a feature scored "AIP20 variant only" the question became "on which side of `public_side_enabled`". Tests 1, 2 and 4 are unaffected.
 4. **Cost and prerequisites.** Gates, measured where they could be; ABI or storage breaks; what must be true before starting.
 
 Everything measured below was measured on Aztec 5.2.0, on this repository's `CMTATAztec` and on the `aztec-standards` token forked to the same version.
@@ -48,19 +51,21 @@ The consequence for this document: **the commitment path is not excluded** — i
 
 ## Summary table
 
-| # | Feature | CMTA equivalency (61 criteria) | CMTA privacy table (9 rows) | CMTAT-private | CMTAT-private-AIP20 | Cost | Verdict |
-|---|---|---|---|---|---|---|---|
-| F1 | Note budget with recursive subtraction | Neutral | **Unchanged** | ✔ | ✔ (inherits) | **−43,046 gates** per transfer, common case (measured); a recursive kernel iteration when fragmented | **Do first, in both** |
-| F2 | Commitment transfers, screened at initialization | Neutral; enables delivery-versus-payment | **Changes two rows** — *transfer amount* becomes visible-but-unlinked on the commitment path; *issuer availability* holds only with an added delivery | ✘ — keep the direct path only | ✔ — the defining feature, with three additions | New entry points, one storage field | **Second, AIP20 variant only** |
-| F3 | Rule-engine hook passing recipient and caller | **Improves** — CMTAT's `RuleEngine`, criteria 26–28 | Unchanged **if the engine runs private**; an engine that enqueues public leaks *transfer participants* | ✔ | ✔ | ~101,000 gates per transfer when set, ~0 unset (docs figure) | **Third, in both** |
-| F4 | AIP-20 entry-point names | Neutral | Unchanged | ✘ — CMTAT names stay | ✔ | ABI break, five renames; `burn` excluded | **AIP20 variant, bundled with F2** |
-| F5 | Private-party marker in public events | Neutral | Unchanged — it is what *keeps* participants private if public events are ever emitted | ✘ (no public events) | ✔ when public events exist | Trivial | **With public events, if ever** |
-| F6 | Public balances | Neutral — CMTAT Solidity *is* public | **Changes three rows** — *balance*, *transfer amount* and *participants* become `public` on the public side | ✘ | ✘ — contradicts "private" in both names | Every path re-guarded | **A fifth, hybrid variant at most** |
-| F7 | Named constructors | Neutral | Unchanged | ✘ | ✔ | Trivial | **AIP20 variant, optional** |
-| — | Holder self-burn | **Regresses criterion 11** | — | ✘ | ✘ | — | **Rejected** |
-| — | Single immutable minter | **Regresses 29–31** | — | ✘ | ✘ | — | **Rejected** |
+The last column is the state of the code; the *Verdict* column is the recommendation this note made on 2026-09-14 and is kept so the divergence is visible.
 
-Read as a product map: **CMTAT-private gains F1 and F3 and nothing else; CMTAT-private-AIP20 is CMTAT-private plus F2, F4, F5 and F7.** F6 belongs to neither, because both are named *private* and F6 is the one feature that makes a balance public.
+| # | Feature | CMTA equivalency (61 criteria) | CMTA privacy table (9 rows) | Cost | Verdict (2026-09-14) | **State (2026-09-22)** |
+|---|---|---|---|---|---|---|
+| F1 | Note budget with recursive subtraction | Neutral | **Unchanged** | **−43,046 gates** per transfer, common case (measured); a recursive kernel iteration when fragmented | Do first, in both | **Done** — A-5: a two-note budget with `_recurse_debit` at eight per call, −42,203 measured |
+| F2 | Commitment transfers, screened at initialization | Neutral; enables delivery-versus-payment | **Changes two rows** — *transfer amount* becomes visible-but-unlinked on the commitment path; *issuer availability* holds only with an added delivery | New entry points, one storage field | Second, AIP20 variant only | **Done in all three variants**, behind `public_side_enabled`; additions 2 and 3 met, **addition 1 (the expiry) is not**; plus a single-payment guard the standard does not have (K-6) |
+| F3 | Rule-engine hook passing recipient and caller | **Improves** — CMTAT's `RuleEngine`, criteria 26–28 | Unchanged **if the engine runs private**; an engine that enqueues public leaks *transfer participants* | ~101,000 gates per transfer when set, ~0 unset (docs figure) | Third, in both | **Not done** — the *receiving* side was built twice as the [authorization contracts](../auth/README.md); the token still has no settable hook |
+| F4 | AIP-20 entry-point names | Neutral | Unchanged | ABI break, five renames; `burn` excluded | AIP20 variant, bundled with F2 | **Done in the three variants themselves**, not in a fourth; `burn` excluded as the trap requires; selectors pinned per variant since K-4 |
+| F5 | Private-party marker in public events | Neutral | Unchanged — it is what *keeps* participants private if public events are ever emitted | Trivial | With public events, if ever | **Done** — the bridges' two public `Transfer` emissions carry `PRIVATE_ADDRESS_MAGIC_VALUE`, which is the "if ever" arriving with F2 |
+| F6 | Public balances | Neutral — CMTAT Solidity *is* public | **Changes three rows** — *balance*, *transfer amount* and *participants* become `public` on the public side | Every path re-guarded | A fifth, hybrid variant at most | **Partly done, in a narrower form than the one refused** — a public balance as the bridges' endpoint, plus `balance_of_public`, issuer-enabled; `transfer_public_to_public`, `mint_to_public` and `burn_public` stay refused |
+| F7 | Named constructors | Neutral | Unchanged | Trivial | AIP20 variant, optional | **Not done** — the single constructor gained `public_side_enabled` instead |
+| — | Holder self-burn | **Regresses criterion 11** | — | — | Rejected | **Still rejected** — `burn` keeps `BURNER_ROLE` and its own selector |
+| — | Single immutable minter | **Regresses 29–31** | — | — | Rejected | **Still rejected** — minting keeps `MINTER_ROLE` |
+
+The product map this table originally carried — *CMTAT-private gains F1 and F3 and nothing else; CMTAT-private-AIP20 is CMTAT-private plus F2, F4, F5 and F7* — is **retired**. The release found a third shape the note did not consider: one product in which the AIP-20 surface is a deployment flag rather than a separate contract, and in which F6 appears only as the endpoint of a holder-initiated bridge rather than as a second, transparent ledger. The reasoning that produced the map is still sound; what it missed is that "public balances" is not one feature but two, and only the larger one contradicts the token's premise.
 
 ## F1 — Note budget with recursive subtraction
 
@@ -87,6 +92,13 @@ Read as a product map: **CMTAT-private gains F1 and F3 and nothing else; CMTAT-p
 **Verdict: do first, in both products.** It is the only feature that pays for itself with no design trade, and its prerequisite is a measurement, not an architecture decision.
 
 ## F2 — Commitment transfers, screened at initialization
+
+> **Status (2026-09-22): done in the three token variants, not in a fourth, and with one of the three additions still missing.** Behind `public_side_enabled`, all three carry `initialize_transfer_commitment`, `transfer_private_to_commitment` and `transfer_private_to_public_with_commitment`.
+>
+> - **Addition 1, the expiry — not done.** A recipient frozen or delisted after opening a commitment can still be paid into it, with no bound on how long the commitment lives. This is the gap the note calls mandatory; it is recorded as a limitation in `doc/README.md`, pinned by the test `a_recipient_frozen_after_opening_a_commitment_is_still_paid`, and carried as one of the two open items of the review's F-1.
+> - **Addition 2, the issuer's delivery — met, in event form.** `initialize_transfer_commitment` emits `CommitmentInitialized { to, completer, commitment }` to the issuer with `onchain_constrained` delivery, rather than a second copy of the partial note; that is half the 39,820 gates the entry point costs (review row A-6). The completed note itself has no issuer copy, which is review row C-8: the issuer's record is the event plus the commitment-tagged completion log.
+> - **Addition 3, the unencrypted amount — met as a disclosure.** `doc/README.md`'s bridge table states it per entry point, and the review carries it as H-9.
+> - **One thing the note did not ask for and the code has:** `pay_commitment` pushes `commitment_paid_nullifier(C)`, so a commitment can be paid **exactly once** — a deliberate divergence from AIP-20, whose `complete` is not single-use. The reasoning is in [`commitment-reuse.md`](./commitment-reuse.md); it cost +52 gates.
 
 **What AIP-20 does.** Three entry points:
 
@@ -120,9 +132,11 @@ The other seven rows are unchanged. Because the assessment answers *transfer amo
 
 **Cost.** New entry points and one storage field for the expiry — an ABI change and a storage-layout change, so it belongs in the same release as any other break. Gates were not measured; the library's `transfer_private_to_commitment` profiles at 41,527 on the fork, and this token would add its compliance reads to that.
 
-**Verdict: second, after F1, in CMTAT-private-AIP20 only, and only with all three additions.** It is the one feature that gives the token something it structurally cannot have today — and the one that qualifies a privacy-table answer, which is why the unqualified product does not carry it.
+**Verdict as written: second, after F1, in CMTAT-private-AIP20 only, and only with all three additions** — the one feature that gives the token something it structurally cannot have, and the one that qualifies a privacy-table answer, which is why the unqualified product was not to carry it. **Overtaken in part:** the feature shipped in the three variants, with the privacy qualification handled by making it opt-in at deployment rather than by a separate contract — a holder of a token deployed with `public_side_enabled = false` still has the unqualified answer. The "only with all three additions" half was **not** honoured: it shipped without the expiry.
 
 ## F3 — A rule-engine hook, in the ARC-403 shape but complete
+
+> **Status (2026-09-22): not done, and the one feature of the seven that is still entirely open for the token.** The *receiving* side of this design was built twice in the meantime — `CMTATAztecAuth` and `CMTATAztecAuthMultiToken` are compliance contracts in the ARC-403 shape ([`doc/auth/README.md`](../auth/README.md)) — so the missing piece is only the call from the token's private chain and a `DelayedPublicMutable<AztecAddress>` to hold the engine. Those contracts also confirm the note's premise empirically: their hook runs in private and enqueues exactly one argument-less public call, so an engine that reads delayed state and enqueues nothing is achievable rather than hypothetical. Carried as the second open item of the review's F-1.
 
 **What AIP-20 does.** An `auth_contract: PublicImmutable<AztecAddress>` called on every transfer and burn with `(from, amount, selector)`; zero address disables it.
 
@@ -150,7 +164,7 @@ Passing **`to`** and the **original caller** — the two arguments ARC-403 lacks
 
 **Premise.** Compatible provided the engine itself runs privately — reads `DelayedPublicMutable` state and enqueues nothing — which the [authorization contracts](../auth/README.md) demonstrates is achievable. An engine that enqueues a public call publishes the caller; that is the engine author's responsibility and must be documented at the extension point.
 
-**Cost.** When no engine is set: one delayed read and a branch, on the order of the 1,920 gates a delayed read measured at in the code-quality review. When set: a cross-contract private call, roughly **101,000 gates per transfer** by the framework's figure — not measured here — plus the engine's own circuit. That is the price CMTAT Solidity does not pay for its `RuleEngine`, and it should be stated next to the setter.
+**Cost.** When no engine is set: one delayed read and a branch, on the order of the 4,000 gates the first `DelayedPublicMutable` read of a transaction measured at in the code-quality review (about 1,920 for each further read of a different variable, which is what an engine set next to the existing screening reads would cost). When set: a cross-contract private call, roughly **101,000 gates per transfer** by the framework's figure — not measured here — plus the engine's own circuit. That is the price CMTAT Solidity does not pay for its `RuleEngine`, and it should be stated next to the setter.
 
 **Verdict: third, in both products.** It is how CMTAT's own extension model looks on Aztec, and this repository's module library already provides everything an engine needs.
 
@@ -166,9 +180,11 @@ Covered in detail in [`building-on-aip20.md`](./building-on-aip20.md#interface-a
 
 **Exclusion.** `burn` must not be renamed to `burn_private`: AIP-20's is holder-authorised, CMTAT's requires `BURNER_ROLE`, and an identical selector with different authorisation is a trap.
 
-**Verdict: CMTAT-private-AIP20 only, bundled with F2.** CMTAT-private keeps CMTAT's names — that is part of what makes it the reference product. In the AIP20 variant both are ABI breaks; one release, one migration note.
+**Verdict as written: CMTAT-private-AIP20 only, bundled with F2** — on the reasoning that keeping CMTAT's names is part of what makes CMTAT-private the reference product. **Overtaken:** the renames went into the three variants in 0.4.0, before the bridges, because a selector match costs nothing and needs no AIP-20 architecture. What the verdict got right is the packaging: it was one ABI break in one release, with a migration note, alongside F2.
 
 ## F5 — The private-party marker in public events
+
+> **Status (2026-09-22): done.** The condition the verdict set — "adopt when public events are added" — arrived with F2's bridges: `transfer_private_to_public` and `transfer_public_to_private` emit a public `Transfer` in which the private side is `PRIVATE_ADDRESS_MAGIC_VALUE` (`main.nr`, the two `HYBRID` emissions), imported from `hybridModule` so the value is the fork's own constant rather than a local re-definition. It is used only as "the private side of this move", never as a zero-address stand-in — checked in review row F-2.
 
 `PRIVATE_ADDRESS_MAGIC_VALUE` in a *public* log wherever one party's balance is private, distinct from the zero address. This token emits its `Transfer` event privately to the recipient, so today nothing needs it. If the open event-coverage items from the code-quality review (C-6) are ever answered with public events, the marker is the right idiom and costs nothing.
 
@@ -184,11 +200,13 @@ Covered in detail in [`building-on-aip20.md`](./building-on-aip20.md#interface-a
 
 **A narrow form that might be legitimate:** a single issuer-owned public balance — a treasury — rather than public balances for everyone. Even that adds the hybrid paths.
 
-**Verdict: in neither product.** If an issuer needs it, it is a separate *hybrid* variant with its own assessment and its own privacy table, not a change to CMTAT-private or CMTAT-private-AIP20 — both of which are named for the property F6 removes.
+**Verdict as written: in neither product.** If an issuer needs it, it is a separate *hybrid* variant with its own assessment and its own privacy table, not a change to CMTAT-private or CMTAT-private-AIP20 — both of which are named for the property F6 removes. **Overtaken for the narrow form only** — see the refinement below, which shipped; the transparent second ledger this paragraph refuses did not, and is still refused.
 
-> **Refinement (2026-09-14).** The four private↔public *bridges* (`transfer_private_to_public`, `transfer_public_to_private` and the two commitment forms) are a narrower thing than a public ledger: per-transfer, initiated by the party whose side becomes visible, and enable-able by the issuer with one deployment flag. [`building-on-aip20.md`](./building-on-aip20.md#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) works through what each is for and what following them with the compliance chain costs; under an issuer flag they fit the CMTAT-private-AIP20 variant without changing a deployment that leaves the flag off. **Implemented in 0.4.0** in the three variants themselves, behind `public_side_enabled`.
+> **Refinement (2026-09-14), shipped in 0.4.0.** The four private↔public *bridges* (`transfer_private_to_public`, `transfer_public_to_private` and the two commitment forms) are a narrower thing than a public ledger: per-transfer, initiated by the party whose side becomes visible, and enable-able by the issuer with one deployment flag. [`building-on-aip20.md`](./building-on-aip20.md#the-cross-domain-paths-what-they-are-for-and-offering-them-as-a-holders-choice) works through what each is for and what following them with the compliance chain costs; under an issuer flag they fit the CMTAT-private-AIP20 variant without changing a deployment that leaves the flag off. **Implemented in 0.4.0** in the three variants themselves, behind `public_side_enabled`.
 
 ## F7 — Named constructors
+
+> **Status (2026-09-22): not done, and cheaper to leave alone than when the note was written.** The single constructor gained a parameter instead — `public_side_enabled` — so a second named constructor would now have to carry it too. Still optional, still neutral on every axis.
 
 `constructor_with_initial_supply` and `constructor_with_minter` are conveniences. Neutral on every axis; a matter of deployment ergonomics. Optional.
 
@@ -199,7 +217,11 @@ Two AIP-20 behaviours fail the first test outright and are recorded so they are 
 - **Holder self-burn.** AIP-20's `burn_private` is holder-authorised only. CMTAT's criterion 11, *Cancel tokens*, is an issuer act under `BURNER_ROLE`; allowing any holder to redeem unilaterally regresses it. This is also why F4 excludes the rename.
 - **A single immutable minter.** AIP-20's `minter: PublicImmutable<AztecAddress>` cannot be granted, revoked or shared. Criteria 29–31 require administered roles; the token already has them.
 
-## Recommended order
+## Recommended order — superseded by what 0.4.0 did
+
+> **Superseded (2026-09-22).** The order below assumed two products. One was built, with the AIP-20 surface behind `public_side_enabled`, and the sequencing came out differently: F4 shipped **first**, before F1 and before the bridges, because a selector match costs nothing and needs none of the architecture the note bundled it with. What remains open is the list under *What is left*, not the list below.
+
+The order as written:
 
 **CMTAT-private** (the three existing variants):
 
@@ -217,12 +239,24 @@ That is the whole list. CMTAT-private keeps its names, its single transfer path 
 
 **Neither:** F6. A hybrid variant, or never.
 
+### What is left
+
+Three items, each a separate decision rather than "adopt AIP-20":
+
+1. **F2's expiry** — the one mandatory addition that did not ship. A commitment carries the screening it had at initialization for as long as it lives; the fix is a timestamp in the partial note's public data and an assertion at completion, or carrying `to` to completion so it can be re-screened.
+2. **F3, the rule engine** — the whole feature, with the receiving side already built twice on the authorization-contract side.
+3. **F7** — optional, and now slightly more expensive than when it was scored.
+
+Everything else on this list is either in the code or refused; the refusals (holder self-burn, a single immutable minter, `transfer_public_to_public`, `mint_to_public`, `burn_public`) are decided and should not be re-opened without new evidence.
+
 ## What each feature changes in the equivalency assessment
 
-| Feature | Assessment change |
-|---|---|
-| F1 | None to answers. Add the note bound and its behaviour to the *Transfer* note, per suggestion C-1 |
-| F2 | No criterion answers change. **Privacy table:** *transfer amount* becomes `private on the direct path; visible but unlinked on the commitment path`, and *available to the issuer* is `y` only because of the added delivery — both stated in the note. New Supplementary-features entry; the Enforcement note records the commitment expiry as a second bounded window. Applies to the AIP20 variant's assessment only |
-| F3 | Restriction table: "RuleEngine / transfer hook" ✘ → ✔; criteria 26–28 re-examined; the per-transfer cost recorded next to the setter. **Privacy table:** unchanged, with a note that the deployed engine runs private and enqueues nothing |
-| F4 | Implementation-details cells that name `transfer`, `mint`, `public_get_*` updated; a note that the private profile matches AIP-20 selectors and that `burn` deliberately does not |
-| F6 | A separate assessment for the separate variant, whose privacy table would answer *balance*, *transfer amount* and *participants* as `public` on the public side |
+| Feature | Assessment change | Carried out? |
+|---|---|---|
+| F1 | None to answers. Add the note bound and its behaviour to the *Transfer* note, per suggestion C-1 | **No** — the assessment does not mention the two-note budget or the recursion |
+| F2 | No criterion answers change. **Privacy table:** *transfer amount* becomes `private on the direct path; visible but unlinked on the commitment path`, and *available to the issuer* is `y` only because of the added delivery — both stated in the note. New Supplementary-features entry; the Enforcement note records the commitment expiry as a second bounded window | **No** — and since F2 shipped in the three variants rather than a separate one, this is no longer "the AIP20 variant's assessment only": it is the assessment |
+| F3 | Restriction table: "RuleEngine / transfer hook" ✘ → ✔; criteria 26–28 re-examined; the per-transfer cost recorded next to the setter. **Privacy table:** unchanged, with a note that the deployed engine runs private and enqueues nothing | n/a — F3 is not implemented |
+| F4 | Implementation-details cells that name `transfer`, `mint`, `public_get_*` updated; a note that the private profile matches AIP-20 selectors and that `burn` deliberately does not | **Yes** |
+| F6 | A separate assessment for the separate variant, whose privacy table would answer *balance*, *transfer amount* and *participants* as `public` on the public side | **Superseded, and not carried out.** There is no separate variant: the narrow form lives in all three behind a flag, so the existing privacy table needs the conditional answers rather than a second document — see the note at the top |
+
+The three **No** rows are one open task on the assessment, not on the code.
