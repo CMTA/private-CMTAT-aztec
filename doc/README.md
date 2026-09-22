@@ -24,6 +24,7 @@ This repository contains a functional private CMTAT prototype, where transaction
   - [Overview](#overview)
   - [Mint private specifications](#mint-private-specifications)
   - [Transfer private specifications](#transfer-private-specifications)
+    - [The enqueued public half, `self.enqueue_self._transfer()`](#the-enqueued-public-half-selfenqueue_self_transfer)
   - [Burn private specifications](#burn-private-specifications)
   - [Batching limits](#batching-limits)
   - [Events](#events)
@@ -193,6 +194,36 @@ _Diagram source: `doc/img/transfer-flow.puml`._
 **Limitations**:
 
 - `transfer_batch` is capped at `MAX_ADDR_PER_CALL` recipients, and transfer is the operation that sets that cap for all three. See [Batching limits](#batching-limits).
+
+#### The enqueued public half, `self.enqueue_self._transfer()`
+
+A private function cannot read the pause flag: `is_paused` is a `PublicMutable`, and private execution runs on a historical snapshot on the user's own device. The check therefore has to happen in public, after the private proof, and that is what this one line arranges.
+
+```noir
+// in the private half, after the notes have moved
+self.enqueue_self._transfer();
+
+// the public counterpart, elsewhere in the same contract
+#[external("public")]
+#[only_self]
+fn _transfer() {
+    require_transfer(self.storage.pause_module);   // assert(!is_paused, "The contract is paused")
+}
+```
+
+**How the call works.** `enqueue_self` is not a Noir feature: the `#[aztec]` macro generates one method on it for each non-view public function of this contract, so `_transfer()` here is type-checked against the declaration above. The generated method serialises the arguments, hashes them, stores the calldata in the execution cache and adds an entry to the transaction's public call stack — it does **not** run anything. The sequencer executes it after the private part, and a revert there reverts the whole transaction, private side effects included. Nothing comes back: an enqueued call has no return value, which is why the private half cannot branch on the pause state and simply relies on the transaction failing.
+
+**Why it takes no arguments.** This is the single most important privacy property of a transfer, and it is enforced by a comment in each `main.nr` rather than by the compiler. The enqueued call is public: its target contract, its function selector and every argument are visible on chain. `_transfer()` passes none, so an observer learns only that *some* transfer of this token happened — never `from`, `to` or `amount`. Adding a parameter here would publish it on every transfer. The caller is visible too, which is what `H-3` weighed: the alternative was a delayed pause flag readable in private, rejected because a pause that takes effect hours later is not an emergency lever.
+
+**Where it is used.** Three entry points enqueue it, all in each variant's `main.nr`:
+
+| Entry point | Why |
+|---|---|
+| `transfer_private_to_private` | the ordinary private transfer |
+| `transfer_batch` | once for the whole batch, not once per recipient |
+| `transfer_private_to_commitment` | the commitment is filled from private, so no public half of its own runs |
+
+The other bridges do not enqueue it, because their own public halves already apply the same rule: `_credit_public` and `_debit_public` call `require_transfer(pause)` before touching a public balance. Mint and burn enqueue `_mint` and `_burn` instead, which check *not deactivated* rather than *not paused* — a pause stops transfers only, as in CMTAT Solidity.
 
 ### Burn private specifications
 
