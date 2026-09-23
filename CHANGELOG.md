@@ -92,6 +92,11 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Fixed
 
+- Pinned `zod` to `4.4.3` with a `resolutions` entry in `package.json`. Five `@aztec/*` packages depend on it at `^4`, yarn resolved **4.5.4**, and that release's recursive-schema memoizer overflows the stack on `@aztec/stdlib`'s self-referential `NestedProcessReturnValues`, so every end-to-end test failed at contract deployment with `RangeError: Maximum call stack size exceeded`.
+  - 4.4.3 is the newest release in existence when Aztec 5.2.0 was published: zod 4.5.0 shipped eleven days later, so the toolchain was never built against the code that breaks.
+  - `resolutions` rather than a dependency, because nothing in this repository imports zod; what has to be pinned is the copy the `@aztec/*` packages resolve.
+  - Rationale, the stack trace and when the pin can be removed: `doc/technical/zod-pin.md`.
+
 - `aztec test` (and so `yarn test:nr`) rebuilt only `contracts/cmtat-aztec` before running the tests, because the workspace `Nargo.toml` named it as `default-member` and `aztec test` runs a bare `aztec compile`; the Debt, Light and the two authorization contracts were tested against whatever artifact `target/` held. The `default-member` line is removed, and a bare `aztec compile` now rebuilds all five artifacts. Found when a deliberately broken rule in `authorizationHookModule.nr` left the authorization tests green (0.4.0 review, K-1).
 - Two asserts on the batch entry points (`Mint module empty`, `Accounts and values arrays mismatch`) compared compile-time array lengths and could never fire; removed, with the gate profile of every circuit confirmed unchanged (0.4.0 review, D-3).
 - The architecture diagram and two glossary / guide sentences still described the pre-refactor layout (three variants, `_*_internal` helpers); redrawn and reworded (0.4.0 review, G-7, G-8).
