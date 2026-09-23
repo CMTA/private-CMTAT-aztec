@@ -16,6 +16,8 @@ This repository contains a functional private CMTAT prototype, where transaction
 ## Table of contents
 
 - [Key terms](#key-terms)
+  - [How Aztec works, in short](#how-aztec-works-in-short)
+  - [Terms](#terms)
 - [Deployment variants](#deployment-variants)
 - [Functionalities overview](#functionalities-overview)
 - [Private token implementation](#private-token-implementation)
@@ -50,6 +52,22 @@ This repository contains a functional private CMTAT prototype, where transaction
 
 
 ## Key terms
+
+### How Aztec works, in short
+
+Everything below depends on one property of the platform, so it is worth stating before the terms.
+
+An Aztec contract has **two halves**. The **private** half runs on the user's own device and is proved there: it reads and writes encrypted *notes*, and what reaches the chain is commitments — hashes of data the network never sees. The **public** half runs on the sequencer, in the open, exactly like an EVM contract.
+
+Three consequences shape this token:
+
+- **A private function cannot read current public state.** It is proved against a historical snapshot, so anything it must check has to be published in a form whose value cannot change for a known window. That is what `DelayedPublicMutable` is, and the delay is its price.
+- **Private state is append-only.** A note is never updated: it is spent by publishing its *nullifier*, and a new note is created. Only the owner can produce that nullifier, which is why the issuer can read a balance from its copies but cannot move it.
+- **Private can call public, never the other way round.** A private function *enqueues* a public call that the sequencer runs afterwards, with no return value. A revert there reverts the whole transaction, including the private half.
+
+The rest of the design follows from those three: what is public, what is delayed, and why a transfer's public half takes no arguments at all.
+
+### Terms
 
 Enough to read the rest of this document. The full [Glossary](#glossary) at the end defines every term used in the specification and the code.
 
