@@ -24,6 +24,9 @@ env:
   # below fails the run if they drift apart.
   AZTEC_VERSION: 5.2.0
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -77,12 +80,15 @@ jobs:
             SHELL=/bin/bash NON_INTERACTIVE=1 NO_NEW_SHELL=1 VERSION="${AZTEC_VERSION}" \
               bash <(curl -sL https://install.aztec.network)
           fi
-          # The three directories the installer itself adds to PATH. Only the last one was
-          # present before, which is why `aztec` was not found.
+          # Only these two. `current/node_modules/.bin` also holds an `aztec`, but it is the
+          # raw CLI: the launcher in `current/bin` is the one that prepends `internal-bin`
+          # (nargo, forge, anvil) before exec'ing it, and the CLI spawns bare `nargo` when it
+          # compiles. If the raw one wins the PATH lookup, `aztec compile` dies with
+          # `spawn nargo ENOENT`. Each GITHUB_PATH line is prepended, so listing both is a
+          # coin toss on the runner's ordering; the shadowing entry is simply left out.
           {
-            echo "$HOME/.aztec/current/bin"
-            echo "$HOME/.aztec/current/node_modules/.bin"
             echo "$HOME/.aztec/bin"
+            echo "$HOME/.aztec/current/bin"
           } >> "$GITHUB_PATH"
 
       - name: Show the toolchain version
@@ -93,6 +99,16 @@ jobs:
             ls -la "$HOME/.aztec" "$HOME/.aztec/bin" "$HOME/.aztec/current/bin" 2>&1 || true
             exit 1
           fi
+          # Assert it is the launcher rather than the raw CLI, so a PATH regression fails here
+          # with a clear message instead of inside `aztec compile`.
+          resolved=$(command -v aztec)
+          echo "aztec resolves to $resolved"
+          case "$resolved" in
+            "$HOME/.aztec/current/bin/aztec") ;;
+            *) echo "expected the launcher at \$HOME/.aztec/current/bin/aztec"; exit 1 ;;
+          esac
+          command -v nargo >/dev/null && echo "note: a bare nargo is also on PATH" || true
+
           installed=$(aztec --version)
           echo "aztec $installed"
           [ "$installed" = "${AZTEC_VERSION}" ] || { echo "expected ${AZTEC_VERSION}"; exit 1; }
