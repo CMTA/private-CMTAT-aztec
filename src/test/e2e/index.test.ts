@@ -108,9 +108,11 @@ describe("Token", () => {
         token = await TokenContract.at(contractAddress, wallet);
 
         // The constructor only schedules the issuer address; nothing that reads it works until the
-        // delay has elapsed. There is no way to fast-forward a sandbox, so this waits it out once.
-        const how = await advancePastDelay(node, CHANGE_ROLES_DELAY_SECONDS, logger);
-        logger.info(`Issuer address delay cleared (${how})`);
+        // delay has elapsed AND a block exists past that point, because a private function is
+        // proved against the chain tip. advancePastDelay does both and verifies the tip moved.
+        // newAccount() is the block the warp needs: a transaction that does not read the
+        // delayed issuer address, so it can be built against the pre-delay anchor.
+        await advancePastDelay(node, CHANGE_ROLES_DELAY_SECONDS, newAccount, logger);
 
         const { result: onChainIssuer } = await token.methods
             .public_get_issuer()
