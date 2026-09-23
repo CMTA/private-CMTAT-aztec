@@ -37,6 +37,7 @@ This repository contains a functional private CMTAT prototype, where transaction
 - [Private/public bridges](#privatepublic-bridges)
 - [AIP-20 private profile](#aip-20-private-profile)
 - [Deployment](#deployment)
+- [Tests](#tests)
 - [Gas sponsorship](#gas-sponsorship)
 - [Comparison with Solidity CMTAT](#comparison-with-solidity-cmtat)
 - [Comparison with CMTAT-Confidential (Zama FHE)](#comparison-with-cmtat-confidential-zama-fhe)
@@ -635,6 +636,18 @@ yarn deploy
 ```
 
 If you run into troubleshooting issues, consult the [Aztec starter repository](https://github.com/AztecProtocol/aztec-starter/tree/main) and try running it first.
+
+
+## Tests
+
+Two suites, run together by `yarn test`.
+
+- `yarn test:nr` runs the Noir tests under [tests/](../tests) — 239 across the five contracts, in the TXE, needing no network.
+- `yarn test:js` runs the TypeScript end-to-end tests under [src/test/e2e/](../src/test/e2e) — 17, against a local network (`aztec start --local-network`) and a `.env` supplying `L1_MNEMONIC` (`cp .env.example .env`). Set `SKIP_SANDBOX=true` when a network is already running, so the suite does not start its own.
+
+A freshly deployed token is unusable for an hour of chain time, because every mint, transfer and burn reads `issuer_address` and that value is delayed — see [Delay of the delayed values](#delay-of-the-delayed-values). The end-to-end suite does not sit through it: it warps the chain past the delay, which is what keeps a full run to minutes rather than hours.
+
+[doc/technical/test.md](./technical/test.md) describes what each end-to-end file covers, how the warp works and why a warp alone is not enough, and two defects the suite carried until 0.4.0 — a Fee Juice claim made one block before its L1-to-L2 message was available, and a hard-coded fee bound the protocol's fees had outgrown by a factor of 757. Read it before hard-coding a block count or a fee anywhere in the suite.
 
 
 ## Gas sponsorship

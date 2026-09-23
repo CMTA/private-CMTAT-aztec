@@ -140,6 +140,7 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 ### Documentation
 
 - `aztec start --sandbox` replaced by `aztec start --local-network` everywhere it was an instruction: the release checklist, the quick starts in both READMEs, the glossary, the agent guide, and `src/test/e2e/accounts.test.ts`, which spawned it. The flag was renamed at Aztec 3.0 and does not exist at 5.2.0, so every one of those was a command that fails.
+- New `Tests` section in `doc/README.md`: the two suites and their commands, the `L1_MNEMONIC` and `SKIP_SANDBOX` requirements of the end-to-end one, why it warps the chain past the one-hour delay, and a pointer to the note below. The specification described how to deploy but never how to test, so `doc/technical/test.md` was reachable only from the agent guides.
 - New `doc/technical/test.md`, on the end-to-end suite: what each of its two files covers, the two defects that kept the Fee Juice test red and how each was measured, and why the suite warps the chain past the one-hour delay instead of waiting for it.
 - New `doc/scripts/convert_links_for_pdf_assessment.sh`, the PDF link conversion for `doc/cmtat-assessment/README.md`, delegating to `convert_links_for_pdf.sh` exactly as the root-README entry point does.
 - `doc/cmtat-assessment/README.md` brought up to the release it claims to assess.
