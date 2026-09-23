@@ -740,11 +740,13 @@ This repository already uses the second: `src/utils/sponsored_fpc.ts` supplies t
 | Partial token freeze | ✘ | ✘ |
 | Snapshot | ✘ | ✘ |
 | Upgradeability | ✘ | ✘ |
-| Documents (ERC-1643), tokenId, terms | ✘ | ✔ |
+| Terms (name, URI, document hash) | ✔ `set_terms` / `terms`, under `EXTRA_INFORMATION_ROLE`; the `bytes32` hash is stored as two 128-bit halves, since a `Field` holds ~254 bits | ✔ |
+| Token identifier | ✔ `set_token_id` / `token_id`, same role | ✔ |
+| Document registry (ERC-1643) | ✘ — the terms are the one document; no named documents, no `getAllDocuments`, no removal | ✔ |
 | Credit events and debt | ✔ | ✘ |
 | Mutable name / symbol | ✘ (`PublicImmutable`) | ✔ post-deployment setters |
-| Roles | 10, numeric, in public state | 14, named, OpenZeppelin `AccessControl` |
-| Deployment variants | 1 | 4 (Lite, standard, RuleEngine, Whitelist) |
+| Roles | 11, numeric, in public state | 14, named, OpenZeppelin `AccessControl` |
+| Deployment variants | 3 token variants (`CMTATAztec`, `CMTATAztecDebt`, `CMTATAztecLight`), plus 2 ARC-403 authorization contracts | 4 (Lite, standard, RuleEngine, Whitelist) |
 
 Forced transfer is the sharpest divide, and the strongest argument for the FHE variant in a regulated deployment: CMTAT requires it for regulatory recovery, it is a hard cryptographic impossibility here, and it is an ordinary function under FHE because the contract can compute on ciphertext it does not own.
 
