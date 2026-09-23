@@ -63,7 +63,7 @@ yarn typecheck           # never `npx tsc`: it can resolve to the Aztec toolchai
 
 ```bash
 yarn test:nr             # Noir/TXE unit tests in contracts/*/src/test/
-yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec start --sandbox
+yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec start --local-network
 ```
 
 - Documentation
@@ -72,7 +72,7 @@ yarn test:js             # Jest e2e tests in src/test/e2e/, requires: aztec star
   - Check that no Markdown file mixes hard-wrapped and one-line-per-block prose
   - Update this changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-23
 
 Target: **0.4.0**. Not released yet; everything below is on the development branch. `version()` already returns `0.4.0` in all five contracts.
 
@@ -108,6 +108,11 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Testing
 
+- The L1 mnemonic is no longer a literal in the source. `src/utils/l1_dev_account.ts` reads `L1_MNEMONIC` from the environment and throws with an instruction when it is unset; `.env.example` carries anvil's published default, the same one `aztec start --local-network` uses.
+  - It was hard-coded in two places, `src/test/e2e/accounts.test.ts` and `scripts/fees.ts`, one of which is a testnet script that reads every other credential from `.env`.
+  - The value was never a secret, being a public dev default. What it was is the shape a contributor copies when pointing the same script at a funded account.
+  - Cost: `yarn test:js` and `yarn fees` now need `cp .env.example .env`, where before the local run needed no configuration.
+
 - The end-to-end suite moves the chain's clock instead of waiting on it (`src/utils/time_travel.ts`).
 
 - The hard audit invariant — every note written for a holder is also delivered to the issuer — had no test that could fail: removing the issuer's copy left the suite green. `test_issuer_copies.nr` asserts, through the TXE's `offchain_messages()`, that a mint or burn emits one offchain message and a transfer two, all addressed to the issuer, and that they follow a rotated issuer (0.4.0 review, K-2).
@@ -128,6 +133,8 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Documentation
 
+- `aztec start --sandbox` replaced by `aztec start --local-network` everywhere it was an instruction: the release checklist, the quick starts in both READMEs, the glossary, the agent guide, and `src/test/e2e/accounts.test.ts`, which spawned it. The flag was renamed at Aztec 3.0 and does not exist at 5.2.0, so every one of those was a command that fails.
+- New `doc/technical/test.md`, on the single failing end-to-end test. `Accounts › Creates accounts with fee juice` consumes an L1-to-L2 Fee Juice message after forcing two blocks; measured against a running network, the membership witness only appears after **three**, so the test is one block short deterministically. The note records the measurement, why three is not a constant worth hard-coding, and that polling for the witness is the fix.
 - New `doc/scripts/convert_links_for_pdf_assessment.sh`, the PDF link conversion for `doc/cmtat-assessment/README.md`, delegating to `convert_links_for_pdf.sh` exactly as the root-README entry point does.
 - `doc/cmtat-assessment/README.md` brought up to the release it claims to assess.
   - The assessment's own version was set to `0.3.0-rc1`, mirroring the template's `v0.3.0`; the template states the two are independent and that only the second row is the author's. It is now `0.1.0`, the first published revision, earlier drafts never having been published.

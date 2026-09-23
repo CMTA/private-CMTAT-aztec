@@ -18,6 +18,7 @@ import { spawn } from 'child_process';
 import { CMTATAztecContract as TokenContract } from "../../artifacts/CMTATAztec.js";
 import { getSponsoredPaymentMethod } from "../../utils/sponsored_fpc.js";
 import { setupWallet } from "../../utils/setup_pxe.js";
+import { l1Mnemonic } from "../../utils/l1_dev_account.js";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -42,7 +43,7 @@ describe("Accounts", () => {
     beforeAll(async () => {
         skipSandbox = process.env.SKIP_SANDBOX === 'true';
         if (!skipSandbox) {
-            sandboxInstance = spawn("aztec", ["start", "--sandbox"], {
+            sandboxInstance = spawn("aztec", ["start", "--local-network"], {
                 detached: true,
                 stdio: 'ignore',
             });
@@ -58,8 +59,7 @@ describe("Accounts", () => {
         // create default ethereum clients
         const nodeInfo = await node.getNodeInfo();
         const chain = createEthereumChain(['http://localhost:8545'], nodeInfo.l1ChainId);
-        const DefaultMnemonic = 'test test test test test test test test test test test junk';
-        const l1Client = createExtendedL1Client(chain.rpcUrls, DefaultMnemonic, chain.chainInfo);
+        const l1Client = createExtendedL1Client(chain.rpcUrls, l1Mnemonic(), chain.chainInfo);
 
         l1PortalManager = await L1FeeJuicePortalManager.new(node, l1Client, logger);
 

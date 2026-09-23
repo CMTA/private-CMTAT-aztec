@@ -62,7 +62,7 @@ aztec-up install 5.2.0
 Start a sandbox in one terminal, then build and run every test in another:
 
 ```bash
-aztec start --sandbox
+aztec start --local-network
 ```
 
 ```bash

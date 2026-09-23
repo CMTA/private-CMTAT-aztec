@@ -606,7 +606,7 @@ The version should match the [Nargo.toml](../Nargo.toml) dependency versions. Mo
 Start the sandbox with:
 
 ```bash
-aztec start --sandbox
+aztec start --local-network
 ```
 
 Run:
@@ -904,7 +904,7 @@ Terms you need in order to read this repository. The first table is Aztec the pr
 | **Authwit** | *Authentication witness* — a signed authorisation letting a third party perform one specific action on your behalf. The Aztec equivalent of an ERC-20 `approve` + `transferFrom`, but scoped to an exact call and consumed once. |
 | **Fee juice** | The native token used to pay transaction fees, bridged from L1. |
 | **FPC / Sponsored FPC** | *Fee Payment Contract* — pays fees on a user's behalf. The sponsored FPC pays unconditionally, which is how fresh accounts in this repo transact without being funded first. |
-| **Sandbox** | A local Aztec network for development (`aztec start --sandbox`). |
+| **Local network** | A local Aztec network for development, started with `aztec start --local-network`. Older material calls it the *sandbox*, and `--sandbox` was the flag until Aztec 3.0; it no longer exists. |
 | **Testnet** | The public Aztec test network, targeted by the scripts in `scripts/`. |
 
 ### Aztec.nr and the code in this repository
