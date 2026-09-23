@@ -299,7 +299,7 @@ That public placement is what forces the two-phase design described under [Token
 Two differences from CMTAT Solidity are worth recording:
 
 - `has_role` is an **exact lookup**. CMTAT Solidity's `AccessControlModule` treats `DEFAULT_ADMIN_ROLE` as implicitly holding every role; here an admin that has not been granted `MINTER_ROLE` cannot mint.
-- `getRoleAdmin` is internal and returns `DEFAULT_ADMIN_ROLE` for **every** role, so the admin of a role cannot be reassigned. Since `DEFAULT_ADMIN_ROLE` therefore administers itself, an admin can grant `DEFAULT_ADMIN_ROLE` to another account — the admin set is not fixed, notwithstanding the "admin cannot be changed" assumption stated elsewhere in the repository README.
+- `getRoleAdmin` is internal and returns `DEFAULT_ADMIN_ROLE` for **every** role, so the admin of a role cannot be reassigned. Since `DEFAULT_ADMIN_ROLE` therefore administers itself, an admin can grant `DEFAULT_ADMIN_ROLE` to another account, revoke another admin, or step down with `renounce_role`: the admin set is not fixed. What is fixed is the administering role itself.
 
 `revoke_role` refuses to revoke from the caller itself, so an admin cannot accidentally strip its own rights; `renounce_role(role, callerConfirmation)` is the deliberate path for that, and requires the caller to name itself.
 
