@@ -42,9 +42,9 @@
 | Version | Value |
 |---|---|
 | Template version — this document, as published by CMTA; pre-filled, MUST NOT be modified by the author of an assessment | `v0.3.0` |
-| Assessment version — the filled document, set by its author | `0.3.0-rc1` |
+| Assessment version — the filled document, set by its author | `0.1.0` |
 
-> The assessment version is below `1.0` and carries an `rc` suffix: this is a **draft**. It is filled against an implementation that is itself a prototype and has not been audited.
+> The two numbers are independent, and the assessment's own version had previously been set to mirror the template's, which is what the template forbids. This is the first published revision of the filled assessment, so it is `0.1.0`; earlier drafts numbered `0.2.0` and `0.3.0` were never published. Being below `1.0` it remains a **draft**, filled against an implementation that is itself a prototype and has not been audited.
 
 ## Metadata
 
@@ -54,8 +54,8 @@
 | Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
 | Implementation language | Noir / Aztec.nr v5.2.0 |
 | Implementation version | `0.4.0`, as returned by `version()` — see criterion 6 |
-| Source repository and commit | https://github.com/CMTA/private-CMTAT-aztec — `2fa7060ab698296df45a49e2d0103d1ae0860b2a` |
-| Assessment date | 2026-09-08 |
+| Source repository and commit | https://github.com/CMTA/private-CMTAT-aztec — `7513f7f5d28b825c7cf9f9fa86026c77508710b7` |
+| Assessment date | 2026-09-23 |
 | Assessed by | *(to be completed by the assessor)* |
 
 ## Deployment variants
@@ -134,13 +134,22 @@ Criteria 44–61 are answered `y` below because the feature exists in the implem
 
 ##### Note
 
-Attributes are set once, in the `#[external("public")] #[initializer]` constructor, and never change: `name`, `symbol` and `decimals` are `PublicImmutable`. That type is what makes the twin getters possible. A `PublicMutable` cannot be read from a private function at all — the read would have to go through a public call, which would publish the caller's address and defeat the privacy of whatever private operation needed it. A `PublicImmutable` has no such problem: once the circuit proves the value was written in the past, it knows it cannot have changed. So each attribute has a public getter for external observers and a private getter (`private_get_name`, `private_get_symbol`, `private_get_decimals`) that a private function can call without leaking who is asking.
+Attributes are set once, in the `#[external("public")] #[initializer]` constructor, and never change: `name`, `symbol` and `decimals` are `PublicImmutable`.
+
+That type is what makes the twin getters possible. A `PublicMutable` cannot be read from a private function at all: the read would have to go through a public call, which would publish the caller's address and defeat the privacy of whatever private operation needed it. A `PublicImmutable` has no such problem, because once the circuit proves the value was written in the past, it knows it cannot have changed.
+
+So each attribute has a public getter for external observers, and a private getter (`private_get_name`, `private_get_symbol`, `private_get_decimals`) that a private function can call without leaking who is asking.
 
 `name` and `symbol` are `FieldCompressedString`, which packs a string into a single field element and therefore caps them at **31 characters**; the constructor takes them as `str<31>`. `decimals` is a plain `u8` chosen at deployment, so the CMTAT Solidity behaviour of configurable decimals is preserved rather than being fixed at zero.
 
 The **terms** (criterion 2) are the exception to all of that: they are mutable, held in a `PublicMutable<Terms>` in the extra-information module and written by `set_terms` under `EXTRA_INFORMATION_ROLE`, exactly as CMTAT Solidity allows them to be updated after deployment. The notation follows the Solidity one: the setter takes a `DocumentInfo` of `{name, uri, documentHash}` and the contract stamps `lastModified` itself from the block timestamp, so a caller cannot forge it; `terms()` then returns the equivalent of `CMTATTerms`, flattened because Noir gains nothing from the nested struct.
 
-Two chain-level constraints shape how faithfully the document can be recorded. `name` and `uri` are `FieldCompressedString`, so each is capped at **31 characters** — enough for an IPFS CID but not for a long HTTPS path, which may have to be shortened or resolved through a redirect. And the `bytes32` `documentHash` does not fit in one Noir `Field`, which holds about 254 bits, so it is stored as two `u128` halves (`documentHashHigh`, `documentHashLow`); a caller splits the digest as high 16 bytes and low 16 bytes and reassembles it the same way. Storing it in a single `Field` would have silently truncated the hash, which is the one outcome a document commitment cannot tolerate.
+Two chain-level constraints limit how faithfully the document can be recorded:
+
+- **String length.** `name` and `uri` are `FieldCompressedString`, so each is capped at **31 characters** — enough for an IPFS CID, but not for a long HTTPS path, which may have to be shortened or resolved through a redirect.
+- **Hash width.** The `bytes32` `documentHash` does not fit in one Noir `Field`, which holds about 254 bits, so it is stored as two `u128` halves, `documentHashHigh` and `documentHashLow`. A caller splits the digest as high 16 bytes and low 16 bytes and reassembles it the same way.
+
+Storing the digest in a single `Field` would have truncated it silently, which is the one outcome a document commitment cannot tolerate.
 
 
 #### Optional
@@ -155,7 +164,11 @@ Two chain-level constraints shape how faithfully the document can be recorded. `
 
 `tokenId` (criterion 5) is present in all three variants, as `set_token_id` / `token_id` on the same extra-information module that carries the terms. It is a `PublicMutable`, not a `PublicImmutable`, because CMTAT Solidity allows it to be changed after deployment; the write is guarded by `EXTRA_INFORMATION_ROLE` and, as in Solidity, happens even when the new value equals the old one.
 
-`version` (criterion 6) is present as a compile-time constant returned by `version()`. It is worth being clear about why that is needed, because Aztec already identifies deployed code natively: every deployment is an instance of a **contract class ID**, a hash of the compiled artifact registered on-chain, and since this contract is not upgradeable the class ID cannot change under a live address. An observer can therefore always tell *which artifact* is running from chain-native metadata. What a class ID cannot give is a *semantic* version: it is a hash, so it does not order releases and does not correspond to anything a reader could match against a release tag in the repository. The two are complementary — the class ID identifies the artifact, `version()` names the release it was built from. See [Version](#version).
+`version` (criterion 6) is present as a compile-time constant returned by `version()`.
+
+Aztec already identifies deployed code natively, which is why the constant needs justifying. Every deployment is an instance of a **contract class ID**, a hash of the compiled artifact registered on-chain, and since this contract is not upgradeable that ID cannot change under a live address. An observer can therefore always tell *which artifact* is running from chain-native metadata.
+
+What a class ID cannot give is a *semantic* version. It is a hash: it does not order releases, and it matches nothing a reader could look up as a release tag in the repository. The two are complementary, the class ID identifying the artifact and `version()` naming the release it was built from. See [Version](#version).
 
 
 ### Token module
@@ -277,7 +290,7 @@ Restrictions live **inside the token**, in the validation module, rather than be
 
 A rejected transfer **reverts** with a message (`The sender is in the blacklist`, `The recipient is not in the whitelist`, and so on). There is no ERC-1404 restriction code and no non-reverting read path equivalent to `detectTransferRestriction`, so a caller cannot test a transfer before attempting it — a wallet has to simulate the call and interpret the failure.
 
-Both the per-address flags and the operations switch are `DelayedPublicMutable`, so adding an address to a blacklist, or turning a mode on, only bites after the contract's delay setting (`CHANGE_ROLES_DELAY_SECONDS`, one hour initially, adjustable by the admin). This is the same delay as freeze and it has the same cause; see [Enforcement](#enforcement).
+Both the per-address flags and the operations switch are `DelayedPublicMutable`, so adding an address to a blacklist, or turning a mode on, only bites after the contract's delay setting: `CHANGE_ROLES_DELAY_SECONDS`, one hour initially and adjustable by the admin. This is the same delay as freeze and it has the same cause; see [Enforcement](#enforcement).
 
 **There is no sanction-list mode.** Earlier revisions declared a third mode whose handler was `panic("not implemented.")`, so enabling it blocked every transfer; the flag has been removed rather than left as a trap. Screening against a sanctions register would need an on-chain list to read, and Aztec has no equivalent of the Chainalysis oracle used on Ethereum.
 
@@ -564,8 +577,8 @@ This implementation deliberately keeps compliance state public and holdings priv
 
 | Data | Visibility in CMTAT Solidity | Visibility in the implementation being approved | Available to the issuer (`y/n`) | Other readers | Implementation details |
 |---|---|---|---|---|---|
-| Balance of an address | `public` | `private` | `y` | The holder | Notes live in the holder's PXE. The issuer receives a copy of every note (see below), so it can reconstruct any holder's balance. Nobody else can. |
-| Transfer amount | `public` | `private` | `y` | Sender and recipient | Carried in encrypted note messages, never in public calldata. |
+| Balance of an address | `public` | `private`, or `private and public at the holder's choice` when the token is deployed with `public_side_enabled = true` | `y` | The holder; anyone, for the public part of a hybrid balance | Notes live in the holder's PXE, and the issuer receives a copy of every note (see below), so it can reconstruct any holder's balance. With the public side enabled a holder may additionally move value to a public balance readable by anyone through `balance_of_public`; nothing moves there without that holder's own transaction. |
+| Transfer amount | `public` | `private` on the direct path; **visible** on the private/public bridges and on a commitment completion | `y` | Sender and recipient; anyone, on a bridge or a completion | Carried in encrypted note messages on `transfer_private_to_private`, never in public calldata. The bridges publish the amount and the public side's party by design, and a commitment completion emits `[storage_slot, value]` unencrypted, tagged by the commitment: the value is readable, the recipient is not. Both require `public_side_enabled = true` and a holder who chooses that path. |
 | Transfer participants | `public` | `private` | `y` | Sender and recipient | The transaction reveals that *some* transfer occurred and its nullifiers and note hashes, but not who transacted with whom. |
 | Minter and minted amount | `public` | `public` | `y` | Everyone | `mint_to_private` enqueues `_mint(caller, amount)`, and a public call's arguments are public. The amount is inferable from the `total_supply` delta regardless; the caller always holds `MINTER_ROLE`, which is public state. The recipient is **not** published. |
 | Burner and burned amount | `public` | `public` | `y` | Everyone | `burn` enqueues `_burn(caller, amount)`: same reasoning. The debited account is **not** published — unless the burner *is* the holder. **Granting `BURNER_ROLE` to holders makes their self-redemptions fully public**; the role is an issuer role by design. |
@@ -575,6 +588,8 @@ This implementation deliberately keeps compliance state public and holdings priv
 | Allowlisted / whitelisted addresses | `public` | `public` | `y` | Everyone | As above, via the validation module's public state. |
 | Roles and role holders | `public` | `public` | `y` | Everyone | `has_role` is a public view. |
 | Pause status | `public` | `public` | `y` | Everyone | `public_get_pause`. |
+
+> **The two conditional rows depend on one deployment-time choice.** The constructor's last argument, `public_side_enabled`, is a `PublicImmutable<bool>`. With `false` — the fully private token — every bridge entry point reverts before touching state, and both rows read simply `private`. With `true` the four AIP-20 bridges and `balance_of_public` exist, and a holder may choose to expose its own side of a move; no other party can expose it for them. An assessor should record which value the assessed deployment uses.
 
 #### How the issuer retains visibility
 
