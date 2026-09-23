@@ -1,0 +1,98 @@
+name: Noir tests
+
+# The Noir/TXE suite only. It needs no network: `aztec test` starts the Test eXecution
+# Environment in-process. The end-to-end suite (`yarn test:js`) is deliberately not run
+# here - it needs a local Aztec network and waits out a real `CHANGE_ROLES_DELAY_SECONDS`
+# (one hour), because a network's clock cannot be fast-forwarded. Run it locally before a
+# release; see the checklist in CHANGELOG.md.
+
+on:
+  push:
+    branches: [dev, master, main]
+  pull_request:
+    branches: [dev, master, main]
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the run in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # One Aztec version, as the agent guide requires: this must equal the `tag` in
+  # lib/Nargo.toml and the @aztec/* versions in package.json. The check-versions step
+  # below fails the run if they drift apart.
+  AZTEC_VERSION: 5.2.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # No submodules: `submodules/` holds reference repositories only and nothing in
+        # the build depends on them.
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Check that one Aztec version is pinned everywhere
+        run: |
+          set -euo pipefail
+          fail=0
+          grep -q "tag = \"v${AZTEC_VERSION}\"" lib/Nargo.toml || { echo "lib/Nargo.toml does not pin v${AZTEC_VERSION}"; fail=1; }
+          bad=$(node -p "
+            const d = require('./package.json');
+            const all = {...d.dependencies, ...d.devDependencies};
+            Object.entries(all)
+              .filter(([n, v]) => n.startsWith('@aztec/') && v !== process.env.AZTEC_VERSION)
+              .map(([n, v]) => n + '@' + v).join(' ')
+          ")
+          [ -z "$bad" ] || { echo "package.json disagrees with ${AZTEC_VERSION}: $bad"; fail=1; }
+          exit $fail
+
+      - name: Cache the Aztec toolchain and Noir dependencies
+        uses: actions/cache@640a1c2554105b57832a23eea0b4672fc7a790d5 # v4.2.3
+        with:
+          path: |
+            ~/.aztec
+            ~/nargo
+          key: aztec-${{ env.AZTEC_VERSION }}-${{ hashFiles('**/Nargo.toml') }}
+          restore-keys: aztec-${{ env.AZTEC_VERSION }}-
+
+      - name: Install the Aztec toolchain
+        run: |
+          set -euo pipefail
+          if [ ! -x "$HOME/.aztec/bin/aztec" ]; then
+            VERSION="${AZTEC_VERSION}" bash -i <(curl -sL https://install.aztec.network)
+          fi
+          echo "$HOME/.aztec/bin" >> "$GITHUB_PATH"
+
+      - name: Show the toolchain version
+        run: |
+          set -euo pipefail
+          installed=$(aztec --version)
+          echo "aztec $installed"
+          [ "$installed" = "${AZTEC_VERSION}" ] || { echo "expected ${AZTEC_VERSION}"; exit 1; }
+
+      - name: Install JavaScript dependencies
+        run: yarn install --frozen-lockfile
+
+      # Compiled as its own step so a compilation failure is distinguishable in the log
+      # from a test failure. `aztec test` would compile anyway.
+      - name: Compile the contracts
+        run: yarn compile
+
+      - name: Run the Noir tests
+        run: yarn test:nr
+
+      # The TypeScript never runs here, but it must still type-check against the freshly
+      # generated bindings - that is what catches an ABI change the artifacts did not follow.
+      - name: Generate the TypeScript artifacts and type-check
+        run: |
+          yarn codegen
+          yarn typecheck

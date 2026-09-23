@@ -78,6 +78,11 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Added
 
+- GitHub Actions workflow `.github/workflows/noir-tests.yml`, running the Noir/TXE suite on pushes and pull requests to `dev`, `master` and `main`.
+  - It runs `yarn compile`, `yarn test:nr`, then `yarn codegen` and `yarn typecheck`, so an ABI change the generated bindings did not follow fails the run.
+  - The end-to-end suite is deliberately excluded: it needs a local Aztec network and waits out a real one-hour delay, since a network's clock cannot be fast-forwarded.
+  - A first step fails the run when the Aztec version drifts apart between `lib/Nargo.toml`, `package.json` and the workflow, which is the checklist rule made automatic.
+
 - Every mint and burn now delivers a constrained `Transfer` event to the issuer, with the zero address on the private side (`from = 0` for a mint, `to = 0` for a burn, the ERC-20 and AIP-20 convention), in the three token variants; `mint_batch` emits one per recipient, `burn_batch` one for the batch total (review finding H-10, route A).
   - Why: the issuer's offchain note copies cannot be stored by a stock PXE, by either delivery mode — note discovery skips any note whose nullifier it cannot compute, and that needs the owner's key — and a copy would in any case never show that a note was spent. The `Transfer` event stream, which a PXE processes without anyone else's keys, is the issuer's ledger; it now covers every movement, so replaying it reconstructs every holder's balance.
   - Cost: one constrained delivery per record. `mint_to_private` 36,976 → 61,062 gates, `burn` 87,935 → 111,638, `mint_batch` 132,584 → 218,669, `burn_batch` 331,362 → 352,719 (base and Debt); Light 30,776 → 54,862, 81,736 → 105,439, 107,871 → 193,956, 306,820 → 328,177. Batch caps unchanged.
