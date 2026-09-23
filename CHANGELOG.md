@@ -108,6 +108,12 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 ### Testing
 
+- `Accounts › Creates accounts with fee juice` passes, so `yarn test:js` is 17/17 against a local network. Two defects, both in the test and neither in the token.
+  - **The claim was one block early.** The test forced two blocks after bridging and then consumed the L1-to-L2 Fee Juice message, following the Aztec documentation's "about two L2 blocks"; the membership witness was measured to appear only at the third, so the claim failed on every run with `No L1 to L2 message found for message hash …`.
+  - The fix does not count blocks at all: new `src/utils/l1_to_l2_message.ts` produces blocks until the node serves a witness for every deposited message, bounded at ten. The lag depends on where in the slot the deposit landed and on the archiver's L1 sync, so hard-coding three would have replaced an off-by-one with a flakier one.
+  - **The fee bound had gone stale.** The balance after the self-paid deployment was asserted to be at least `claimAmount - 10^10`, a constant carrying the comment "Need to manually update this if fees increase significantly"; the deployment now costs about 7.6e12, 757 times that bound. The test reads the exact figure from `receipt.transactionFee` and asserts equality, with a separate check that the fee is non-zero so the equality cannot hold trivially.
+  - Both are written up in `doc/technical/test.md`, together with the measurement table.
+
 - The L1 mnemonic is no longer a literal in the source. `src/utils/l1_dev_account.ts` reads `L1_MNEMONIC` from the environment and throws with an instruction when it is unset; `.env.example` carries anvil's published default, the same one `aztec start --local-network` uses.
   - It was hard-coded in two places, `src/test/e2e/accounts.test.ts` and `scripts/fees.ts`, one of which is a testnet script that reads every other credential from `.env`.
   - The value was never a secret, being a public dev default. What it was is the shape a contributor copies when pointing the same script at a funded account.
@@ -134,7 +140,7 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 ### Documentation
 
 - `aztec start --sandbox` replaced by `aztec start --local-network` everywhere it was an instruction: the release checklist, the quick starts in both READMEs, the glossary, the agent guide, and `src/test/e2e/accounts.test.ts`, which spawned it. The flag was renamed at Aztec 3.0 and does not exist at 5.2.0, so every one of those was a command that fails.
-- New `doc/technical/test.md`, on the single failing end-to-end test. `Accounts › Creates accounts with fee juice` consumes an L1-to-L2 Fee Juice message after forcing two blocks; measured against a running network, the membership witness only appears after **three**, so the test is one block short deterministically. The note records the measurement, why three is not a constant worth hard-coding, and that polling for the witness is the fix.
+- New `doc/technical/test.md`, on the end-to-end suite: what each of its two files covers, the two defects that kept the Fee Juice test red and how each was measured, and why the suite warps the chain past the one-hour delay instead of waiting for it.
 - New `doc/scripts/convert_links_for_pdf_assessment.sh`, the PDF link conversion for `doc/cmtat-assessment/README.md`, delegating to `convert_links_for_pdf.sh` exactly as the root-README entry point does.
 - `doc/cmtat-assessment/README.md` brought up to the release it claims to assess.
   - The assessment's own version was set to `0.3.0-rc1`, mirroring the template's `v0.3.0`; the template states the two are independent and that only the second row is the author's. It is now `0.1.0`, the first published revision, earlier drafts never having been published.
