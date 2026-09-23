@@ -179,6 +179,8 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
   - It also records sponsorship as a privacy measure: fee payment is public, so a holder paying its own fee publishes that it transacted even though the transfer reveals neither party nor amount.
 ### Removed
 
+- Two stray files untracked: `.DS_Store` (macOS Finder metadata, committed in December 2024 and carried ever since because `.gitignore` had listed it from the start, which does not untrack an already-tracked file) and `.latest_aztec_cli_vars` (a cache the `aztec` CLI wrapper writes, listing the environment variable names it forwards; names only, no values, and describing a CLI several major versions old). Both stay on disk and are now ignored; neither was referenced anywhere.
+
 - `doc/standards/cmtat-as-aip20-auth-contract.md`, the feasibility study for an authorization contract. Superseded by the contracts themselves: its mandatory-criteria scorecard (re-scored against what was built) and its list of hook changes that would close the partials moved into `doc/auth/README.md`; the probe measurements it recorded are replaced by the shipped contracts' numbers.
 
 - The four AIP-20 private/public bridges, in all three token variants, behind a new deployment flag: `transfer_private_to_public`, `transfer_public_to_private`, `transfer_private_to_commitment` with `initialize_transfer_commitment`, and `transfer_private_to_public_with_commitment`, plus `balance_of_public` and `public_get_public_side_enabled`. Same names, types and selectors as the standard, pinned by a test. Documented in `doc/README.md`, "Private/public bridges".

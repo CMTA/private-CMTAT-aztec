@@ -17,5 +17,9 @@ codegenCache.json
 # on every run, and never something a repository should carry.
 aztec-wallet-data/
 
+# Cache written by the `aztec` CLI wrapper: the list of environment variable names it forwards
+# into its container. Machine-local, regenerated on demand, and specific to the installed CLI.
+.latest_aztec_cli_vars
+
 # TypeScript incremental build cache
 tsconfig.tsbuildinfo
