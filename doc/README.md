@@ -398,7 +398,11 @@ Three things follow, and they are worth stating precisely because the obvious re
 
 The public callee's **selector** also distinguishes the three operations from each other — an observer can tell a mint from a burn from a transfer. For transfer that reveals only "a transfer happened"; for mint and burn it composes with the two rows above. There is no cheap fix: hiding the selector would mean one shared public function taking the operation kind as an argument, which publishes the same fact one level down, and would newly publish the caller on transfers.
 
-The one design that would remove the transfer selector is to make the pause flag a `DelayedPublicMutable`, as the freeze and list flags already are, so that `transfer_private_to_private` could check it in private and enqueue nothing. That was considered and **rejected**: a scheduled pause takes effect only after the delay, and every private read of a delayed value sets the transaction's `expiration_timestamp`, so a delay short enough to be useful for a pause would give every transfer a validity window of minutes and an expiration offset unique to this contract, and the library's own recommendation is a delay of hours, which it calls unsuitable for an emergency shutdown. For a security token the pause is the emergency lever and must take effect in the next block, so `is_paused` stays a `PublicMutable<bool>` checked in `_transfer`, and the public call that reveals "a transfer of this token occurred" is the price. Analysis finding `H-3` records the four options and their costs.
+The one design that would remove the transfer selector is to make the pause flag a `DelayedPublicMutable`, as the freeze and list flags already are, so that `transfer_private_to_private` could check it in private and enqueue nothing. That was considered and **rejected**, for three reasons that compound:
+
+- A scheduled pause takes effect only after the delay, which is the opposite of what a pause is for.
+- Every private read of a delayed value sets the transaction's `expiration_timestamp`, so a delay short enough to be useful as a pause would give every transfer a validity window of minutes and an expiration offset unique to this contract.
+- The library's own recommendation is a delay of hours, which it calls unsuitable for an emergency shutdown. For a security token the pause is the emergency lever and must take effect in the next block, so `is_paused` stays a `PublicMutable<bool>` checked in `_transfer`, and the public call that reveals "a transfer of this token occurred" is the price. Analysis finding `H-3` records the four options and their costs.
 
 > **What this public call does to the delay's privacy argument.**
 >
@@ -504,7 +508,15 @@ _Diagram source: `doc/img/delayed-flag.puml`._
 
 ### Delay of the delayed values
 
-Four things are `DelayedPublicMutable`, so that a private function can read them: the freeze flag of each address, the list flags of each address, the list mode (`operationsFlag`) and the issuer address. A write to any of them is *scheduled* and becomes current only after a delay, and that one number has three effects: a freeze or a listing bites only after it; every transaction that read one of these values in private must be included within the delay of its anchor block (the read sets the transaction's `expiration_timestamp`); and that expiration is public, so it says which delay the transaction's contract uses. Every value-moving entry point reads the issuer address and at least one flag, so the token's delay is the minimum over its variables, which is why they all carry the same one (review finding H-6 explains the trade in full).
+Four things are `DelayedPublicMutable`, so that a private function can read them: the freeze flag of each address, the list flags of each address, the list mode (`operationsFlag`) and the issuer address. A write to any of them is *scheduled* and becomes current only after a delay.
+
+That one number has three effects:
+
+- **Enforcement latency.** A freeze or a listing bites only after the delay.
+- **A validity window.** Every transaction that read one of these values in private must be included within the delay of its anchor block, because the read sets the transaction's `expiration_timestamp`.
+- **A public fingerprint.** That expiration is published, so it says which delay the transaction's contract uses.
+
+Every value-moving entry point reads the issuer address and at least one flag, so the token's delay is the minimum over its variables — which is why they all carry the same one. Review finding `H-6` explains the trade in full.
 
 **The value is one hour initially** (`CHANGE_ROLES_DELAY_SECONDS = 3600`), a middle position: the framework's own compliance token uses 24 hours, its authorisation example 360 seconds, and the library recommends "at least a couple hours". One hour leaves a proving-and-inclusion budget a phone can meet, keeps the freeze window to an hour, and can be moved without redeploying:
 
@@ -512,7 +524,11 @@ Four things are `DelayedPublicMutable`, so that a private function can read them
 - The issuer address and the list mode are single variables and adopt the new setting in that call. The **per-address entries** (freeze and list flags) each carry their own delay, which the contract cannot change from outside: `freeze`, `unfreeze`, `add_to_list` and `remove_from_list` apply the current setting to the entry they write before scheduling the value, so entries converge to the setting as they are touched. Until an entry has been written again it keeps its previous delay, and the `effective_at` in every event is the timestamp the library actually scheduled, not `now + setting`.
 - **`roles_delay()`** returns the setting new writes adopt.
 
-The pause is deliberately **not** delayed: it is a `PublicMutable` checked in the enqueued public half, so it takes effect at once and has no delay to adjust (see *Pause module*). Both test suites clear the delay by moving the clock rather than waiting: the Noir suite through the TXE, the e2e suite by warping a local network's L1 with `RollupCheatCodes.advanceToSlot` (`src/utils/time_travel.ts`), which only falls back to waiting against a real network. At 24 hours the token's transactions would be indistinguishable from those of a contract that reads no delayed value at all, the largest privacy set; the hour is the compliance side's price for a shorter freeze window, and the setting exists so that the issuer can move it in either direction once it knows how its holders prove and what its neighbours use.
+The pause is deliberately **not** delayed: it is a `PublicMutable` checked in the enqueued public half, so it takes effect at once and has no delay to adjust (see *Pause module*).
+
+Both test suites clear the delay by moving the clock rather than waiting. The Noir suite does it through the TXE; the e2e suite warps a local network's L1 with `RollupCheatCodes.advanceToSlot` (`src/utils/time_travel.ts`) and falls back to waiting only against a real network.
+
+At 24 hours the token's transactions would be indistinguishable from those of a contract that reads no delayed value at all, which is the largest privacy set available. The hour is the compliance side's price for a shorter freeze window, and the setting exists so that the issuer can move it in either direction once it knows how its holders prove and what its neighbours use.
 
 ### Issuer's view of transactions and notes
 
@@ -853,7 +869,14 @@ The privacy effect of a delay is that the transaction's public expiry, `anchor +
 
 An observer therefore knows "this token, this operation" from that call before reading any expiry, so the expiry adds nothing about *which* contract, whatever the delay is set to. What it does not reveal is *who*: the enqueued call is a self-call, so its sender is the token, and the holder stays private either way.
 
-The delay still does the two other things it does, and they are why it has a value at all: it bounds the time a transaction has to be proved and included, and it is the latency of a freeze, a listing, a list-mode change or an issuer rotation. It also leaks the anchor block's timestamp (`expiry − delay`), a timing fact, at any value. The privacy set would matter again only for a path with no public half, which for transfers would mean a delayed pause; mints and burns can never be that, since the role check and `total_supply` are public state. See *What each operation publishes* above.
+Two jobs remain, and they are why the delay has a value at all:
+
+- **The validity window.** It bounds the time a transaction has to be proved and included.
+- **Enforcement latency.** It is how long a freeze, a listing, a list-mode change or an issuer rotation takes to bite.
+
+At any value it also leaks the anchor block's timestamp, `expiry − delay`, which is a timing fact rather than an identifying one.
+
+The privacy set would matter again only for a path with no public half. For transfers that would mean a delayed pause; mints and burns can never qualify, since the role check and `total_supply` are public state. See *What each operation publishes* above.
 
 ## Glossary
 
@@ -943,7 +966,6 @@ We are not aware of any patent or patent application covering the techniques imp
 ## Security policy
 
 Please see [SECURITY.md](../SECURITY.md).
-
 
 
 
