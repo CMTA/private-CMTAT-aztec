@@ -80,7 +80,7 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 
 - GitHub Actions workflow `.github/workflows/noir-tests.yml`, running the Noir/TXE suite on pushes and pull requests to `dev`, `master` and `main`.
   - It runs `yarn compile`, `yarn test:nr`, then `yarn codegen` and `yarn typecheck`, so an ABI change the generated bindings did not follow fails the run.
-  - The end-to-end suite is deliberately excluded: it needs a local Aztec network and waits out a real one-hour delay, since a network's clock cannot be fast-forwarded.
+  - The end-to-end suite is deliberately excluded: it needs a local Aztec network, which the workflow does not start.
   - A first step fails the run when the Aztec version drifts apart between `lib/Nargo.toml`, `package.json` and the workflow, which is the checklist rule made automatic.
 
 - Every mint and burn now delivers a constrained `Transfer` event to the issuer, with the zero address on the private side (`from = 0` for a mint, `to = 0` for a burn, the ERC-20 and AIP-20 convention), in the three token variants; `mint_batch` emits one per recipient, `burn_batch` one for the batch total (review finding H-10, route A).
@@ -107,6 +107,8 @@ Target: **0.4.0**. Not released yet; everything below is on the development bran
 - The architecture diagram and two glossary / guide sentences still described the pre-refactor layout (three variants, `_*_internal` helpers); redrawn and reworded (0.4.0 review, G-7, G-8).
 
 ### Testing
+
+- The end-to-end suite moves the chain's clock instead of waiting on it (`src/utils/time_travel.ts`).
 
 - The hard audit invariant — every note written for a holder is also delivered to the issuer — had no test that could fail: removing the issuer's copy left the suite green. `test_issuer_copies.nr` asserts, through the TXE's `offchain_messages()`, that a mint or burn emits one offchain message and a transfer two, all addressed to the issuer, and that they follow a rotated issuer (0.4.0 review, K-2).
 - Twelve tests in `test_guards.nr` cover the guards that had no negative test (zero admin at construction, revoking one's own role, renouncing with the wrong confirmation, freezing twice, unfreezing an unfrozen address), the before-delay twin of the freeze test, a zero-amount transfer, a blacklisted party opening or paying a commitment, and the private getters (0.4.0 review, K-3).

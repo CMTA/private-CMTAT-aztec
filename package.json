@@ -26,6 +26,7 @@
     "@aztec/accounts": "5.2.0",
     "@aztec/aztec.js": "5.2.0",
     "@aztec/builder": "5.2.0",
+    "@aztec/ethereum": "5.2.0",
     "@aztec/kv-store": "5.2.0",
     "@aztec/noir-contracts.js": "5.2.0",
     "@aztec/pxe": "5.2.0",
