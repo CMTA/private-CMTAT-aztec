@@ -19,8 +19,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const CHANGE_ROLES_DELAY_SECONDS = 3600; // the contract's initial delay; a sandbox clock cannot be fast-forwarded, so this suite waits an hour once
 const DELAY_MS = (CHANGE_ROLES_DELAY_SECONDS + 12) * 1000;
 
-// Waiting out a real delay dominates the runtime of this suite, so allow for it generously.
-const LONG_TEST_TIMEOUT = 900_000;
+// Waiting out a real delay dominates the runtime of this suite, so the timeout is DERIVED from it
+// rather than hard-coded: a test that sleeps DELAY_MS under a smaller timeout can never pass, and
+// that is exactly what happened when CHANGE_ROLES_DELAY_SECONDS went from 360 to 3600 and this
+// constant stayed at 900_000. The margin covers deployment, proving and inclusion around the sleep.
+const LONG_TEST_TIMEOUT = DELAY_MS + 600_000;
 
 describe("Token", () => {
     let wallet: EmbeddedWallet;
@@ -50,7 +53,7 @@ describe("Token", () => {
     beforeAll(async () => {
         skipSandbox = process.env.SKIP_SANDBOX === 'true';
         if (!skipSandbox) {
-            sandboxInstance = spawn("aztec", ["start", "--sandbox"], {
+            sandboxInstance = spawn("aztec", ["start", "--local-network"], {
                 detached: true,
                 stdio: 'ignore',
             });

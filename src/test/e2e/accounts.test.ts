@@ -93,8 +93,10 @@ describe("Accounts", () => {
         let balances = await Promise.all(randomAddresses.map(a => getFeeJuiceBalance(a, node)));
         balances.forEach(b => expect(b).toBe(0n));
 
-        // bridge funds to unfunded random addresses
-        const claimAmount = 1000000000000000000n;
+        // bridge funds to unfunded random addresses. The amount is not ours to choose: the L1
+        // portal's test handler mints a fixed quantity and rejects anything else with
+        // "Minting amount must be ...", so read it rather than hard-coding one.
+        const claimAmount = await l1PortalManager.getTokenManager().getMintAmount();
         const approxMaxDeployCost = 10n ** 10n; // Need to manually update this if fees increase significantly
         const claims: L2AmountClaim[] = [];
         // bridge sequentially to avoid l1 txs (nonces) being processed out of order

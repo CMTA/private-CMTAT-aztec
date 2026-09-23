@@ -56,7 +56,7 @@ jobs:
           exit $fail
 
       - name: Cache the Aztec toolchain and Noir dependencies
-        uses: actions/cache@640a1c2554105b57832a23eea0b4672fc7a790d5 # v4.2.3
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/.aztec
@@ -67,14 +67,32 @@ jobs:
       - name: Install the Aztec toolchain
         run: |
           set -euo pipefail
-          if [ ! -x "$HOME/.aztec/bin/aztec" ]; then
-            VERSION="${AZTEC_VERSION}" bash -i <(curl -sL https://install.aztec.network)
+          # The binary lives in the version directory, not in ~/.aztec/bin - that one holds
+          # only aztec-up, the version manager. Guard the cache hit on the real path.
+          if [ ! -x "$HOME/.aztec/current/bin/aztec" ]; then
+            # Not `bash -i`: an interactive shell on a runner has no tty, sources the profile
+            # and emits job-control warnings. The installer detects a non-interactive stdin by
+            # itself; NO_NEW_SHELL stops it exec'ing a fresh shell at the end, and SHELL is set
+            # because the installer reads it under `set -u` to pick a profile to write.
+            SHELL=/bin/bash NON_INTERACTIVE=1 NO_NEW_SHELL=1 VERSION="${AZTEC_VERSION}" \
+              bash <(curl -sL https://install.aztec.network)
           fi
-          echo "$HOME/.aztec/bin" >> "$GITHUB_PATH"
+          # The three directories the installer itself adds to PATH. Only the last one was
+          # present before, which is why `aztec` was not found.
+          {
+            echo "$HOME/.aztec/current/bin"
+            echo "$HOME/.aztec/current/node_modules/.bin"
+            echo "$HOME/.aztec/bin"
+          } >> "$GITHUB_PATH"
 
       - name: Show the toolchain version
         run: |
           set -euo pipefail
+          if ! command -v aztec >/dev/null; then
+            echo "aztec is not on PATH. Contents of the install tree:"
+            ls -la "$HOME/.aztec" "$HOME/.aztec/bin" "$HOME/.aztec/current/bin" 2>&1 || true
+            exit 1
+          fi
           installed=$(aztec --version)
           echo "aztec $installed"
           [ "$installed" = "${AZTEC_VERSION}" ] || { echo "expected ${AZTEC_VERSION}"; exit 1; }

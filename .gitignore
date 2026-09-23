@@ -11,3 +11,11 @@ log/
 store/*
 
 codegenCache.json
+
+# Local wallet state written by `aztec-wallet` / `aztec start --local-network` into the
+# working directory: an LMDB store of accounts, salts and their keys. Per-machine, rewritten
+# on every run, and never something a repository should carry.
+aztec-wallet-data/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
