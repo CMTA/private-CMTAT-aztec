@@ -54,7 +54,7 @@
 | Target blockchain or distributed ledger | Aztec (privacy L2 on Ethereum) |
 | Implementation language | Noir / Aztec.nr v5.2.0 |
 | Implementation version | `0.4.0`, as returned by `version()` — see criterion 6 |
-| Source repository and commit | https://github.com/CMTA/private-CMTAT-aztec — `7513f7f5d28b825c7cf9f9fa86026c77508710b7` |
+| Source repository and commit | https://github.com/CMTA/private-CMTAT-aztec — `05c18bb0f24f0a91b94b777a784a219a2d980cc1` (v0.4.0) |
 | Assessment date | 2026-09-23 |
 | Assessed by | *(to be completed by the assessor)* |
 
